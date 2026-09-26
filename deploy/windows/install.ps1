@@ -389,7 +389,7 @@ if ($nativeMissing.Count -eq 0) {
     Write-Warn2 @"
 Native extension skipped. Missing: $($nativeMissing -join ', ').
 
-The API server, Mesh, Succes and the CLI still install. Accelerated/native
+The API server, Mesh, tasks and notes (/v1/vie) and the CLI still install. Accelerated/native
 features remain unavailable until the extension is built.
 
 To add it later:

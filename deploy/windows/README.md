@@ -126,7 +126,7 @@ powershell -ExecutionPolicy Bypass -File $srv install -MaillageReseau
 ```
 
 The complete API stays on `127.0.0.1:8000`. A second socket exposes exactly
-the ten Mesh routes on `0.0.0.0:8001`; chat, voice, Succès and the rest of the
+the ten Mesh routes on `0.0.0.0:8001`; chat, voice, tasks and notes (`/v1/vie`) and the rest of the
 API do not exist on that port. `-ListenHost 0.0.0.0` is refused rather than
 turning this narrow option back into full API exposure.
 

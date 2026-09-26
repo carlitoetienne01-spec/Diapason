@@ -15,8 +15,9 @@ contredit la documentation sur quatre points :
    lifeos-api.php`, blob `lifeos_v1` de 13 clés) et son assistant « L'Entité »
    passait par `assistant-api.php`. Le Succès du bureau vit dans
    `~/.diapason/succes.db`, derrière 100 routes `/v1/succes`. Le Dart n'en
-   appelait **aucune**, alors que `docs/succes-client-mobile.md` disait
-   « 73 routes, ce que l'application mobile appelle ».
+   appelait **aucune**, alors que le document du client mobile (aujourd'hui
+   `docs/client-mobile.md`) disait « 73 routes, ce que l'application mobile
+   appelle ».
 2. **Le lien téléphone ↔ Mac était probablement rompu depuis fin août.** Le
    Dart vise le port 8000 par défaut ; depuis le 26 août (49d45ae), 8000
    n'écoute plus que 127.0.0.1 et le réseau local n'a que les 9 portes du
@@ -98,28 +99,35 @@ et l'ancien « Mon téléphone » est à oublier depuis la page Appareils.
 **Avant de désinstaller l'ancienne, s'assurer qu'elle a synchronisé avec le
 site PHP.**
 
-**1b. Côté Diapason : `succes` → `vie`** (après que le point 5 des comptes est
-commité, parce qu'il touche `server/app.py`). Ce que l'inventaire a relevé et
-qui ne doit pas casser en silence :
+**1b. Côté Diapason : `succes` → `vie`** — **commitée le 25/09/2026** dans
+la branche `chantier/vie`, étapes 1 à 13 et 14b du plan du §4 (les étapes
+14a, 14c et 14d attendent leur condition). Ce que l'inventaire avait relevé
+et qui ne devait pas casser en silence :
 
-- le fichier `~/.diapason/succes.db` se renomme au démarrage, avec ses
-  `-wal`/`-shm`, jamais pendant qu'une connexion est ouverte ;
-- les **identifiants d'outils** `succes_*` sont enregistrés dans des agents
+- ~~le fichier `~/.diapason/succes.db` se renomme au démarrage, avec ses
+  `-wal`/`-shm`, jamais pendant qu'une connexion est ouverte~~ (étapes 5 et 6) ;
+- ~~les **identifiants d'outils** `succes_*` sont enregistrés dans des agents
   sauvegardés : un agent dont la liste cite un outil disparu en perd un, sans
-  erreur. Il faut des alias ou une migration de ces listes ;
-- le schéma `success://` voyage dans des commandes **signées** (`app.navigate`)
+  erreur. Il faut des alias ou une migration de ces listes~~ (étape 7 : alias) ;
+- ~~le schéma `success://` voyage dans des commandes **signées** (`app.navigate`)
   et est codé en dur dans `executor.py`, `mesh_tools.py`, `gestes_routes.py`,
-  `features/mesh/routes.ts` et le Dart : période où les deux sont acceptés.
+  `features/mesh/routes.ts` et le Dart : période où les deux sont acceptés~~
+  (étape 12 : les récepteurs acceptent les deux ; les émetteurs attendent
+  l'étape 14a).
   `diapason://` est exclu : déclaré dans `tauri.conf.json`, c'est l'espace
   des liens profonds du système (l'OAuth, lui, passe par
   `127.0.0.1:8789/callback`, pas par ce schéma — une première version de ce
   document disait le contraire) ;
-- les routes `/v1/succes/sync/pair` et `/exchange` servent la synchro entre
-  instances Diapason : un pair plus ancien (pc-bureau) les appelle encore ;
-- les clés `localStorage` et les routes React `/succes/*`, la réglette
-  (`lib.rs`, `reglette.html`) ;
-- l'instantané `tests/contract/succes_api_surface.json` et son générateur ;
-- CLAUDE.md (§1, §4) puis AGENTS.md, la mémoire, `docs/succes-client-mobile.md`.
+- ~~les routes `/v1/succes/sync/pair` et `/exchange` servent la synchro entre
+  instances Diapason : un pair plus ancien (pc-bureau) les appelle encore~~
+  (pc-bureau ne sert plus que de CI ; l'invité appelle `/v1/vie/sync/*`) ;
+- ~~les clés `localStorage` et les routes React `/succes/*`, la réglette
+  (`lib.rs`, `reglette.html`)~~ (étapes 8 à 10) ;
+- ~~l'instantané `tests/contract/succes_api_surface.json` et son générateur~~
+  (étape 4 : gardé pour l'alias, plus `vie_api_surface.json`) ;
+- ~~CLAUDE.md (§1, §4) puis AGENTS.md, le document du client mobile~~
+  (étapes 3, 4 et 13) ; la mémoire reste à la session qui met le renommage
+  en service.
 
 ### Phase 2 — Joindre le Mac, phase 3 — La WebView
 
@@ -197,15 +205,17 @@ Avant de rédiger les trois plans, j'ai revérifié dans le code et sur la machi
 
 L'ordre suit une règle : **accepter le nouveau nom avant de l'émettre, et ne retirer l'ancien qu'une fois qu'on a vérifié que plus rien ne l'utilise.** Chaque étape correspond à un commit, sauf mention contraire.
 
-**0. Préalable (pas un commit).** Attendre que la session des comptes ait commité `server/app.py`, `compte/*` et `lib.rs`, puis relire `git status`. Les points de contact sont `lib.rs:5117` (`__diapNoms`), la docstring de `compte/collections/__init__.py:6`, qui cite `succes/sync.py`, et la clé `compte.synchro.resteIci` de `messages.ts`. Le nom de collection du domaine (« vie ») doit être arrêté avant qu'une collection de ce domaine n'entre dans la liste blanche de `compte/collections/`.
+> **État au 25/09/2026.** Les étapes barrées sont commitées dans la branche `chantier/vie`, avec leurs preuves automatiques (tests, instantanés, `grep`). Les preuves **sur le Mac** ou **à la main** — `kickstart` puis les comptes de la vraie base, les photos affichées, les 8 icônes de la réglette après `install-desktop.sh`, le briefing lancé à la main — restent à la session qui met le renommage en service, avec `SOUL.md`, `lacite/synchroniser.py` et la mémoire. Barré veut dire commité, pas encore en service.
+
+~~**0. Préalable (pas un commit).**~~ *Levé : `server/app.py`, `compte/*` et `lib.rs` étaient commités (`c829781` à `30ffd51`) avant le premier commit de la 1b.* Attendre que la session des comptes ait commité `server/app.py`, `compte/*` et `lib.rs`, puis relire `git status`. Les points de contact sont `lib.rs:5117` (`__diapNoms`), la docstring de `compte/collections/__init__.py:6`, qui cite `succes/sync.py`, et la clé `compte.synchro.resteIci` de `messages.ts`. Le nom de collection du domaine (« vie ») doit être arrêté avant qu'une collection de ce domaine n'entre dans la liste blanche de `compte/collections/`.
 *Risque silencieux :* un commit « vie » emporterait du code des comptes, ou l'un des deux diffs de `lib.rs` écraserait l'autre.
 *Preuve :* `git status --short` ne montre rien sur ces chemins.
 
-**1. « Le bureau disait "Écran ouvert" pour une route qu'il ne connaît pas ».** `mesh/executor.py::_navigate` et `_show_resource` valident la route contre la même table que `routes.ts` (`today`, `tasks`, `projects`, `habits`, `notes`) et rendent `UNSUPPORTED` pour une route inconnue. Un test inter-langages lit les clés de `PATHS` dans `routes.ts` et celles de `_views` dans `mesh_routes.dart`, puis les compare à la table Python.
+~~**1. « Le bureau disait "Écran ouvert" pour une route qu'il ne connaît pas ».**~~ *Commité le 25/09/2026 (`22b0926`).* `mesh/executor.py::_navigate` et `_show_resource` valident la route contre la même table que `routes.ts` (`today`, `tasks`, `projects`, `habits`, `notes`) et rendent `UNSUPPORTED` pour une route inconnue. Un test inter-langages lit les clés de `PATHS` dans `routes.ts` et celles de `_views` dans `mesh_routes.dart`, puis les compare à la table Python.
 *Risque silencieux :* sans ce garde-fou, toute la bascule de schéma de l'étape 10 peut produire un faux SUCCESS sur un bureau en retard.
 *Preuve :* `app.navigate` avec `success://reglages` rend `status == UNSUPPORTED` ; retirer une clé de `routes.ts` fait échouer le test inter-langages.
 
-**2. « Un outil retiré d'une liste disparaissait sans un mot ».** Un test-fusible vérifie qu'une fois `diapason.tools` chargé, chaque nom cité par les listes suivantes satisfait `ToolRegistry.contains` :
+~~**2. « Un outil retiré d'une liste disparaissait sans un mot ».**~~ *Commité le 25/09/2026 (`8915efb`).* Un test-fusible vérifie qu'une fois `diapason.tools` chargé, chaque nom cité par les listes suivantes satisfait `ToolRegistry.contains` :
 - `_TROUSSE_ASSISTANT` (`server/routes.py:63-68`) ;
 - `DEFAULT_VOICE_TOOL_IDS` et la table de chargement vocale (`speech/realtime/tools.py:57-75` et `:183-196`) ;
 - `_GROUPES` et `_LECTURES` (`trousse_chat.py:58-122`) ;
@@ -214,7 +224,7 @@ L'ordre suit une règle : **accepter le nouveau nom avant de l'émettre, et ne r
 *Risque silencieux :* sans ce test, une liste renommée à moitié à l'étape 7 retire un outil à la voix ou à un agent sans que rien ne le signale.
 *Preuve :* retirer une entrée de la table vocale fait échouer le test.
 
-**3. « Le domaine s'appelait encore Succès dans le code Python ».** C'est un déplacement mécanique, sans aucun changement de comportement.
+~~**3. « Le domaine s'appelait encore Succès dans le code Python ».**~~ *Commité le 25/09/2026 (`5c5457f`).* C'est un déplacement mécanique, sans aucun changement de comportement.
 - `git mv src/diapason/succes src/diapason/vie` (18 fichiers) et `tests/succes → tests/vie` (18) ;
 - `tools/succes_*.py → tools/vie_*.py` (seuls les noms de modules changent) et les classes `Succes*` → `Vie*` ;
 - les imports paresseux : `api_routes.py:1082`, `heartbeat/briefing.py:234`, `tools/reminders_calendar.py:36`, `editeur_visuel.py:16-17`, les chaînes de modules de `speech/realtime/tools.py:183-196`, `pyproject.toml`, `tests/privacy/outbound_manifest.txt`, l'import de `scripts/gen_succes_surface.py` ;
@@ -229,7 +239,7 @@ Ne changent pas dans ce commit : `succes.db`, `succes-photos`, les tables, `/v1/
 - `.venv/bin/python -m diapason.cli heartbeat briefing --silencieux` lancé à la main rend un briefing non vide ;
 - `tests/test_agents_md.py`.
 
-**4. « Le serveur ne répondait qu'à /v1/succes ».**
+~~**4. « Le serveur ne répondait qu'à /v1/succes ».**~~ *Commité le 25/09/2026 (`fea8c4e`).*
 - **Routes.** Le routeur perd son préfixe figé (`vie/routes.py:37`) et `api_routes.py:1085` le monte deux fois : sous `/v1/vie` (dans le schéma OpenAPI) et sous `/v1/succes` (`include_in_schema=False`). Un compteur journalise les accès à l'ancien préfixe, parce que c'est lui qui dira quand retirer l'alias.
 - **Middleware.** `auth_middleware.py:87` exempte de clé `/v1/vie/sync/pair` et `/exchange`. `:317` exempte du limiteur `/v1/vie/`, **avec la barre finale**, `/sync/` excepté.
 - **Contexte.** `desktop/contexte_app.py:37-45` accepte `/succes/*` et `/vie/*`.
@@ -248,7 +258,7 @@ Ne changent pas dans ce commit : `succes.db`, `succes-photos`, les tables, `/v1/
 - `poser_contexte('/succes/tasks')` et `poser_contexte('/vie/tasks')` donnent la même route courte ;
 - après `kickstart`, `/v1/vie/tasks` et `/v1/succes/tasks` rendent la même liste.
 
-**5. « succes.db changeait de nom sans ses photos ».**
+~~**5. « succes.db changeait de nom sans ses photos ».**~~ *Commité le 25/09/2026 (`7eecc67`).*
 - **Le résolveur.** Une seule fonction, `chemin_base_vie(data_dir, *, migrer)` (`vie/emplacement.py`), est utilisée par le chemin par défaut du store et par `mesh/identity.py:250`, qui lit les deux noms.
 - **Qui migre.** **Seul `diapason serve` migre**, dans `cli/serve.py`, avant `create_app` et avant toute construction de store, et hors du lifespan d'`app.py`. `tick`, `briefing`, `consolidation` et la CLI prennent `vie.db` s'il existe, sinon `succes.db`. Ils ne créent `vie.db` que si aucun des deux fichiers n'existe. `_connect` ouvre en `file:…?mode=rw` quand la base est censée exister.
 - **La migration**, sous verrou `~/.diapason/.vie-migration.lock` (`fcntl`, ou `msvcrt` sur pc-bureau) :
@@ -275,11 +285,11 @@ Ne changent pas dans ce commit : `succes.db`, `succes-photos`, les tables, `/v1/
 - Deux processus (`multiprocessing`) donnent une seule migration.
 - Sur le Mac, après coup : 1 679 tâches, 57 notes, 62 photos dont chaque fichier existe, et `ls ~/.diapason | grep succes` ne montre que les sauvegardes.
 
-**6. « Les tables portaient encore le préfixe succes_ ».** Décidé : on renomme (« absolument tout »). 26 tables renommées par `ALTER TABLE … RENAME` dans une transaction, `user_version` 3 → 4, environ 340 références SQL dans `src/` et 107 dans `tests/`. Ce serait la première migration de schéma du projet.
+~~**6. « Les tables portaient encore le préfixe succes_ ».**~~ *Commité le 25/09/2026 (`38a587d`).* Décidé : on renomme (« absolument tout »). 26 tables renommées par `ALTER TABLE … RENAME` dans une transaction, `user_version` 3 → 4, environ 340 références SQL dans `src/` et 107 dans `tests/`. Ce serait la première migration de schéma du projet.
 *Risque silencieux :* une requête oubliée sur un chemin rare (pierres tombales, imports) ne lève « no such table » que des semaines plus tard.
 *Preuve :* les comptes par table sont identiques avant et après, sur une copie de la vraie base et sur une sauvegarde restaurée.
 
-**7. « Un agent qui citait succes_tasks perdait l'outil sans un mot ».**
+~~**7. « Un agent qui citait succes_tasks perdait l'outil sans un mot ».**~~ *Commité le 25/09/2026 (`6a538ab`).*
 - **Identifiants canoniques :** `vie_tasks`, `vie_workspace`, `vie_continuity`, `vie_finances`, `vie_delete_task`, `vie_delete_item`, `vie_delete_continuity`.
 - **Alias.** Une table `ALIAS_OUTILS` (7 entrées) est appliquée par `nom_canonique()` à chaque nom venu du disque, du réseau ou du modèle : `agents/executor.py:320`, `server/routes.py:188`, `agent_manager_routes.py:424`, `system/builder.py` (vers la ligne 458), `list_voice_tool_ids`, les outils demandés par la trame vocale, `ToolExecutor.execute` (`_stubs.py:298-303`) et les clés de permission.
 - **Ordre et visibilité.** Sur la trame vocale, on traduit **puis** on intersecte avec le plafond : restreindre, jamais élargir. Les alias n'apparaissent dans aucun schéma envoyé au modèle.
@@ -293,7 +303,7 @@ Ne changent pas dans ce commit : `succes.db`, `succes-photos`, les tables, `/v1/
 - la trame `succes_tasks,mesh_send` ne donne que `vie_tasks` ;
 - le test-fusible de l'étape 2 reste vert.
 
-**8. « Les réglages des pages Succès auraient été oubliés, et 1,7 Mo de cache orphelin aurait rempli le quota ».** Les trois clés sont renommées dans le même commit que la fonction pure `migrerStockage(store)`, appelée à l'amorçage, donc une fois par origine (`tauri://localhost` et `http://127.0.0.1:8000`) :
+~~**8. « Les réglages des pages Succès auraient été oubliés, et 1,7 Mo de cache orphelin aurait rempli le quota ».**~~ *Commité le 25/09/2026 (`890f745`).* Les trois clés sont renommées dans le même commit que la fonction pure `migrerStockage(store)`, appelée à l'amorçage, donc une fois par origine (`tauri://localhost` et `http://127.0.0.1:8000`) :
 - `diapason-succes-ui-prefs` (`uiPrefs.ts:8`) et `diapason-succes-habit-reminder-fired` (`habitReminders.ts:12`) sont copiées vers leur nouveau nom si celui-ci est absent, puis retirées ;
 - toutes les clés `diapason-succes-cache:*` (`cacheSucces.ts:61`) sont **supprimées**.
 
@@ -305,7 +315,7 @@ La classe `succes-page-break` reste lue (`notePages.ts:29`, `notes_resume.py:25`
 - une valeur neuve n'est pas écrasée ;
 - avec 3,5 Mo d'anciens caches et un quota simulé de 5 Mo, l'écriture des caches de tâches et de notes, puis `setItem('diapason-settings')`, ne lèvent pas.
 
-**9. « Les pages vivaient sous /succes ».**
+~~**9. « Les pages vivaient sous /succes ».**~~ *Commité le 25/09/2026 (`7391428`).*
 - **Déplacements.** `git mv frontend/src/features/succes features/vie` (102 fichiers) et `pages/Succes*` → `Vie*`.
 - **Client.** `api.ts` passe ses 96 littéraux à `/v1/vie`, ce que le serveur accepte depuis l'étape 4.
 - **Routes.** `App.tsx:422-431` sert les routes `vie/*`, plus `succes/*` qui redirige vers `/vie/*` par la fonction pure `cheminHerite()`, en gardant la requête et l'ancre. `features/mesh/routes.ts` (`PATHS`) et `Sidebar.tsx` suivent.
@@ -317,11 +327,11 @@ La classe `succes-page-break` reste lue (`notePages.ts:29`, `notes_resume.py:25`
 - `npx tsc --noEmit && npx vitest run && npm run build` ;
 - à la main, **avant** de reconstruire Diapason.app : chaque icône de la réglette ouvre la bonne page.
 
-**10. « La réglette ouvrait encore /succes ».** `reglette.html:270-277` et `__diapNoms` (`lib.rs:5117`) passent à `/vie/*`, en gardant les clés `/succes/*` tant que les redirections existent. Un vitest lit ces deux fichiers et vérifie que chaque route appartient à la liste exportée qu'`App.tsx` utilise.
+~~**10. « La réglette ouvrait encore /succes ».**~~ *Commité le 25/09/2026 (`a3694e7`).* `reglette.html:270-277` et `__diapNoms` (`lib.rs:5117`) passent à `/vie/*`, en gardant les clés `/succes/*` tant que les redirections existent. Un vitest lit ces deux fichiers et vérifie que chaque route appartient à la liste exportée qu'`App.tsx` utilise.
 *Risque silencieux :* la pastille du mini-panneau affiche « Diapason » au lieu du nom de la page. Et si `lib.rs` est édité avant le commit de l'autre session, c'est un conflit.
 *Preuve :* `cd frontend/src-tauri && cargo check && cargo test`, puis `./scripts/install-desktop.sh` et les 8 icônes cliquées une à une.
 
-**11. « Succès s'affichait encore à l'écran ».**
+~~**11. « Succès s'affichait encore à l'écran ».**~~ *Commité le 25/09/2026 (`24f44fd`).*
 - **Frontend :** les 9 surtitres et `api.ts:146`, `habitReminders.ts:102`, `SuccesDashboardPage.tsx:65`, `messages.ts:1288` et `:2792`.
 - **Python :** `vie/routes.py:321`, `:529`, `:542` et `:552`, `relay.py:75`, `cli/serve.py:296`, `serve_service_cmd.py:47`, les 5 messages d'outils, et `executor.py:211`, où « Succès est au premier plan. » devient « Diapason est au premier plan. ».
 - **Tests :** les phrases factices « affiché sur Succès » (`test_handoff`, `test_gestes_routes`, `test_geste_deposer`).
@@ -329,7 +339,7 @@ La classe `succes-page-break` reste lue (`notePages.ts:29`, `notes_resume.py:25`
 *Risque silencieux :* une clé `nav.succes` que rien ne lit (VU dans `Sidebar.tsx:372-375`) reste une promesse morte (§5), selon la réponse à la question du titre de groupe.
 *Preuve :* `grep -rn 'Succès' frontend/src src/diapason` est vide hors commentaires et hors le sens « réussite », et les suites passent.
 
-**12. « success:// n'était compris que sous ce nom ».** Décidé : le nouveau schéma est `vie://`.
+~~**12. « success:// n'était compris que sous ce nom ».**~~ *Commité le 25/09/2026 (`f74f5a9`, et `352e18c` dans `diapason_mobile`).* Décidé : le nouveau schéma est `vie://`.
 - **Récepteurs.** Ils acceptent les deux schémas : `routes.ts:36` (`^(?:success|vie)://`), `mesh_routes.dart:58` et la table Python de l'étape 1. `diapason://` reste refusé (`routes.test.ts:49`).
 - **Émetteurs.** Ils ne changent pas dans ce commit. Ils changeront ensuite (étape 14a), cible par cible, selon une capacité déclarée (`app.navigate.vie`) : `app_version` n'est pas fiable, puisqu'il est vide pour le téléphone et resté à 1.0.0 pour pc-bureau.
 - **Contrat.** `COMMAND_VERSION`, `PULL_VERSION`, `_POLL_FIELDS` et `_ACK_FIELDS` restent intouchés, car le schéma n'est qu'une valeur.
@@ -337,14 +347,14 @@ La classe `succes-page-break` reste lue (`notePages.ts:29`, `notes_resume.py:25`
 *Risque silencieux :* émettre le nouveau schéma avant tous les récepteurs donne « route inconnue » sur le téléphone, et un faux SUCCESS sur un bureau privé de l'étape 1.
 *Preuve :* vitest et `flutter test` sur le tableau schémas × types, avec le même `path`. `test_les_vecteurs_livres_correspondent_a_l_implementation` reste vert sans régénérer les vecteurs.
 
-**13. « La doc parlait encore de Succès ».**
-- **Dans le dépôt :** `git mv docs/succes-client-mobile.md`, CLAUDE.md:245 puis AGENTS.md, `CAPABILITY_MATRIX.md`, `spatial-mesh/README.md`, `GESTES.md`, `architecture/device-mesh*.md`, `deployment/launchd.md`, `user-guide/*`, `reconstruire-le-bureau.md`, le commentaire de `deploy/launchd/com.diapason.serve.plist:10` et `deploy/windows/*`.
+~~**13. « La doc parlait encore de Succès ».**~~ *Commité le 25/09/2026 (le commit qui barre cette ligne).*
+- **Dans le dépôt :** `git mv` du document du client mobile vers `docs/client-mobile.md`, CLAUDE.md:245 puis AGENTS.md, `CAPABILITY_MATRIX.md`, `spatial-mesh/README.md`, `GESTES.md`, `architecture/device-mesh*.md`, `deployment/launchd.md`, `user-guide/*`, `reconstruire-le-bureau.md`, le commentaire de `deploy/launchd/com.diapason.serve.plist:10` et `deploy/windows/*`.
 - **Dans ce document :** corriger la phrase fausse sur `diapason://` et barrer les points de 1b.
 - **Ce qu'on ne réécrit pas :** `INITIAL_AUDIT.md` (on y barre), les `mesures-performances-*.json` et `diagnostic-performances-2026-09-19.md`.
 - **Hors dépôt :** la mémoire (`succes-api-locale.md`, `etudes-la-cite.md`, …), et, avec l'accord de Carlito, `~/.diapason/SOUL.md:34-37` et `~/.diapason/lacite/synchroniser.py:21`.
 
 *Risque silencieux :* un lien mort dans CLAUDE.md envoie une session parallèle lire un fichier disparu. Une mémoire qui cite `/v1/succes` fait écrire du code contre un alias voué au retrait.
-*Preuve :* `tests/test_agents_md.py`, et `grep -rn 'succes-client-mobile' .` vide.
+*Preuve :* `tests/test_agents_md.py`, et un `grep -rn` de l'ancien nom du fichier, vide.
 
 **14. Retraits, un commit chacun, chacun à sa condition.**
 - (a) Les émetteurs passent au nouveau schéma quand l'APK et Diapason.app reconstruites l'acceptent.
@@ -447,7 +457,7 @@ Pour la phase 4 : aucune coupure automatique n'existe aujourd'hui pour `/v1/voic
 
 La passerelle de la phase 2 fixe le modèle de sécurité. **Le secret de session reste un cookie `HttpOnly` et n'est jamais donné au JavaScript.** Le pont ne porte donc pas de verbe `cle`, et `getBase()` rend déjà `''` hors Tauri (même origine).
 
-**1. « Une citation importée puis supprimée aurait fait tomber toutes les routes de vie au démarrage ».** `_materialize_continuity_snapshot` teste l'existence d'une citation **y compris supprimée** avant `create_quote`, sur le modèle de `get_template`, qui refuse un identifiant existant. Ce correctif n'attend rien : il peut précéder la 1b.
+~~**1. « Une citation importée puis supprimée aurait fait tomber toutes les routes de vie au démarrage ».**~~ *Commité le 25/09/2026 (`cff1f2f`), avant la 1b.* `_materialize_continuity_snapshot` teste l'existence d'une citation **y compris supprimée** avant `create_quote`, sur le modèle de `get_template`, qui refuse un identifiant existant. Ce correctif n'attend rien : il peut précéder la 1b.
 *Risque silencieux (DÉDUIT) :* le plantage n'arriverait qu'au redémarrage launchd qui suit la première suppression, bien après un import réussi.
 *Preuve :* importer, supprimer la citation, rouvrir `SuccesSyncStore` sur la même base : aucune exception, et la citation reste supprimée.
 

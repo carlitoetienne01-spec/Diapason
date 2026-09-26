@@ -7,7 +7,7 @@
     <!-- Deux sockets, un seul processus.
 
          L'option « host » porte l'application COMPLÈTE sur 127.0.0.1 : chat,
-         voix, Succès, outils, interface. Elle ne quitte pas cette machine.
+         voix, tâches et notes, outils, interface. Elle ne quitte pas cette machine.
 
          L'option « lan-host » expose un SECOND socket qui ne monte que neuf
          routes du maillage : jumelage par invitation, commandes, présence et

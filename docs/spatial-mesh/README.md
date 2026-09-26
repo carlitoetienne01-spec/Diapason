@@ -8,6 +8,8 @@
 | [`CAPABILITY_MATRIX.md`](CAPABILITY_MATRIX.md) | La matrice réelle par plateforme, engendrée depuis le code et l'état constaté de la flotte. |
 | [`DEVICE_DISCOVERY.md`](DEVICE_DISCOVERY.md) | Le protocole mDNS : pseudonyme tournant, absence d'identité publique et preuve signée avant toute écriture. |
 | [`../architecture/device-mesh.md`](../architecture/device-mesh.md) | La spec du maillage **existant** — modèle de confiance, enveloppe signée, catalogue fermé. À lire avant tout. |
+| [`../client-mobile.md`](../client-mobile.md) | La frontière avec le dépôt `diapason_mobile` (ex-« Succès ») : vecteurs canoniques, routes `success://` et `vie://` (les deux acceptées depuis le 25/09/2026), instantanés de `/v1/vie`. |
+| [`../development/diapason-mobile.md`](../development/diapason-mobile.md) | Le chantier Diapason mobile : décisions du 25/09/2026, et les plans des phases 1b (`succes` devient `vie`), 2 (joindre le Mac) et 3 (la WebView). |
 
 ## L'essentiel en trois phrases
 

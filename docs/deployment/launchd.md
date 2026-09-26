@@ -33,7 +33,7 @@ Un seul processus, deux applications FastAPI distinctes, deux sockets
 
 |                        | `--host` / `--port`                                   | `--lan-host` / `--lan-port`                                   |
 |------------------------|-------------------------------------------------------|---------------------------------------------------------------|
-| Ce qui est monté       | l'application **complète** : chat, voix, Succès, outils, interface | **neuf routes** du maillage, pas une de plus             |
+| Ce qui est monté       | l'application **complète** : chat, voix, tâches et notes, outils, interface | **neuf routes** du maillage, pas une de plus             |
 | Valeur par défaut      | `127.0.0.1` et `8000` (config `server.host` / `server.port`) | `--lan-host` : aucune — sans elle, **ce socket n'existe pas**. `--lan-port` : `8001`   |
 | Doit rester            | sur la loopback, toujours                             | `0.0.0.0` si vos autres appareils doivent l'atteindre          |
 | Créance exigée         | la clé d'API locale                                   | signature Ed25519 d'appareil, invitation à usage unique, ou jeton de session |
@@ -169,8 +169,9 @@ coupe tout immédiatement, au même point de passage.
 
 Ce qui **n'est pas** sur ce socket, et rend donc 404 :
 
-- le chat, les modèles, la voix, les gestes, Succès (`/v1/chat/completions`,
-  `/v1/models`, `/v1/voice/live`, `/v1/gestures/frame`, `/v1/succes/tasks`…) ;
+- le chat, les modèles, la voix, les gestes, les tâches et les notes
+  (`/v1/chat/completions`, `/v1/models`, `/v1/voice/live`,
+  `/v1/gestures/frame`, `/v1/vie/tasks` et son alias `/v1/succes/tasks`…) ;
 - le **plan de contrôle** du maillage lui-même : émettre une invitation
   (`POST /v1/mesh/pairings`), envoyer une commande (`POST /v1/mesh/commands`),
   lister ou révoquer un appareil (`/v1/mesh/devices…`). Ce sont les gestes de
@@ -228,7 +229,7 @@ que vous faites.
 Deux garde-fous existants s'appliquent encore à ce qui **sort** de la machine
 (`src/diapason/mesh/transport.py`) : en mode `local_only`, seul un appareil
 `TRUSTED` joignable à une **adresse privée** peut être commandé ; et
-`desktop.open` — le seul verbe qui pilote le bureau plutôt que Succès — exige
+`desktop.open` — le seul verbe qui pilote le bureau plutôt qu'un écran de Diapason — exige
 que l'émetteur atteste l'accord de l'utilisateur, faute de quoi le récepteur
 refuse l'enveloppe.
 

@@ -231,6 +231,13 @@ Ajouter des **capacités** et des **outils** est en revanche sûr par
 construction : le plafond écarte les verbes inconnus et un client ancien
 répond `UNSUPPORTED`, statut accepté.
 
+Un **nouveau nom** qui voyage (un schéma de route, une route) s'accepte chez
+tous les récepteurs avant qu'un seul émetteur ne l'écrive. Depuis le
+25/09/2026, `mesh/executor.py`, `routes.ts` et `mesh_routes.dart` acceptent
+`success://` **et** `vie://` ; les émetteurs écrivent encore `success://`
+jusqu'à ce que l'app et l'APK reconstruites l'acceptent.
+`tests/contract/test_routes_du_maillage.py` tient les trois tables d'accord.
+
 ### Les contrats sont figés par des instantanés
 
 | Instantané | Régénérer avec |
@@ -243,7 +250,7 @@ répond `UNSUPPORTED`, statut accepté.
 | `tests/contract/compte_api_surface.json` | `scripts/gen_compte_surface.py` |
 
 Régénère **dans le même commit** que le changement qui l'a causé, jamais
-après. Voir `docs/succes-client-mobile.md`.
+après. Voir [`docs/client-mobile.md`](docs/client-mobile.md).
 
 ---
 

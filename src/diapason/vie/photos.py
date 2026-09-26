@@ -8,7 +8,7 @@ fichier.
 
 Les photos ne passent PAS par le journal d'opérations. Le client Dart
 réimplémente l'enveloppe signée avec une liste de champs figée ; y glisser
-des images serait exactement le genre d'ajout que `docs/succes-client-mobile.md`
+des images serait exactement le genre d'ajout que `docs/client-mobile.md`
 interdit. Une photo est locale à ce Mac, comme le fichier qu'elle est.
 
 Le serveur ne décode aucune image : il n'y a pas Pillow dans ce venv, et un

@@ -28,7 +28,7 @@
 
     WHY -ListenHost 0.0.0.0 IS NO LONGER ACCEPTED
     ---------------------------------------------
-    It put the WHOLE application — chat, voice, Succes, tools, roughly two
+    It put the WHOLE application — chat, voice, tasks and notes, tools, roughly two
     hundred and ten routes — on the network. That is how the developer's Mac
     ended up serving all of them over Wi-Fi until 26 August 2026: protected by
     the API key, but reachable, and one route forgetting its protection would
@@ -106,7 +106,7 @@ function Install-Task {
     if (-not $isLoopback) {
         Write-Fail @"
 -ListenHost $ListenHost is refused: it would put the WHOLE application — chat,
-voice, Succes, tools — on the network.
+voice, tasks and notes, tools — on the network.
 
 For your other devices to reach this PC, keep 127.0.0.1 and add:
 

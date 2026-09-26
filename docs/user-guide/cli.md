@@ -514,8 +514,8 @@ d'autre (`create_lan_app` dans `src/diapason/server/app.py`) :
 Quelques conséquences à connaître avant d'ouvrir ce port :
 
 - `POST /v1/chat/completions` sur le socket du maillage répond **404**, pas 401 —
-  la route n'y est pas montée du tout. La discussion, la voix et Succès restent
-  sur `--host`.
+  la route n'y est pas montée du tout. La discussion, la voix, les tâches et les
+  notes restent sur `--host`.
 - Ces neuf routes s'authentifient par **signature d'appareil Ed25519**, par
   invitation ou par jeton de session — *pas* par la clé d'API locale.
 - Le second socket ne sert ni `/docs`, ni `/redoc`, ni de schéma OpenAPI.

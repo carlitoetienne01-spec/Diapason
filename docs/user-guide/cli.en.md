@@ -508,7 +508,7 @@ else (`create_lan_app` in `src/diapason/server/app.py`):
 A few consequences worth knowing before you open that port:
 
 - `POST /v1/chat/completions` on the mesh socket answers **404**, not 401 — the
-  route is not mounted there at all. Chat, speech and Succès stay on `--host`.
+  route is not mounted there at all. Chat, speech, tasks and notes stay on `--host`.
 - Those nine routes authenticate by **Ed25519 device signature**, invitation or
   session token — *not* by the local API key.
 - The second socket serves no `/docs`, `/redoc` or OpenAPI schema.

@@ -35,7 +35,7 @@ The remote catalogue is closed and small (`tools.py`):
 
 | Tool | Effect | Offline policy |
 |---|---|---|
-| `app.navigate` | Open a screen named by a `success://` route | `REQUIRE_ONLINE` |
+| `app.navigate` | Open a screen named by a `success://` route (or `vie://`, accepted by all three receivers since 25/09/2026) | `REQUIRE_ONLINE` |
 | `app.show_resource` | Show one task, project, note or habit | `QUEUE_UNTIL_EXPIRATION` |
 | `app.open` | Bring the app to the front | `REQUIRE_ONLINE` |
 | `notifications.show` | Display a notification | `QUEUE_UNTIL_EXPIRATION` |
@@ -97,7 +97,7 @@ The address is learned from the device itself and is a promise: `local_address()
 
 ### Pull — phones and tablets
 
-Succès Flutter runs on devices that cannot be dialled: no stable address, a carrier NAT in the way, and an operating system that suspends the app whenever the user looks away. The direction flips. The device asks:
+Diapason mobile (Flutter, formerly “Succès”) runs on devices that cannot be dialled: no stable address, a carrier NAT in the way, and an operating system that suspends the app whenever the user looks away. The direction flips. The device asks:
 
 ```
 POST /v1/mesh/commands/poll   → { commands: [...signed envelopes...] }

@@ -35,7 +35,7 @@ Le catalogue distant est fermé et court (`tools.py`) :
 
 | Outil | Effet | Politique hors ligne |
 |---|---|---|
-| `app.navigate` | Ouvre un écran désigné par une route `success://` | `REQUIRE_ONLINE` |
+| `app.navigate` | Ouvre un écran désigné par une route `success://` (ou `vie://`, acceptée par les trois récepteurs depuis le 25/09/2026) | `REQUIRE_ONLINE` |
 | `app.show_resource` | Affiche une tâche, un projet, une note ou une habitude | `QUEUE_UNTIL_EXPIRATION` |
 | `app.open` | Met l'application au premier plan | `REQUIRE_ONLINE` |
 | `notifications.show` | Affiche une notification | `QUEUE_UNTIL_EXPIRATION` |
@@ -98,7 +98,7 @@ L'adresse est apprise de l'appareil lui-même, et c'est une promesse : `local_a
 
 ### La relève — les téléphones et les tablettes
 
-Succès Flutter tourne sur des appareils qu'on ne peut pas appeler : pas d'adresse stable, un NAT d'opérateur en travers du chemin, et un système d'exploitation qui suspend l'application dès que l'utilisateur regarde ailleurs. Le sens s'inverse. C'est l'appareil qui demande :
+Diapason mobile (Flutter, ex-« Succès ») tourne sur des appareils qu'on ne peut pas appeler : pas d'adresse stable, un NAT d'opérateur en travers du chemin, et un système d'exploitation qui suspend l'application dès que l'utilisateur regarde ailleurs. Le sens s'inverse. C'est l'appareil qui demande :
 
 ```
 POST /v1/mesh/commands/poll   → { commands: [...enveloppes signées...] }
