@@ -222,6 +222,50 @@ class TestLeSilenceCoupe:
         duree = await _mener(_pont(client, session), taper)
         assert duree >= 0.2 + _SILENCE, f"coupée en {duree:.2f} s"
 
+    @pytest.mark.asyncio
+    async def test_une_interruption_compte_comme_une_parole(self):
+        """Couper la parole à l'assistant, c'est parler. 26/09/2026,
+        contre-épreuve : ``_entendu()`` retiré avant ``interrupt()``, tous
+        les tests restaient verts."""
+        client, session = _Client(), _Session()
+
+        async def interrompre(_arret: asyncio.Event) -> None:
+            await asyncio.sleep(0.2)
+            client.entrantes.put_nowait({"type": "interrupt"})
+
+        duree = await _mener(_pont(client, session), interrompre)
+        assert duree >= 0.2 + _SILENCE, (
+            f"coupée en {duree:.2f} s : l'interruption n'a pas compté"
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "evenement",
+        [
+            SessionEvent(kind="tool", tool_name="vie_tasks", tool_ok=True),
+            SessionEvent(kind="verification", verification={"verdict": "ok"}),
+            SessionEvent(kind="interrupted"),
+        ],
+        ids=["outil", "verification", "interrompue"],
+    )
+    async def test_ce_que_fait_l_assistant_sans_parler_compte_aussi(
+        self, evenement: SessionEvent
+    ):
+        """Un outil long ou une vérification : l'assistant TRAVAILLE, sans un
+        son. 26/09/2026, contre-épreuve : ``_noter`` réduit à « ready »
+        laissait tout vert — la voix aurait été coupée pendant qu'elle
+        cherchait la réponse."""
+        client, session = _Client(), _Session()
+
+        async def travailler(_arret: asyncio.Event) -> None:
+            await asyncio.sleep(0.2)
+            await session.file.put(evenement)
+
+        duree = await _mener(_pont(client, session), travailler)
+        assert duree >= 0.2 + _SILENCE, (
+            f"coupée en {duree:.2f} s : « {evenement.kind} » n'a pas compté"
+        )
+
 
 class TestLaDureeCoupe:
     @pytest.mark.asyncio
