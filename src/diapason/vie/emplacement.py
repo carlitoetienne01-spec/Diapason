@@ -118,7 +118,7 @@ class DeuxBasesVie(VieError):
 class Migration:
     """Ce que le démarrage a fait de la base, dit une fois dans le journal."""
 
-    etat: str  # neuve | deja_faite | migree | reportee | deux_bases
+    etat: str  # neuve | deja_faite | migree | reportee | deux_bases | ignoree_en_test
     chemin: Path
     detail: str = ""
     photos: int = 0
@@ -549,6 +549,28 @@ def _migrer_photos(base: Path, data_dir: Path) -> int:
     return lignes
 
 
+def _foyer_reel_sous_pytest(data_dir: Path) -> str:
+    """Sous pytest, la raison de ne pas migrer ``data_dir`` ; ``""`` sinon.
+
+    25/09/2026 : la garde vivait dans tests/conftest.py, qui remplaçait
+    l'attribut ``migrer_base_vie`` de ce module. ``cli/serve.py`` n'y passait
+    que parce qu'il importe la fonction DANS la sienne : un import remonté en
+    tête de module rendait la vraie, et les tests qui lancent ``serve`` sans
+    DIAPASON_HOME migraient la vraie ~/.diapason — sur ce Mac comme sur le
+    runner mac-de-carlito. Ici, aucune façon d'importer ne la contourne, et
+    un ``serve`` lancé en sous-processus par un test hérite de la variable.
+    """
+    if not os.environ.get("PYTEST_CURRENT_TEST"):
+        return ""
+    import tempfile
+
+    racine = Path(tempfile.gettempdir()).resolve()
+    dossier = Path(data_dir).resolve()
+    if dossier != racine and racine in dossier.parents:
+        return ""
+    return f"sous pytest, {dossier} est hors du dossier temporaire : rien n'est migré"
+
+
 def migrer_base_vie(data_dir: Path) -> Migration:
     """Le passage succes.db → vie.db, idempotent, sous verrou.
 
@@ -556,6 +578,9 @@ def migrer_base_vie(data_dir: Path) -> Migration:
     magasin : voir la docstring du module.
     """
     data_dir = Path(data_dir)
+    refus = _foyer_reel_sous_pytest(data_dir)
+    if refus:
+        return Migration("ignoree_en_test", data_dir / NOM_BASE, refus)
     neuve = data_dir / NOM_BASE
     herite = data_dir / NOM_BASE_HERITE
     with _verrou_exclusif(data_dir / NOM_VERROU) as tenu:

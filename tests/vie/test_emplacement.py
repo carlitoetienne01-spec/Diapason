@@ -18,7 +18,6 @@ from __future__ import annotations
 import base64
 import importlib
 import multiprocessing
-import os
 import shutil
 import sqlite3
 from contextlib import closing
@@ -762,8 +761,69 @@ class TestLeServeur:
 
 
 class TestLaGardeDesTests:
-    def test_la_suite_ne_migre_jamais_le_vrai_foyer(self):
-        """La garde de tests/conftest.py : hors d'un dossier temporaire, la
-        migration est un constat sans effet."""
-        vrai = Path(os.path.expanduser("~")) / ".diapason"
-        assert emplacement.migrer_base_vie(vrai).etat == "ignoree_en_test"
+    """Aucun test ne migre un foyer hors du dossier temporaire.
+
+    25/09/2026 : la garde vivait dans tests/conftest.py et remplaçait
+    l'attribut ``emplacement.migrer_base_vie``. ``cli/serve.py`` n'y passait
+    que parce qu'il importait la fonction DANS la sienne : remonter l'import
+    en tête du module (ce qu'un tri d'imports fait) rendait la vraie
+    fonction, et test_cli, test_serve_port_tenu, test_serve_single_build
+    — qui lancent ``serve`` sans DIAPASON_HOME — auraient migré la vraie
+    ~/.diapason, ici comme sur le runner mac-de-carlito. L'ancien test
+    appelait l'attribut patché lui-même, et restait vert.
+
+    Le « dossier temporaire » est ici un sous-dossier de tmp_path : le foyer
+    qu'on protège est un autre sous-dossier de tmp_path. Si la garde tombe,
+    seul un dossier jetable est migré — jamais le vrai foyer.
+    """
+
+    @pytest.fixture
+    def foyer_hors_temporaire(self, tmp_path, monkeypatch):
+        import tempfile
+
+        faux_temp = tmp_path / "temp"
+        faux_temp.mkdir()
+        monkeypatch.setattr(tempfile, "tempdir", str(faux_temp))
+        foyer = tmp_path / "foyer"
+        foyer.mkdir()
+        _remplir_heritee(foyer / NOM_BASE_HERITE, taches=2)
+        monkeypatch.setenv("DIAPASON_HOME", str(foyer))
+        return foyer
+
+    def test_serve_ne_migre_pas_un_foyer_hors_du_dossier_temporaire(
+        self, foyer_hors_temporaire
+    ):
+        from diapason.cli.serve import migrer_la_base_de_vie
+
+        routes_vie.set_store_for_tests(None)
+        try:
+            resultat = migrer_la_base_de_vie()
+        finally:
+            routes_vie.set_store_for_tests(None)
+
+        assert resultat is not None and resultat.etat == "ignoree_en_test", resultat
+        assert (foyer_hors_temporaire / NOM_BASE_HERITE).exists(), (
+            "succes.db ne doit pas être renommée"
+        )
+        assert not (foyer_hors_temporaire / NOM_BASE).exists(), "aucune vie.db"
+
+    def test_la_garde_ne_depend_pas_de_la_facon_d_importer(self, foyer_hors_temporaire):
+        """L'import en tête de module, que la garde du conftest laissait
+        passer : ``migrer_base_vie`` est importée en tête de CE fichier, avant
+        toute fixture — c'est la vraie fonction, prise telle quelle."""
+        resultat = migrer_base_vie(foyer_hors_temporaire)
+
+        assert resultat.etat == "ignoree_en_test", resultat
+        assert (foyer_hors_temporaire / NOM_BASE_HERITE).exists()
+
+    def test_sous_le_dossier_temporaire_la_migration_a_lieu(
+        self, foyer_hors_temporaire
+    ):
+        """Témoin : la garde ne doit pas neutraliser les tests de migration."""
+        import tempfile
+
+        dedans = Path(tempfile.gettempdir()) / "foyer"
+        dedans.mkdir()
+        _remplir_heritee(dedans / NOM_BASE_HERITE, taches=2)
+
+        assert emplacement.migrer_base_vie(dedans).etat == "migree"
