@@ -293,6 +293,74 @@ class TestLOuvertureDeSession:
         assert ouverture.status_code == 303
 
 
+class TestLaPageRouverte:
+    """La coquille poste la dernière page avec le ticket (lot 4 de la
+    fluidité, 26/09/2026) : sans elle, chaque démarrage à froid qui rouvre
+    une session atterrissait sur la Discussion."""
+
+    @staticmethod
+    def _ouvrir(monde, **champs) -> str:
+        app, _ = _vraie_app()
+        client = TestClient(monde.passerelle(app), base_url=ICI)
+        ticket = client.post("/v1/appareil/session", json=monde.demande_signee())
+        ouverture = client.post(
+            "/v1/appareil/ouvrir",
+            data={"ticket": ticket.json()["ticket"], **champs},
+            follow_redirects=False,
+        )
+        assert ouverture.status_code == 303, ouverture.text
+        assert ouverture.cookies.get(COOKIE_APPAREIL), (
+            "la suite ne doit rien retirer au cookie"
+        )
+        return ouverture.headers["location"]
+
+    def test_la_derniere_page_est_rouverte(self, monde):
+        assert self._ouvrir(monde, suite="/vie/tasks") == "/vie/tasks", (
+            "la WebView doit atterrir sur la page laissée, pas sur la Discussion"
+        )
+
+    def test_sans_suite_la_discussion_comme_avant(self, monde):
+        assert self._ouvrir(monde) == "/"
+
+    @pytest.mark.parametrize(
+        "suite",
+        [
+            "//exemple.com/piege",
+            "https://exemple.com/",
+            "/\\exemple.com",
+            "/vie/../v1/tasks",
+            "/vie/tasks?x=1",
+            "/vie/tasks#x",
+            "/vie/tasks\r\nSet-Cookie: x=1",
+            "vie/tasks",
+            "/v1/vie/tasks",
+            "/v1",
+            "/api/x",
+            "/ws/chat",
+            "/assets/index.js",
+            "/" + "a" * 250,
+            "",
+        ],
+    )
+    def test_une_suite_hors_des_pages_du_bundle_rend_la_racine(self, monde, suite):
+        """Un Location fait de ce que le corps apporte serait une redirection
+        ouverte ; un chemin d'API montrerait du JSON en pleine page."""
+        assert self._ouvrir(monde, suite=suite) == "/", f"suite acceptée : {suite!r}"
+
+    def test_deux_suites_rendent_la_racine(self, monde):
+        app, _ = _vraie_app()
+        client = TestClient(monde.passerelle(app), base_url=ICI)
+        ticket = client.post("/v1/appareil/session", json=monde.demande_signee())
+        ouverture = client.post(
+            "/v1/appareil/ouvrir",
+            content=f"ticket={ticket.json()['ticket']}&suite=/vie/tasks&suite=/settings",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            follow_redirects=False,
+        )
+        assert ouverture.status_code == 303
+        assert ouverture.headers["location"] == "/", "laquelle croire ? aucune"
+
+
 class TestLesRefus:
     def test_le_plan_de_controle_du_maillage_rend_403(self, telephone):
         """Le plan : POST /v1/mesh/pairings → 403, même avec une session."""

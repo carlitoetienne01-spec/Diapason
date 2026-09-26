@@ -592,7 +592,10 @@ class PasserelleTailnet:
             )
         reponse = Response(
             status_code=303,
-            headers={"Location": "/", "Cache-Control": "no-store"},
+            headers={
+                "Location": _suite_du_corps(corps, entetes.get(b"content-type") or ""),
+                "Cache-Control": "no-store",
+            },
         )
         reponse.set_cookie(
             COOKIE_APPAREIL,
@@ -823,6 +826,42 @@ async def _lire_le_corps(receive: Recevoir, plafond: int) -> bytes | None:
         if not message.get("more_body"):
             break
     return b"".join(morceaux)
+
+
+# Un chemin de page du bundle, et rien d'autre : des segments de lettres,
+# de chiffres, de tirets et de soulignés. Ni « // » (une autre origine pour
+# le navigateur), ni « \ », ni « .. », ni requête, ni fragment : un
+# Location fait d'autre chose serait une redirection ouverte.
+_SUITE = re.compile(r"/(?:[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*)?")
+
+# 200 signes : le plus long chemin du bundle en fait 16 (/vie/year-review).
+_SUITE_MAX = 200
+
+
+def _suite_du_corps(corps: bytes, type_de_contenu: str) -> str:
+    """La page où la WebView atterrit après l'ouverture ; « / » sinon.
+
+    26/09/2026, lot 4 de la fluidité : au démarrage à froid, la coquille
+    rouvrait toujours la Discussion — la session ouverte le matin (plus de
+    six heures après celle de la veille) repassait par ce 303, et Carlito
+    retrouvait l'écran d'accueil au lieu des Tâches qu'il avait laissées.
+    La coquille poste la dernière page avec le ticket ; une passerelle plus
+    ancienne ignore le champ et rend « / », comme avant.
+
+    Jamais un chemin d'API ni un fichier du bundle : un 303 vers /v1/… ou
+    /assets/… montrerait du JSON ou du JavaScript en pleine page.
+    """
+    if "json" in type_de_contenu.lower():
+        return "/"
+    valeurs = parse_qs(corps.decode("utf-8", errors="replace")).get("suite") or []
+    if len(valeurs) != 1:
+        return "/"
+    suite = valeurs[0]
+    if len(suite) > _SUITE_MAX or not _SUITE.fullmatch(suite):
+        return "/"
+    if any(f"{suite}/".startswith(espace) for espace in (*_ESPACES_D_API, "/assets/")):
+        return "/"
+    return suite
 
 
 def _ticket_du_corps(corps: bytes, type_de_contenu: str) -> str | None:
