@@ -107,6 +107,18 @@ def _vraie_app():
     return create_app(engine, "test-model", api_key=KEY, config=config), engine
 
 
+def _avant_le_repli(app) -> None:
+    """Place la dernière route ajoutée AVANT l'attrape-tout du bundle.
+
+    26/09/2026 : quand server/static est construit, ``GET /{full_path:path}``
+    est enregistrée avant une route que le test ajoute après coup ; c'est lui
+    qui répondait (index.html, 200), et le test échouait sans rien dire de la
+    liste d'autorisation. Placée devant, la route est vraiment servable : seul
+    le refus de la passerelle peut l'arrêter.
+    """
+    app.router.routes.insert(0, app.router.routes.pop())
+
+
 def _ouvrir_une_session(client: TestClient, monde: _Monde) -> str:
     """Le parcours complet du téléphone : enveloppe → ticket → cookie."""
     ticket = client.post("/v1/appareil/session", json=monde.demande_signee())
@@ -321,6 +333,7 @@ class TestLesRefus:
         def _ajoutee():  # pragma: no cover - ne doit jamais être appelée
             return {"fuite": True}
 
+        _avant_le_repli(app)
         client = TestClient(monde.passerelle(app), base_url=ICI)
         jeton = _ouvrir_une_session(client, monde)
         reponse = client.get(
@@ -333,6 +346,31 @@ class TestLesRefus:
         reponse = telephone.get("/v1/nulle-part")
         assert reponse.status_code == 404
         assert "n'existe pas" in reponse.json()["detail"], reponse.text
+
+    def test_un_chemin_d_api_ne_retombe_jamais_sur_le_bundle(self, monde):
+        """26/09/2026 : avec server/static construit, /v1/nulle-part rendait
+        index.html en 200 au téléphone — un fetch qui attend du JSON lisait
+        « Unexpected token < ». Le repli du bundle est posé ici à la main
+        quand server/static manque, pour que le test tienne dans les deux cas.
+        """
+        from starlette.responses import HTMLResponse
+
+        app, _ = _vraie_app()
+        if not any(getattr(r, "path", None) == "/{full_path:path}" for r in app.routes):
+
+            @app.get("/{full_path:path}")
+            def _repli(full_path: str):
+                return HTMLResponse("<!doctype html><p>bundle</p>")
+
+        client = TestClient(monde.passerelle(app), base_url=ICI)
+        _ouvrir_une_session(client, monde)
+        for chemin in ("/v1/nulle-part", "/api/nulle-part", "/ws/nulle-part"):
+            reponse = client.get(chemin)
+            assert reponse.status_code == 404, f"{chemin} rend {reponse.status_code}"
+            assert "n'existe pas" in reponse.json()["detail"], reponse.text
+        page = client.get("/vie/tasks")
+        assert page.status_code == 200, "une page du bundle doit rester servie"
+        assert "text/html" in page.headers["content-type"], page.headers
 
     def test_une_methode_que_la_route_ne_sert_pas_rend_405(self, telephone):
         reponse = telephone.delete("/v1/models", headers={"Origin": ICI})
@@ -356,6 +394,7 @@ class TestLesRefus:
         def _inventee():  # pragma: no cover
             return {"fuite": True}
 
+        _avant_le_repli(app)
         client = TestClient(monde.passerelle(app), base_url=ICI)
         _ouvrir_une_session(client, monde)
         assert client.get("/v1/vie/inventee").status_code == 403

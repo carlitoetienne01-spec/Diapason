@@ -95,6 +95,12 @@ _PREFIXE_TAILSCALE = b"tailscale-"
 
 _PERMISSIONS = "camera=(self), microphone=(self), geolocation=()"
 
+# La route du bundle (server/app.py, spa_catch_all) et les espaces qui ne
+# sont JAMAIS des pages : un chemin d'API qui n'y trouve que le repli n'existe
+# pas.
+_REPLI_DU_BUNDLE = "GET /{full_path:path}"
+_ESPACES_D_API = ("/v1/", "/api/", "/ws/")
+
 _PAGE_401 = """<!doctype html>
 <html lang="fr"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -240,6 +246,14 @@ class PasserelleTailnet:
             return
 
         cle, correspondance = self._cle_servie(scope, websocket, methode)
+        if cle == _REPLI_DU_BUNDLE and chemin.startswith(_ESPACES_D_API):
+            # 26/09/2026 : quand server/static est construit, l'attrape-tout
+            # du bundle sert index.html pour TOUT chemin — /v1/nulle-part
+            # rendait 200 en HTML au téléphone, et un fetch qui attend du JSON
+            # lisait « Unexpected token < » au lieu d'un 404. Les tests de la
+            # liste d'autorisation, écrits sans bundle, échouaient dès qu'il
+            # existait.
+            cle, correspondance = None, "aucune"
         if cle is None:
             if correspondance == "partielle":
                 await self._refuser(
