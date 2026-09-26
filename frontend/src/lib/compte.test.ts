@@ -788,6 +788,12 @@ describe('les Réglages rouvrent ce qui attend une réponse (§34)', () => {
     expect(impressionDisponible(false)).toBe(true);
   });
 
+  it('ne propose pas « Imprimer » dans le téléphone', () => {
+    // Échec évité (26/09/2026) : la WebView d'Android ignore window.print,
+    // sans erreur ; le bouton aurait été le même bouton muet qu'en 24/09.
+    expect(impressionDisponible(false, true)).toBe(false);
+  });
+
   it('porte l’icône d’un encadré grave même sans titre', () => {
     // Échec évité (24/09/2026) : en ardéchine, danger et attente ont la même
     // encre ; seule l'icône les distingue, et elle n'était posée qu'avec un titre.

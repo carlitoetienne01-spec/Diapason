@@ -1,4 +1,5 @@
 import { isTauri } from './api';
+import { demanderAuTelephone, estMobile, type ReponseNatif } from './natif';
 
 /**
  * Un lien qu'on accepte d'ouvrir.
@@ -30,10 +31,31 @@ export function estLienOuvrable(url: string): boolean {
  *
  * Dans un navigateur ordinaire, `window.open` fait l'affaire ; dans la
  * fenêtre, il faut passer par le greffon.
+ *
+ * Dans le téléphone (26/09/2026), `window.open` ne fait rien non plus : la
+ * WebView d'Android n'ouvre pas de seconde fenêtre, et la coquille ne laisse
+ * naviguer que vers l'origine du Mac. Le lien part donc à la coquille, par
+ * le verbe `ouvrirExterne`, et on ne dit « ouvert » que sur sa réponse.
  */
-export async function ouvrirLienExterne(url: string): Promise<boolean> {
+export type OuvertureExterne = {
+  tauri: boolean;
+  mobile: boolean;
+  demander: (verbe: 'ouvrirExterne', donnees: { url: string }) => Promise<ReponseNatif>;
+};
+
+export async function ouvrirLienExterne(
+  url: string,
+  env: OuvertureExterne = { tauri: isTauri(), mobile: estMobile, demander: demanderAuTelephone },
+): Promise<boolean> {
   if (!estLienOuvrable(url)) return false;
-  if (!isTauri()) {
+  if (env.mobile) {
+    try {
+      return (await env.demander('ouvrirExterne', { url })).ok;
+    } catch {
+      return false;
+    }
+  }
+  if (!env.tauri) {
     window.open(url, '_blank', 'noopener,noreferrer');
     return true;
   }

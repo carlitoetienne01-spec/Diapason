@@ -1,4 +1,5 @@
 import { apiFetch, getBase, getApiKey } from '../../lib/api';
+import { enregistrerHorsBureau } from '../../lib/enregistrerFichier';
 import { creerLecturesPartagees } from './lecturesPartagees';
 import type {
   FinanceAccount,
@@ -811,15 +812,18 @@ export function fetchVieYearReview(year: number, month?: number): Promise<VieYea
   return request(`/v1/vie/year-review?${query}`);
 }
 
-export async function downloadVieExport(): Promise<void> {
+/**
+ * L'export JSON de la vie. Rend le nom écrit, ou `null` si la personne a
+ * renoncé dans le sélecteur du téléphone.
+ *
+ * 26/09/2026 : l'URL `blob:` était relâchée juste après le clic, ce qui
+ * annule le téléchargement sous Safari, et le clic ne fait rien dans la
+ * WebView d'Android — la page annonçait pourtant « téléchargé ».
+ */
+export async function downloadVieExport(): Promise<string | null> {
   const payload = await request<Record<string, unknown>>('/v1/vie/export');
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = `diapason_${new Date().getFullYear()}.json`;
-  anchor.click();
-  URL.revokeObjectURL(url);
+  return enregistrerHorsBureau(blob, `diapason_${new Date().getFullYear()}.json`);
 }
 
 // ── Finances ─────────────────────────────────────────────────────────

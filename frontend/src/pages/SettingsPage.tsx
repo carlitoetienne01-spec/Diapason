@@ -52,6 +52,8 @@ import { isAutoUpdateDisabled, setAutoUpdateDisabled } from '../components/Deskt
 import { ZOOM_MAX, ZOOM_MIN, normaliserZoom, zoomEnPourcent, zoomSuivant } from '../lib/zoom';
 import { loadDictationStats, type DictationStats } from '../lib/dictationStats';
 import { fetchVoiceLiveHealth } from '../lib/voiceLive';
+import { enregistrerHorsBureau } from '../lib/enregistrerFichier';
+import { toast } from 'sonner';
 import { useTranslation } from '../i18n/useTranslation';
 import { LOCALES, LOCALE_NAMES, type Locale } from '../i18n/locale';
 import { SectionCompte } from '../features/compte/SectionCompte';
@@ -440,15 +442,21 @@ export function SettingsPage() {
     [refreshServerCfg, t],
   );
 
-  const handleExport = () => {
+  // 26/09/2026 : l'URL blob: était relâchée juste après le clic (Safari
+  // annule alors le téléchargement) et le clic ne fait rien dans la WebView
+  // d'Android. Le téléphone passe par sa coquille ; un échec se dit.
+  const handleExport = async () => {
     const data = JSON.stringify(loadConversations());
     const blob = new Blob([data], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `diapason-export-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      const nom = await enregistrerHorsBureau(
+        blob,
+        `diapason-export-${new Date().toISOString().slice(0, 10)}.json`,
+      );
+      if (nom) showSaved();
+    } catch (e: any) {
+      toast.error(e?.message || t('common.saveFailed'));
+    }
   };
 
   const handleImport = () => {

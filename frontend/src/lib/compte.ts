@@ -986,9 +986,12 @@ export function estEtatAlerte(etat: EtatCompte): boolean {
  * asynchrone et le retrait des règles d'impression, une seconde après,
  * aurait imprimé la fenêtre entière derrière la clé. Tant que ni l'un ni
  * l'autre n'est vérifié dans la vraie fenêtre, pas de bouton : Copier reste.
+ *
+ * 26/09/2026 : la WebView d'Android n'imprime pas — `window.print()` y est
+ * un appel sans effet, sans erreur. Dans le téléphone, pas de bouton non plus.
  */
-export function impressionDisponible(dansTauri: boolean): boolean {
-  return !dansTauri;
+export function impressionDisponible(dansTauri: boolean, surTelephone = false): boolean {
+  return !dansTauri && !surTelephone;
 }
 
 export type IconeEncadre = 'alerte' | 'ok' | null;

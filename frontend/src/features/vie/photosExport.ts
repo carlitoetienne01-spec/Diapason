@@ -4,6 +4,7 @@
 // annotations gravées — pour que ce qu'on exporte soit ce qu'on voit.
 
 import { isTauri } from '../../lib/api';
+import { enregistrerHorsBureau } from '../../lib/enregistrerFichier';
 import { exporterVieFichier, getViePhotoContenu, listVieNotes, updateVieNote } from './api';
 import { construirePdf, octetsEnBase64, type PagePhoto } from './pdfPhotos';
 import { canvasEnJpeg, chargerImage, rendrePhoto } from './photosClient';
@@ -41,8 +42,9 @@ export async function pagePour(photo: ViePhoto): Promise<PagePhoto> {
  *
  * Dans l'app de bureau : le dialogue « Enregistrer sous » de macOS, puis le
  * serveur écrit le fichier (la fenêtre n'a pas de droit d'écriture directe).
- * Dans un navigateur : un téléchargement. Rend le chemin ou le nom écrit,
- * ou `null` si l'utilisateur a annulé.
+ * Dans le téléphone : la coquille, par le verbe `enregistrer`. Dans un
+ * navigateur : un téléchargement. Rend le chemin ou le nom écrit, ou `null`
+ * si l'utilisateur a annulé.
  */
 export async function exporterPdf(
   photos: ViePhoto[],
@@ -69,16 +71,10 @@ export async function exporterPdf(
     return resultat.path;
   }
 
-  const blob = new Blob([pdf], { type: 'application/pdf' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = nomFichier;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
-  return nomFichier;
+  // Dans le téléphone, la coquille écrit le fichier et le nom rendu est le
+  // sien : « PDF exporté » ne s'affiche plus sur un clic blob: resté sans
+  // effet dans la WebView d'Android (26/09/2026).
+  return enregistrerHorsBureau(new Blob([pdf], { type: 'application/pdf' }), nomFichier);
 }
 
 /** Les notes où l'on peut mettre une photo, les plus récentes d'abord. */

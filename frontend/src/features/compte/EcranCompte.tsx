@@ -34,6 +34,7 @@ import { useConfirm } from '../../components/ConfirmDialog';
 import { useSondeVisible } from '../../lib/useSondeVisible';
 import { ouvrirLienExterne } from '../../lib/lienExterne';
 import { isTauri } from '../../lib/api';
+import { estMobile } from '../../lib/natif';
 import {
   actionEchap,
   blocageAdresse,
@@ -634,7 +635,7 @@ export function BlocCle({
             {copiee ? <Check size={14} /> : <Copy size={14} />}
             {copiee ? t('compte.cle.copiee') : t('compte.cle.copier')}
           </Bouton>
-          {impressionDisponible(isTauri()) && (
+          {impressionDisponible(isTauri(), estMobile) && (
             <Bouton onClick={() => void imprimerLaCle().then((ok) => setImpressionEchouee(!ok))}>
               <Printer size={14} />
               {t('compte.cle.imprimer')}

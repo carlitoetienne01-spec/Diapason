@@ -1,6 +1,7 @@
 import { apiFetch, isTauri } from '../../../lib/api';
 import { exporterVieFichier, updateVieNote } from '../../../features/vie/api';
 import { octetsEnBase64 } from '../../../features/vie/pdfPhotos';
+import { enregistrerHorsBureau } from '../../../lib/enregistrerFichier';
 import { urlSvg, type PaletteVisuel, type SvgPret } from './svgSur';
 
 /** Copier les styles calculés de Recharts/Mermaid en attributs SVG : le
@@ -81,12 +82,12 @@ export async function enregistrerVisuel(rendu: SvgPret, format: 'svg' | 'png' | 
     const path = await save({ defaultPath: nom, filters: [{ name: format.toUpperCase(), extensions: [format] }] });
     if (!path) return false;
     await exporterVieFichier(path, octetsEnBase64(new Uint8Array(await blob.arrayBuffer())));
-  } else {
-    const url = URL.createObjectURL(blob); const a = document.createElement('a');
-    a.href = url; a.download = nom; document.body.appendChild(a); a.click(); a.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    return true;
   }
-  return true;
+  // Hors du bureau : la coquille du téléphone, ou un téléchargement. `false`
+  // quand la personne a renoncé — le toast « enregistré » n'a alors pas lieu
+  // d'être (26/09/2026).
+  return (await enregistrerHorsBureau(blob, nom)) !== null;
 }
 
 export async function ajouterVisuelDansNote(id: string, rendu: SvgPret, fond: string, titre: string) {

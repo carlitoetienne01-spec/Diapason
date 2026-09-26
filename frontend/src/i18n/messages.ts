@@ -1522,6 +1522,7 @@ export const MESSAGES = {
     "compte.cle.impressionEchec": "Printing could not open: copy the key, or write it down by hand.",
     "natif.delai": "The phone did not answer “{verbe}” within {secondes} s.",
     "natif.absent": "This works only in the Diapason app on the phone.",
+    "natif.enregistrementEchoue": "The phone could not save the file.",
   },
 
   fr: {
@@ -3029,5 +3030,6 @@ export const MESSAGES = {
     "compte.cle.impressionEchec": "L'impression n'a pas pu s'ouvrir : copiez la clé, ou recopiez-la à la main.",
     "natif.delai": "Le téléphone n’a pas répondu à « {verbe} » en {secondes} s.",
     "natif.absent": "Cela ne marche que dans l’app Diapason du téléphone.",
+    "natif.enregistrementEchoue": "Le téléphone n’a pas pu enregistrer le fichier.",
   },
 } as const;

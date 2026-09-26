@@ -75,8 +75,10 @@ export function VieYearReviewPage() {
   const exportData = async () => {
     setExporting(true);
     try {
-      await downloadVieExport();
-      toast.success('Export JSON téléchargé');
+      // Un nom, ou null si la personne a renoncé dans le sélecteur du
+      // téléphone : pas de « téléchargé » sans fichier (26/09/2026).
+      const nom = await downloadVieExport();
+      if (nom) toast.success('Export JSON téléchargé', { description: nom });
     } catch (error) {
       toast.error("L'export n'a pas pu être créé.", { description: error instanceof Error ? error.message : String(error) });
     } finally {
