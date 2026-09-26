@@ -284,11 +284,18 @@ class TestUneRouteInconnueNOuvreRien:
             "success://notes/%zz",
             "success://projects/%E0%A4%A",
             "success://projects/%E0%A4",
-            # U+017F et U+212A : le `/i` de JavaScript ne les replie pas dans
-            # [a-z], le repli Unicode de Python si. Sans re.ASCII, ce côté-ci
-            # accepterait une route que la fenêtre refuse.
-            "success://\u017ftasks",
-            "success://tas\u212a\u212a",
+            # U+017F (ſ), U+212A (signe Kelvin) et U+0130 (İ) : le `/i` de
+            # JavaScript ne les replie pas dans [a-z], le repli Unicode de
+            # Python si. Sans re.ASCII, ce côté-ci accepterait une route que la
+            # fenêtre refuse. 25/09/2026 : les deux entrées d'avant
+            # (« success://ſtasks », « success://tasKK ») donnaient sans
+            # re.ASCII les genres « ſtasks » et « taskk », refusés de toute
+            # façon — le test restait vert sans la garde qu'il nommait. Celles-ci
+            # se replient en un schéma ou un écran CONNUS.
+            "\u017fuccess://tasks",
+            "success://tas\u212as",
+            "vie://tas\u212as",
+            "v\u0130e://tasks",
         ],
     )
     def test_ce_que_la_fenetre_refuse_ce_cote_le_refuse(self, route):
