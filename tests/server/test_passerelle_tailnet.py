@@ -1193,6 +1193,28 @@ class TestLeMarquage:
         assert jeton not in vu["cookie"], "le jeton de session a atteint l'app"
         assert "autre=1" in vu["cookie"]
 
+    def test_le_limiteur_range_le_telephone_dans_le_seau_de_l_appareil(
+        self, telephone, monkeypatch
+    ):
+        """26/09/2026, contre-épreuve : un constat, et le commentaire de
+        l'exemption de la cloche, disaient tout le trafic du téléphone rangé
+        sous ``127.0.0.1:unauthenticated`` — un seau commun à tout client du
+        tailnet. C'est le seau de l'APPAREIL : la passerelle réécrit le
+        client avant que le limiteur ne le lise. Un autre appareil, ou la
+        boucle locale, ne vident pas celui du téléphone."""
+        import diapason.server.auth_middleware as am
+
+        cles: list[str] = []
+        original = am.RateLimiter.check
+
+        def noter(limiteur, cle, *a, **k):
+            cles.append(cle)
+            return original(limiteur, cle, *a, **k)
+
+        monkeypatch.setattr(am.RateLimiter, "check", noter)
+        assert telephone.get("/v1/models").status_code == 200
+        assert cles == [f"appareil:{PHONE}:unauthenticated"], cles
+
 
 class TestLaMarqueDuTelephoneSuitLaRequete:
     """Le plafond d'outils lit une variable de contexte que seule la

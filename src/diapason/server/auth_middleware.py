@@ -367,10 +367,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # La cloche d'approbation (26/09/2026, phase 5 du plan mobile). Elle
         # relit la liste CHAQUE SECONDE tant qu'une demande attend : à elle
         # seule, 60 requêtes par minute, tout le seau commun. Au téléphone,
-        # toute la page et la sonde native partagent un seul seau (même
-        # adresse de boucle, aucune clé : `127.0.0.1:unauthenticated`), et
-        # la notification touchée ouvrait la cloche sur un 429 — « le Mac
-        # n'a pas rendu ses demandes » pendant qu'une attendait. La lecture
+        # toute la page et la sonde native partagent le seau de L'APPAREIL
+        # (la passerelle réécrit le client en `appareil:<id>`, aucune clé :
+        # `appareil:<id>:unauthenticated` — corrigé le 26/09/2026, ce
+        # commentaire disait `127.0.0.1`, un seau commun à tout le tailnet
+        # qui n'existe pas), et la notification touchée ouvrait la cloche
+        # sur un 429 — « le Mac n'a pas rendu ses demandes » pendant
+        # qu'une attendait. La lecture
         # seulement : approuver et refuser restent limités, et tous restent
         # derrière le mur de la clé ou de la session.
         if path == "/v1/approvals/pending" and request.method == "GET":
