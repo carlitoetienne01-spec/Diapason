@@ -68,6 +68,7 @@ import {
 import { fichiersImages, preparerPhoto } from './photosClient';
 import { exporterPdf } from './photosExport';
 import { annonceDEnregistrement } from '../../lib/enregistrerFichier';
+import { traduire } from '../../i18n/translate';
 import type { ViePhoto, ViePhotoPile, VieTask } from './types';
 
 interface Props {
@@ -687,7 +688,7 @@ export function PilesPhotos({
                   <span className="text-[11px]">Nouvelle pile</span>
                 </div>
               </button>
-              <p className="mt-1.5 text-[11px] text-center" style={{ color: 'var(--color-text-tertiary)' }}>
+              <p className="mt-1.5 text-[11px] text-center mobile:hidden" style={{ color: 'var(--color-text-tertiary)' }}>
                 ou glisse des photos ici
               </p>
             </>
@@ -696,7 +697,11 @@ export function PilesPhotos({
       </div>
       </div>
       <div className="px-4 py-2 text-[11px] shrink-0" style={{ borderTop: '1px solid var(--color-border)', color: 'var(--color-text-tertiary)' }}>
-        Clique une pile pour voir ses photos · glisse des images sur une pile pour les y ranger · ⌘V colle une capture dans une pile ouverte
+        {/* 26/09/2026 : au doigt, ni souris, ni ⌘V. */}
+        <span className="mobile:hidden">
+          Clique une pile pour voir ses photos · glisse des images sur une pile pour les y ranger · ⌘V colle une capture dans une pile ouverte
+        </span>
+        <span className="hidden mobile:inline">{traduire('photos.aide.fenetreTelephone')}</span>
       </div>
             </section>
           </div>,
@@ -1551,7 +1556,8 @@ function PileOuverte({
             >
               <ImagePlus size={22} />
               <span>{filtreTache ? 'Aucune photo pour cette tâche.' : 'Cette pile est vide.'}</span>
-              <span className="text-[11px]">Glisse des photos ici, colle une capture (⌘V), ou utilise le bouton d’envoi.</span>
+              <span className="text-[11px] mobile:hidden">Glisse des photos ici, colle une capture (⌘V), ou utilise le bouton d’envoi.</span>
+              <span className="text-[11px] hidden mobile:inline">{traduire('photos.aide.pileVideTelephone')}</span>
             </div>
           ) : (
             <div
@@ -1720,17 +1726,20 @@ function PileOuverte({
           )}
         </div>
 
-        <div className="flex items-center justify-between px-4 py-2 text-[11px] shrink-0" style={{ borderTop: '1px solid var(--color-border)', color: 'var(--color-text-tertiary)' }}>
-          <span>
+        <div className="flex items-center justify-between gap-3 px-4 py-2 text-[11px] shrink-0" style={{ borderTop: '1px solid var(--color-border)', color: 'var(--color-text-tertiary)' }}>
+          {/* Sans `shrink-0`, « 1 photo » se cassait sur deux lignes et
+              « photo » se collait à l'aide voisine (« photopour », 375 px). */}
+          <span className="shrink-0">
             {visibles.length} {visibles.length === 1 ? 'photo' : 'photos'}
             {pile.count !== visibles.length ? ` sur ${pile.count}` : ''}
           </span>
-          <span>
+          <span className="mobile:hidden">
             {filtreTache
               ? 'Clic pour agrandir · le rangement au curseur est désactivé pendant le filtre (« Tout voir » pour ranger)'
               : 'Clic pour agrandir · glisse pour ranger, ou sur une puce pour changer de pile · ⇧-clic pour sélectionner'}{' '}
             · Échap
           </span>
+          <span className="hidden mobile:inline">{traduire('photos.aide.pileTelephone')}</span>
         </div>
       </div>
 
