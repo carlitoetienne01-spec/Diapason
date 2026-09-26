@@ -685,6 +685,69 @@ class TestLaVoixDuTelephone:
         premier_tour = " ".join(str(m.get("content")) for m in banc_vocal.tours[0])
         assert "screen_read_text" not in premier_tour
 
+    @staticmethod
+    def _instructions_recues(banc_vocal, monkeypatch, **trame) -> str:
+        """Ouvre une séance comme le VRAI client (``include_memory: true``,
+        ``useVoiceLive.ts``) et rend les instructions que la séance a reçues
+        de la route."""
+        from diapason.speech.realtime import local_voice
+
+        recues: list = []
+        seance_de_banc = local_voice.LocalVoiceSession
+
+        class _SeanceQuiNote(seance_de_banc):
+            def __init__(self, **options):
+                recues.append(options.get("instructions"))
+                super().__init__(**options)
+
+        monkeypatch.setattr(local_voice, "LocalVoiceSession", _SeanceQuiNote)
+        with banc_vocal.websocket_connect(
+            "/v1/voice/live", headers=_ws(banc_vocal.jeton)
+        ) as ws:
+            ws.send_json(
+                {"type": "start", "provider": "local", "include_memory": True, **trame}
+            )
+            assert ws.receive_json() == {"type": "ready"}
+            ws.send_json({"type": "stop"})
+        assert len(recues) == 1, recues
+        return recues[0] or ""
+
+    def test_le_vrai_prompt_de_la_voix_du_telephone_n_apprend_pas_les_outils_du_mac(
+        self, banc_vocal, monkeypatch
+    ):
+        """26/09/2026, contre-épreuve : le client envoie toujours
+        ``include_memory: true``, et ce sont alors les instructions de la
+        ROUTE qui remplacent le modèle de la séance. Le test de la séance
+        passait ``instructions=""``, un chemin que le vrai client ne prend
+        jamais : ``telephone=False`` passé à ``_load_system_instructions``
+        laissait tout vert, et la voix réapprenait « **open_anything** »
+        — elle promettait d'ouvrir Safari, puis l'exécuteur refusait."""
+        instructions = self._instructions_recues(
+            banc_vocal, monkeypatch, tools="current_time,vie_tasks"
+        )
+        assert "from the phone" in instructions, (
+            "la voix du téléphone doit recevoir le prompt du téléphone"
+        )
+        for outil_du_mac in ("open_anything", "screen_read_text", "clipboard_read"):
+            assert f"**{outil_du_mac}**" not in instructions, (
+                f"le prompt du téléphone apprend {outil_du_mac}, un outil du Mac"
+            )
+
+    def test_sans_aucun_outil_permis_le_prompt_ne_promet_aucun_outil(
+        self, banc_vocal, monkeypatch
+    ):
+        """Le client ne demande que des outils du Mac : la trousse du
+        téléphone est vide, les outils sont coupés — et le prompt ne doit
+        pas en décrire. Sans le rétrécissement de ``enable_tools`` dans la
+        route, il listait **vie_tasks** à une séance qui ne l'a pas."""
+        instructions = self._instructions_recues(
+            banc_vocal, monkeypatch, tools="clipboard_read,open_anything"
+        )
+        assert "## Tools" not in instructions, (
+            "une séance sans outil ne doit pas se voir décrire des outils"
+        )
+        assert "**vie_tasks**" not in instructions
+
     def test_un_fournisseur_distant_est_refuse(self, banc_vocal):
         with banc_vocal.websocket_connect(
             "/v1/voice/live", headers=_ws(banc_vocal.jeton)
