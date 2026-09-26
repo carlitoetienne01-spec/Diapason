@@ -27,6 +27,18 @@ describe('Une page n’est « affichée » qu’une fois montée', () => {
     await expect(pages.attendre('/vie/notes', 8000)).resolves.toBe(true);
   });
 
+  it('une AUTRE page déjà montée ne répond pas tout de suite', async () => {
+    // 26/09/2026, contre-épreuve (mutant PA3 : `this.courante !== null`) :
+    // le test ci-dessus ne passait que par le même chemin.
+    vi.useFakeTimers();
+    const pages = new PagesAffichees();
+    pages.signalerMontee('/chat');
+    const attente = pages.attendre('/vie/notes', 8000);
+    vi.advanceTimersByTime(8000);
+    await expect(attente, 'la Discussion n’est pas les Notes').resolves.toBe(false);
+    vi.useRealTimers();
+  });
+
   it('un démontage efface la page affichée', async () => {
     const pages = new PagesAffichees();
     const demonter = pages.signalerMontee('/vie/notes');

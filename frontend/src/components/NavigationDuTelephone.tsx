@@ -1,9 +1,8 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router';
 
-import { readShellNavigation } from '../features/mesh/routes';
-import { traduire } from '../i18n/translate';
 import { pontNatif } from '../lib/natif';
+import { naviguerAuTelephone } from '../lib/naviguerAuTelephone';
 import { pagesAffichees } from '../lib/pagesAffichees';
 import { useAppStore } from '../lib/store';
 
@@ -34,17 +33,14 @@ export function NavigationDuTelephone() {
 
   useEffect(() => {
     if (!pontNatif) return undefined;
-    return pontNatif.surNaviguer(async (donnees) => {
-      const cible = readShellNavigation(donnees);
-      if (!cible) throw new Error(traduire('natif.naviguer.inconnu'));
-      // Posée avant de naviguer : la page lit la sélection à sa montée, et la
-      // montée a lieu pendant navigate() (même règle que MeshHost).
-      if (cible.selection) setPendingMeshSelection(cible.selection);
-      const affichee = pagesAffichees.attendre(cible.path, DELAI_AFFICHAGE_MS);
-      navigate(cible.path);
-      if (!(await affichee)) throw new Error(traduire('natif.naviguer.pasAffichee'));
-      return { path: cible.path, selection: cible.selection ?? null };
-    });
+    return pontNatif.surNaviguer((donnees) =>
+      naviguerAuTelephone(donnees, {
+        naviguer: (chemin) => navigate(chemin),
+        poserSelection: setPendingMeshSelection,
+        pages: pagesAffichees,
+        delaiMs: DELAI_AFFICHAGE_MS,
+      }),
+    );
   }, [navigate, setPendingMeshSelection]);
 
   return null;
