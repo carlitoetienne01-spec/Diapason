@@ -397,7 +397,7 @@ Un point est à vérifier sur la machine, faute d'avoir pu le faire : quels en-t
 - **Tout le reste exige le cookie.** Une clé locale reçue ici est refusée.
 - **Marquage.** La passerelle pose `scope['diapason.appareil']`, remplace `client` par `appareil:<id>` et force `scheme='https'`.
 - **Origine.** Elle est contrôlée pour les WebSockets et pour tout ce qui n'est pas un GET.
-- **Liste refusée, en 403 français :** le plan de contrôle du maillage (dont `POST /v1/mesh/commands`), les écritures de `/v1/config`, les secrets, `/v1/account`, `/v1/gestures/*`, et les actions sur le Mac tant que Carlito n'en a pas décidé autrement.
+- **Liste refusée, en 403 français :** le plan de contrôle du maillage (dont `POST /v1/mesh/commands`), les écritures de `/v1/config`, les secrets, `/v1/account`, `/v1/gestures/*`, et les actions sur le Mac tant que Carlito n'en a pas décidé autrement. Aussi `GET /v1/mesh/inbox` (sa lecture VIDE la boîte du Mac) et `POST /v1/context/view` (il dit ce que l'écran du Mac affiche) : ajoutés le 26/09/2026, après que la WebView du téléphone eut monté les deux hôtes du Mac — le bundle ne les monte plus au téléphone (`lib/hotesDuMac.ts`), la passerelle le garantit contre un bundle ancien.
 - **En-têtes réécrits :** `microphone=(self)`, `camera=(self)` et `connect-src 'self' wss://<hôte>`.
 - **WebSocket.** Elle est fermée en 1008 à l'expiration de la session ou à la révocation, avec un contrôle toutes les 30 s au plus.
 - **Ailleurs.** `AuthMiddleware` et `websocket_authorized` acceptent le marqueur, et `_host_actions_allowed` le refuse explicitement.

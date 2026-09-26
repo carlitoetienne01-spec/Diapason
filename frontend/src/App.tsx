@@ -8,6 +8,7 @@ import { SetupScreen } from './components/SetupScreen';
 import { Toaster } from './components/ui/sonner';
 import { estCompact } from './lib/compact';
 import { demanderAuTelephone, estMobile } from './lib/natif';
+import { hotesDuMac } from './lib/hotesDuMac';
 import { lireChargeThemeNatif } from './lib/themeNatif';
 import { useAppStore, isLightTerminalSkin } from './lib/store';
 import { ContexteVueHost } from './features/mesh/ContexteVueHost';
@@ -124,6 +125,8 @@ function RedirectionHeritee() {
   return <Navigate to={cibleHeritee(useLocation())} replace />;
 }
 
+
+const HOTES = hotesDuMac(estMobile, estCompact);
 export default function App() {
   const [setupDone, setSetupDone] = useState(!isTauri());
   const handleSetupReady = useCallback(() => {
@@ -480,8 +483,10 @@ export default function App() {
           toasts sous la bande de glissement et borne leur largeur. */}
       <Toaster position={estCompact ? 'top-center' : 'bottom-right'} />
       <TalkToDiapasonHost />
-      <MeshHost />
-      <ContexteVueHost />
+      {/* Seule la fenêtre du Mac vide la boîte du maillage et publie sa vue
+          (lib/hotesDuMac.ts, 26/09/2026). */}
+      {HOTES.boiteDuMaillage && <MeshHost />}
+      {HOTES.contexteDeLaVue && <ContexteVueHost />}
       <VoyantGestes />
       {commandPaletteOpen && <CommandPalette />}
     </ConfirmProvider>
