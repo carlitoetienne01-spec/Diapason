@@ -46,6 +46,19 @@ def create_realtime_session(
 
     from diapason.core.local_mode import REFUSAL_HINT, LocalOnlyError, local_only
 
+    # Depuis le téléphone, la voix est CELLE DU MAC — Whisper et Kokoro,
+    # décidé le 25/09/2026 — et rien d'autre (26/09/2026). Un fournisseur
+    # distant ferait sortir le micro du téléphone vers Google ou OpenAI, et
+    # sa boucle d'outils n'a ni la trousse bornée ni les gardes de la séance
+    # locale. Le choix vient du CLIENT (paramètre ou trame start) : la garde
+    # vit donc ici, comme celle de local_only.
+    from diapason.core.origine_telephone import depuis_le_telephone
+
+    if depuis_le_telephone() and name not in ("local", "local_voice"):
+        raise ValueError(
+            "Depuis le téléphone, seule la voix locale du Mac est ouverte "
+            "(fournisseur 'local')."
+        )
     if local_only() and name not in ("local", "local_voice"):
         raise LocalOnlyError(
             "Realtime voice with a remote provider streams the microphone off "

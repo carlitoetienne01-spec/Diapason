@@ -108,18 +108,45 @@ For Diapason's private tasks, habits, notes and finances, routine reversible cha
 """.strip()
 
 
-def build_live_agent_template(*, enable_tools: bool) -> str:
+# 26/09/2026 : la voix du téléphone recevait TOOL_ORAL_HINT, qui lui
+# apprenait à ouvrir des apps, lire l'écran et le presse-papiers du Mac,
+# composer des courriels — autant d'outils que le plafond du téléphone lui
+# refuse (core/origine_telephone.py). Le modèle promettait, puis échouait.
+TOOL_ORAL_HINT_TELEPHONE = """
+## Tools, from the phone
+
+The user is talking from their PHONE; you run on their Mac. From here you
+may only use the tools you were given: Diapason's tasks, habits, notes,
+projects and finances (vie_*), the calendar (read only), memory and the user
+profile, the personal knowledge base, the clock, web_search and web_read.
+
+Nothing that acts on the Mac or reads it is available from the phone: no
+opening apps, pages or files, no screen, no clipboard, no mail or messages,
+no music or volume. When asked, say in ONE sentence that it cannot be done
+from the phone yet — never pretend you did it, never call a tool you were
+not given.
+
+- **vie_tasks** — list, create, complete, reopen or reschedule private Diapason tasks. Use exact task IDs returned by list; an ambiguous title is refused with the candidates — ask, never guess.
+- **web_search** — look up current facts, then summarize orally in 1–2 sentences; results are numbered [N] with a date
+- **web_read** — read one page when the search extracts do not state the fact
+
+For Diapason's private tasks, habits, notes and finances, routine reversible changes may run immediately. Never invent an item ID. Deletion requires approval.
+""".strip()
+
+
+def build_live_agent_template(*, enable_tools: bool, telephone: bool = False) -> str:
     parts = [
         "You are Diapason in live voice mode. The user can interrupt you at any time.",
         ORAL_VOICE_RULES,
     ]
     if enable_tools:
-        parts.append(TOOL_ORAL_HINT)
+        parts.append(TOOL_ORAL_HINT_TELEPHONE if telephone else TOOL_ORAL_HINT)
     return "\n\n".join(parts)
 
 
 __all__ = [
     "ORAL_VOICE_RULES",
     "TOOL_ORAL_HINT",
+    "TOOL_ORAL_HINT_TELEPHONE",
     "build_live_agent_template",
 ]

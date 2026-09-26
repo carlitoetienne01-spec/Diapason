@@ -256,6 +256,28 @@ def list_voice_tool_ids(
     return retenus
 
 
+def outils_vocaux_du_telephone(
+    allowed: Optional[Sequence[str]] = None,
+) -> list[str]:
+    """La trousse de la voix quand la séance vient du téléphone (26/09/2026).
+
+    Le plafond du téléphone (core/origine_telephone.py) refuse déjà, dans
+    l'exécuteur, tout outil hors de OUTILS_DU_TELEPHONE. Mais le modèle
+    voyait encore les schémas de open_anything, screen_read_text ou
+    clipboard_read : il promettait d'ouvrir une app sur le Mac, puis
+    échouait. On lui retire ce qu'on lui refuserait de toute façon.
+
+    Rend la liste EXPLICITE, jamais None : ailleurs, une liste vide ou None
+    veut dire « le défaut », c'est-à-dire tout DEFAULT_VOICE_TOOL_IDS. Une
+    liste vide ici veut dire « aucun outil » — l'appelant coupe les outils.
+    """
+    from diapason.core.noms_outils import noms_canoniques
+    from diapason.core.origine_telephone import outil_permis_au_telephone
+
+    base = noms_canoniques(allowed) if allowed else list(DEFAULT_VOICE_TOOL_IDS)
+    return [tid for tid in base if outil_permis_au_telephone(tid)]
+
+
 def gemini_function_declarations(
     allowed: Optional[Sequence[str]] = None,
 ) -> list[dict[str, Any]]:
@@ -425,4 +447,5 @@ __all__ = [
     "gemini_function_declarations",
     "list_voice_tool_ids",
     "openai_tools_schema",
+    "outils_vocaux_du_telephone",
 ]

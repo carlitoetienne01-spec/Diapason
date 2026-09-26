@@ -7,6 +7,8 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 
+from diapason.core.origine_telephone import depuis_le_telephone
+
 logger = logging.getLogger(__name__)
 
 voice_live_router = APIRouter(tags=["voice-live"])
@@ -83,11 +85,15 @@ def _realtime_defaults(app_state: Any) -> dict[str, Any]:
     }
 
 
-def _load_system_instructions(app_state: Any, *, enable_tools: bool) -> str:
+def _load_system_instructions(
+    app_state: Any, *, enable_tools: bool, telephone: bool = False
+) -> str:
     """Best-effort SOUL/USER + oral rules for the live session."""
     from diapason.speech.realtime.oral_prompt import build_live_agent_template
 
-    agent_template = build_live_agent_template(enable_tools=enable_tools)
+    agent_template = build_live_agent_template(
+        enable_tools=enable_tools, telephone=telephone
+    )
     try:
         config = getattr(app_state, "config", None)
         if config is None:
@@ -179,11 +185,20 @@ async def websocket_voice_live(websocket: WebSocket) -> None:
             max_tool_steps = int(raw["max_tool_steps"])
         if raw.get("tools"):
             allowed_tools = outils_demandes_par_le_client(str(raw["tools"]))
+        # La séance du téléphone (26/09/2026) : la trousse bornée à
+        # OUTILS_DU_TELEPHONE — c'est LocalVoiceSession qui l'applique, là où
+        # les outils s'exécutent ; ici, seulement pour que le prompt ne lui
+        # apprenne pas des outils qu'on lui refuserait.
+        telephone = depuis_le_telephone()
+        if telephone and enable_tools:
+            from diapason.speech.realtime.tools import outils_vocaux_du_telephone
+
+            enable_tools = bool(outils_vocaux_du_telephone(allowed_tools))
         if raw.get("instructions"):
             instructions = str(raw["instructions"])
         elif raw.get("include_memory", True):
             instructions = _load_system_instructions(
-                websocket.app.state, enable_tools=enable_tools
+                websocket.app.state, enable_tools=enable_tools, telephone=telephone
             )
 
         # La voix nourrit la mémoire vivante COMME le chat (24 août 2026) :
@@ -260,6 +275,13 @@ async def voice_live_health(request: Request) -> dict[str, Any]:
             tool_ids = list_voice_tool_ids(
                 _parse_tools_csv(defaults.get("tools") or "")
             )
+            if depuis_le_telephone():
+                # Ce que la voix peut VRAIMENT faire depuis le téléphone.
+                from diapason.speech.realtime.tools import (
+                    outils_vocaux_du_telephone,
+                )
+
+                tool_ids = outils_vocaux_du_telephone(tool_ids) if tool_ids else []
         except Exception:
             tool_ids = []
     return {

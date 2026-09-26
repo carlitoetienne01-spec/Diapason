@@ -844,6 +844,9 @@ class LocalVoiceSession(RealtimeVoiceSession):
     provider_id = "local"
     input_sample_rate = INPUT_RATE
     output_sample_rate = OUTPUT_RATE
+    # Au niveau de la classe aussi : des bancs d'essai construisent la
+    # séance par __new__ sans passer par __init__.
+    _du_telephone = False
 
     def __init__(
         self,
@@ -871,6 +874,21 @@ class LocalVoiceSession(RealtimeVoiceSession):
         self._tts = tts
         self._enable_tools = bool(enable_tools)
         self._allowed_tools = list(allowed_tools) if allowed_tools else None
+        # La séance née du téléphone RESTE du téléphone (26/09/2026). La
+        # marque de la passerelle est lue ICI, dans le contexte de la route,
+        # et gardée : le cliché du bureau, le partage d'écran, le chemin
+        # rapide qui ouvre des apps et les schémas d'outils ne dépendent plus
+        # de la façon dont une tâche ou un fil propage le contexte.
+        from diapason.core.origine_telephone import depuis_le_telephone
+
+        self._du_telephone = depuis_le_telephone()
+        if self._du_telephone:
+            from diapason.speech.realtime.tools import outils_vocaux_du_telephone
+
+            self._allowed_tools = outils_vocaux_du_telephone(self._allowed_tools)
+            if not self._allowed_tools:
+                # Une liste vide se lirait « le défaut », donc TOUT.
+                self._enable_tools = False
         from diapason.speech.realtime.tools import VoiceToolBudget
 
         self._budget = VoiceToolBudget(max_tool_steps)
@@ -1016,9 +1034,25 @@ class LocalVoiceSession(RealtimeVoiceSession):
                         execute_voice_tool,
                     )
 
-                    self._tool_executor = lambda name, args: execute_voice_tool(
-                        name, args, self._allowed_tools
-                    )
+                    if self._du_telephone:
+                        from diapason.core.origine_telephone import (
+                            marquer_le_telephone,
+                        )
+
+                        def _executer_au_telephone(name: str, args: dict) -> dict:
+                            # Reposée dans le fil qui exécute : le plafond de
+                            # ToolExecutor tient même si un appelant futur
+                            # lance l'outil hors du contexte de la requête.
+                            with marquer_le_telephone():
+                                return execute_voice_tool(
+                                    name, args, self._allowed_tools
+                                )
+
+                        self._tool_executor = _executer_au_telephone
+                    else:
+                        self._tool_executor = lambda name, args: execute_voice_tool(
+                            name, args, self._allowed_tools
+                        )
                 return True
             except Exception as exc:  # noqa: BLE001 - surfaced, not swallowed
                 logger.exception("local voice warm-up failed")
@@ -1041,7 +1075,9 @@ class LocalVoiceSession(RealtimeVoiceSession):
                     build_live_agent_template,
                 )
 
-                base = build_live_agent_template(enable_tools=self._enable_tools)
+                base = build_live_agent_template(
+                    enable_tools=self._enable_tools, telephone=self._du_telephone
+                )
             except Exception:  # noqa: BLE001 - a persona is never fatal
                 base = "You are Diapason, a helpful voice assistant."
         language = self._language or "the language the user speaks"
@@ -1204,6 +1240,14 @@ class LocalVoiceSession(RealtimeVoiceSession):
         hist = list(self._history)[-15:]
         note = self._anti_loop_note(hist)
         extra = [note] if note else []
+        # 26/09/2026 : les quatre perceptions qui suivent disent ce que le MAC
+        # montre — l'app au premier plan, la page ouverte dans Diapason, le
+        # résumé du partage d'écran, ce que la main tient. À la voix du
+        # téléphone, le modèle les aurait récitées : l'écran du Mac se serait
+        # lu à l'oral alors que la passerelle refuse /v1/context/* et
+        # /v1/screen_share/* (même défaut que la Discussion, server/routes.py).
+        if self._du_telephone:
+            return self._assembler_le_tour(hist, extra, text)
         # Le CLICHÉ DU BUREAU (23 août 2026) : l'app au premier plan et les
         # apps en marche, pour que « ouvre X » sur une app déjà ouverte se
         # dise au lieu de se rejouer. Lecture du cache seulement — jamais
@@ -1275,6 +1319,11 @@ class LocalVoiceSession(RealtimeVoiceSession):
                 extra.append({"role": "system", "content": decrire(objet)})
         except Exception:  # noqa: BLE001 - la perception est un bonus
             pass
+        return self._assembler_le_tour(hist, extra, text)
+
+    def _assembler_le_tour(
+        self, hist: List[dict], extra: List[dict], text: str
+    ) -> List[dict]:
         messages = hist + extra + [{"role": "user", "content": text}]
         # 21/09/2026, 23 h : « Raconte-moi l'histoire de ce pays » après
         # Haïti recevait « de quel pays tu parles ? » au chat ; la voix
@@ -1735,14 +1784,17 @@ class LocalVoiceSession(RealtimeVoiceSession):
         # Le cliché du bureau se rafraîchit EN PARALLÈLE du tour (~100 ms
         # d'osascript) : le tour ne lit que le cache, jamais l'osascript.
         # La référence est gardée, sinon la tâche part au ramasse-miettes.
-        try:
-            from diapason.desktop.etat_bureau import etat_du_bureau
+        # Pas pour le téléphone (26/09/2026) : le cliché nomme l'app au
+        # premier plan du Mac, que le tour du téléphone ne lit pas.
+        if not self._du_telephone:
+            try:
+                from diapason.desktop.etat_bureau import etat_du_bureau
 
-            self._tache_etat_bureau = asyncio.create_task(
-                asyncio.to_thread(etat_du_bureau)
-            )
-        except Exception:  # noqa: BLE001 - la perception est un bonus
-            pass
+                self._tache_etat_bureau = asyncio.create_task(
+                    asyncio.to_thread(etat_du_bureau)
+                )
+            except Exception:  # noqa: BLE001 - la perception est un bonus
+                pass
         if nomme:
             text = strip_assistant_name(text)
             if not text:
@@ -1775,6 +1827,13 @@ class LocalVoiceSession(RealtimeVoiceSession):
         into an OS action. Only a spoken imperative reaches this path.
         """
         if not self._enable_tools:
+            return False
+        # 26/09/2026 : ce chemin ouvre des apps, des adresses et des
+        # recherches sur le Mac SANS passer par ToolExecutor — donc hors du
+        # plafond du téléphone. « Diapason, ouvre Safari » dit au téléphone
+        # aurait ouvert Safari sur le Mac. Le tour va au modèle, qui n'a
+        # que les outils du téléphone et le dit.
+        if self._du_telephone:
             return False
         from diapason.desktop.voice_commands import (
             execute_voice_action,
