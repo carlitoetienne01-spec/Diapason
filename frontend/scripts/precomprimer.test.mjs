@@ -7,7 +7,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import zlib from 'node:zlib';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { precomprimer, SEUIL_OCTETS } from './precomprimer.mjs';
 
@@ -19,6 +19,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await fs.rm(dossier, { recursive: true, force: true });
 });
 
@@ -59,5 +60,47 @@ describe('precomprimer', () => {
     await precomprimer(dossier);
     await expect(fs.stat(`${chemin}.br`), 'plus de .br périmé').rejects.toThrow();
     await expect(fs.stat(`${chemin}.gz`), 'plus de .gz périmé').rejects.toThrow();
+  });
+
+  // 26/09/2026, contre-épreuve : ces deux règles survivaient à leur retrait,
+  // 1 580 tests verts.
+  it('retire les variantes d’un fichier devenu plus petit que le seuil', async () => {
+    const chemin = path.join(dossier, 'sw.js');
+    await fs.writeFile(chemin, js);
+    await precomprimer(dossier);
+    await fs.stat(`${chemin}.br`);
+    // Réécrit sous 1 Ko : l'ancien .br décrirait 27 Ko qui n'existent plus,
+    // et le serveur le servirait tant qu'il est plus récent que l'original.
+    await fs.writeFile(chemin, 'self.skipWaiting();');
+    await precomprimer(dossier);
+    await expect(fs.stat(`${chemin}.br`), 'plus de .br d’un autre contenu').rejects.toThrow();
+    await expect(fs.stat(`${chemin}.gz`), 'plus de .gz d’un autre contenu').rejects.toThrow();
+  });
+
+  it('n’écrit jamais une variante en place : un fichier provisoire, puis un renommage', async () => {
+    const chemin = path.join(dossier, 'assets', 'index-Ab1_cD-2.js');
+    await fs.writeFile(chemin, js);
+    const ecrits = [];
+    const renommes = [];
+    const ecrire = fs.writeFile.bind(fs);
+    const renommer = fs.rename.bind(fs);
+    vi.spyOn(fs, 'writeFile').mockImplementation((cible, ...reste) => {
+      ecrits.push(String(cible));
+      return ecrire(cible, ...reste);
+    });
+    vi.spyOn(fs, 'rename').mockImplementation((de, vers) => {
+      renommes.push(String(vers));
+      return renommer(de, vers);
+    });
+    await precomprimer(dossier);
+    // Le serveur tourne pendant qu'install-desktop.sh recopie le bundle : une
+    // variante écrite en place part au téléphone à moitié écrite.
+    expect(ecrits.length, 'deux variantes écrites').toBe(2);
+    for (const cible of ecrits) {
+      expect(cible.endsWith('.tmp'), `${cible} écrit en place`).toBe(true);
+    }
+    expect(renommes.sort()).toEqual([`${chemin}.br`, `${chemin}.gz`]);
+    const noms = (await fs.readdir(dossier, { recursive: true })).map(String);
+    expect(noms.filter((n) => n.endsWith('.tmp')), 'aucun provisoire ne reste').toEqual([]);
   });
 });
