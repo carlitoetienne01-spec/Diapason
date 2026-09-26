@@ -3,6 +3,7 @@ import { creerCacheConversations } from './cacheConversations';
 
 import { modeleInitial } from './modelePrefere';
 import { barreOuverteAuDemarrage } from './barre';
+import { panneauSystemeOuvertAuDemarrage } from './panneauSysteme';
 import { doitAfficherLeFil, plusRecente, trouverDiscussionVierge } from './discussions';
 import type {
   Conversation,
@@ -69,14 +70,19 @@ function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
-/** Absent on a fresh install, so the panel opens by default and stays shut only
- * once the user has actually shut it. */
+/** Absent on a fresh install, so the panel opens by default where it is a
+ * column, and stays shut only once the user has actually shut it. */
 function loadSystemPanelOpen(): boolean {
+  let memoire: string | null = null;
   try {
-    return localStorage.getItem(SYSTEM_PANEL_KEY) !== 'false';
+    memoire = localStorage.getItem(SYSTEM_PANEL_KEY);
   } catch {
-    return true;
+    memoire = null;
   }
+  return panneauSystemeOuvertAuDemarrage(
+    memoire,
+    typeof window !== 'undefined' && window.matchMedia ? window.matchMedia.bind(window) : undefined,
+  );
 }
 
 function saveSystemPanelOpen(open: boolean): void {
