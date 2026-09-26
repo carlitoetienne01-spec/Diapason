@@ -180,20 +180,20 @@ _TOOL_MODULES: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
         (("web_read", "WebReadTool"),),
     ),
     (
-        "diapason.tools.succes_tasks",
-        (("succes_tasks", "SuccesTasksTool"),),
+        "diapason.tools.vie_tasks",
+        (("succes_tasks", "VieTasksTool"),),
     ),
     (
-        "diapason.tools.succes_workspace",
-        (("succes_workspace", "SuccesWorkspaceTool"),),
+        "diapason.tools.vie_workspace",
+        (("succes_workspace", "VieWorkspaceTool"),),
     ),
     (
-        "diapason.tools.succes_continuity",
-        (("succes_continuity", "SuccesContinuityTool"),),
+        "diapason.tools.vie_continuity",
+        (("succes_continuity", "VieContinuityTool"),),
     ),
     (
-        "diapason.tools.succes_finances",
-        (("succes_finances", "SuccesFinancesTool"),),
+        "diapason.tools.vie_finances",
+        (("succes_finances", "VieFinancesTool"),),
     ),
     (
         "diapason.tools.browser_tabs",

@@ -84,14 +84,14 @@ class TestTrousseVocale:
         # Le conftest vide ToolRegistry et l'import mis en cache ne le
         # repeuple pas : on inscrit les classes soi-même, comme partout.
         from diapason.speech.realtime.tools import DEFAULT_VOICE_TOOL_IDS
-        from diapason.tools.succes_continuity import SuccesDeleteContinuityTool
-        from diapason.tools.succes_tasks import SuccesDeleteTaskTool
-        from diapason.tools.succes_workspace import SuccesDeleteItemTool
+        from diapason.tools.vie_continuity import VieDeleteContinuityTool
+        from diapason.tools.vie_tasks import VieDeleteTaskTool
+        from diapason.tools.vie_workspace import VieDeleteItemTool
 
         classes = {
-            "succes_delete_task": SuccesDeleteTaskTool,
-            "succes_delete_item": SuccesDeleteItemTool,
-            "succes_delete_continuity": SuccesDeleteContinuityTool,
+            "succes_delete_task": VieDeleteTaskTool,
+            "succes_delete_item": VieDeleteItemTool,
+            "succes_delete_continuity": VieDeleteContinuityTool,
         }
         for nom, classe in classes.items():
             assert nom in DEFAULT_VOICE_TOOL_IDS

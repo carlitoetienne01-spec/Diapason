@@ -150,7 +150,7 @@ class TestLaSurfaceApiNeBougePasParAccident:
     """
 
     def _actuelles(self) -> list[str]:
-        from diapason.succes.routes import router
+        from diapason.vie.routes import router
 
         return sorted(
             f"{sorted(r.methods - {'HEAD', 'OPTIONS'})[0]} {r.path}"

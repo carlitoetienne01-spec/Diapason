@@ -56,7 +56,7 @@ This is narrower than it sounds, and the narrowness is what makes it safe:
 * the address must be private (loopback or RFC1918): the LAN the user is
   standing on, never the open internet, which is why the mesh ships LAN-first;
 * it covers mesh traffic only. The Succès sync relay stays fully gated
-  (``succes/relay.py``), because a relay is a third party by construction.
+  (``vie/relay.py``), because a relay is a third party by construction.
 
 The check lives in ``mesh/transport.py`` — ``assert_may_reach_device`` — so
 this exemption cannot be claimed by any other code path merely by importing

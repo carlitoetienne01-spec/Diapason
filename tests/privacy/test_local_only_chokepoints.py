@@ -338,11 +338,11 @@ def test_succes_sync_relay_is_still_gated():
     local-only promises will not happen, and no per-feature switch may
     override it — the refusal names the one setting that does.
     """
-    from diapason.succes.relay import relay_post
-    from diapason.succes.store import SuccesError
+    from diapason.vie.relay import relay_post
+    from diapason.vie.store import VieError
 
     with _mode(True):
-        with pytest.raises(SuccesError) as excinfo:
+        with pytest.raises(VieError) as excinfo:
             relay_post("https://relay.example.com", "/v1/succes/sync/pair", {})
 
     assert "local_only" in str(excinfo.value)

@@ -231,9 +231,9 @@ def briefing_du_jour(
     """
     jour = jour or date.today()
     if store is None:
-        from diapason.succes.workspace import SuccesWorkspaceStore
+        from diapason.vie.workspace import VieWorkspaceStore
 
-        store = SuccesWorkspaceStore()
+        store = VieWorkspaceStore()
     try:
         du_jour = store.list_tasks(scheduled_date=jour.isoformat())
     except Exception:  # noqa: BLE001

@@ -3,7 +3,7 @@
 Conception : ``docs/development/compte-chiffre.md`` §4.7 et §4.8.
 
 :data:`COLLECTIONS_SYNCHRONISEES` est une liste BLANCHE, calquée sur
-``SYNC_ENTITIES`` (``succes/sync.py``). Un objet dont le clair nomme une
+``SYNC_ENTITIES`` (``vie/sync.py``). Un objet dont le clair nomme une
 collection absente d'ici n'est ni ingéré ni perdu : il attend dans la table
 ``inconnus`` de ``etat.key``, et l'écran dit « mettez Diapason à jour ». Une
 liste NOIRE aurait laissé la première collection ajoutée par une version

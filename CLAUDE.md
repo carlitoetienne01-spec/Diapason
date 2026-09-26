@@ -30,7 +30,7 @@ Diapason (ce dépôt)                    Diapason mobile (~/Projets/diapason_mob
 │   ├── server/       FastAPI                         iOS à moitié préparé ;
 │   ├── desktop/      macOS : Vision, OCR, gestes     ex-« Succès »)
 │   ├── speech/       Whisper, Kokoro, claps
-│   ├── succes/       73 routes métier
+│   ├── vie/          100 routes métier (ex-succes)
 │   └── tools/        ~100 outils
 ├── frontend/         React 19 + Vite 6 + Tailwind 4
 │   └── src-tauri/    l'app de bureau (Tauri 2, Rust)
@@ -149,7 +149,7 @@ que l'interface se recompile. Voir `docs/reconstruire-le-bureau.md`.
 ### La frontière de langue est stricte et signifiante
 
 - **Français** dans la couche produit : `desktop/`, `server/gestes_routes.py`,
-  `speech/`, `succes/`, `frontend/src/features/`. Les identifiants aussi :
+  `speech/`, `vie/`, `frontend/src/features/`. Les identifiants aussi :
   `attraper`, `lacher`, `tenu`, `joignables`, `cible`, `basculer`.
 - **Anglais** dans `mesh/` : `resolve_device`, `dispatch_command`,
   `presence_of`. Docstrings anglaises comprises. **Ne francise pas en y

@@ -15,7 +15,7 @@ from diapason.server.graphiques_scientifiques import (
     dessiner_figure,
     router,
 )
-from diapason.succes.export_visuel import verifier_export
+from diapason.vie.export_visuel import verifier_export
 
 PALETTE = {
     "background": "#17231b",

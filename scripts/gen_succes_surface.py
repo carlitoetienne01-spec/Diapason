@@ -11,7 +11,7 @@ dépend de cette surface.
 import json
 import pathlib
 
-from diapason.succes.routes import router
+from diapason.vie.routes import router
 
 routes = sorted(
     f"{sorted(r.methods - {'HEAD', 'OPTIONS'})[0]} {r.path}"

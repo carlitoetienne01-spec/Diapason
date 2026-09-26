@@ -56,7 +56,7 @@ def test_un_seul_schema_pour_un_seul_corps_de_suppression(schema: dict):
 
     FastAPI les aurait nommés `DeleteBody` et `DeleteBody-Input` — une seule
     forme, deux entrées, et un client généré qui hésite. C'est la raison pour
-    laquelle `DeleteBody` vit dans `succes/corps.py` plutôt que d'être
+    laquelle `DeleteBody` vit dans `vie/corps.py` plutôt que d'être
     recopié.
     """
     schemas = schema.get("components", {}).get("schemas", {})

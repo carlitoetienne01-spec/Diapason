@@ -1079,10 +1079,10 @@ def include_all_routes(app) -> None:
     from diapason.server.approval_routes import (
         router as approval_router,  # noqa: PLC0415
     )
-    from diapason.succes.routes import router as succes_router  # noqa: PLC0415
+    from diapason.vie.routes import router as vie_router  # noqa: PLC0415
 
     app.include_router(approval_router)
-    app.include_router(succes_router)
+    app.include_router(vie_router)
     from diapason.server.graphiques_scientifiques import router as graphiques_router
 
     app.include_router(graphiques_router)

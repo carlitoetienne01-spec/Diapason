@@ -333,7 +333,7 @@ select = ["E", "F", "I", "W"]
 # Les colonnes des requêtes SQL restent alignées sur une ligne par groupe :
 # les couper au caractère 88 rendrait chaque INSERT illisible sans rien
 # protéger — une chaîne SQL n'a pas de longueur de ligne exécutable.
-"src/diapason/succes/finances.py" = ["E501"]
+"src/diapason/vie/finances.py" = ["E501"]
 
 [dependency-groups]
 dev = [

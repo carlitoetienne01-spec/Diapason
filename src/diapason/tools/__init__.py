@@ -171,22 +171,22 @@ except ImportError:
     pass
 
 try:
-    import diapason.tools.succes_tasks  # noqa: F401
+    import diapason.tools.vie_tasks  # noqa: F401
 except ImportError:
     pass
 
 try:
-    import diapason.tools.succes_workspace  # noqa: F401
+    import diapason.tools.vie_workspace  # noqa: F401
 except ImportError:
     pass
 
 try:
-    import diapason.tools.succes_continuity  # noqa: F401
+    import diapason.tools.vie_continuity  # noqa: F401
 except ImportError:
     pass
 
 try:
-    import diapason.tools.succes_finances  # noqa: F401
+    import diapason.tools.vie_finances  # noqa: F401
 except ImportError:
     pass
 

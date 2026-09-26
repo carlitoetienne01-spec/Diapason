@@ -33,7 +33,7 @@ _DUREE_DEFAUT_MIN = 60
 
 def _date_parlee(valeur: str) -> tuple[str, str] | tuple[None, str]:
     """(« YYYY-MM-DD », "") ou (None, message d'erreur honnête)."""
-    from diapason.succes.dates import resolve_date_expression
+    from diapason.vie.dates import resolve_date_expression
 
     brut = str(valeur or "").strip()
     if not brut:

@@ -13,8 +13,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from diapason.core.paths import get_data_dir
-from diapason.succes.export_visuel import verifier_export
-from diapason.succes.store import SuccesError
+from diapason.vie.export_visuel import verifier_export
+from diapason.vie.store import VieError
 
 router = APIRouter(prefix="/v1/visuals", tags=["visuals"])
 
@@ -50,7 +50,7 @@ def ouvrir_inkscape(demande: CopieSVG):
     donnees = demande.svg.encode("utf-8")
     try:
         verifier_export(donnees, ".svg")
-    except SuccesError as exc:
+    except VieError as exc:
         raise HTTPException(422, str(exc)) from exc
     executable = trouver_inkscape()
     if executable is None:

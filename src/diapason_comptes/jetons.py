@@ -2,7 +2,7 @@
 
 Conception : ``docs/development/compte-chiffre.md`` §3.3, §3.5 et §3.7.
 
-Le serveur ne garde d'un jeton que son SHA-256 (motif ``succes/sync.py``) :
+Le serveur ne garde d'un jeton que son SHA-256 (motif ``vie/sync.py``) :
 une copie de ``comptes.db`` ne donne aucune session. D'un code, il ne garde
 qu'un HMAC poivré : six chiffres se devinent en un million d'essais, un
 SHA-256 nu les rendrait tous en une seconde à qui vole la base.
