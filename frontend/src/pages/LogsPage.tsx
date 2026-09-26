@@ -48,31 +48,35 @@ export function LogsPage() {
   };
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden px-6 py-10">
+    <div className="flex-1 flex flex-col overflow-hidden px-4 py-6 sm:px-6 sm:py-10">
       <div className="max-w-4xl mx-auto w-full flex flex-col flex-1 overflow-hidden">
         <header className="mb-6 shrink-0">
-          <div className="flex items-center justify-between gap-3">
+          {/* 26/09/2026 : à 375 px, titre, compte et deux boutons tenaient
+              sur une ligne en cassant « Tout copier » sur deux ; la rangée
+              passe à la ligne, les boutons non. Le compte et la phrase
+              étaient en anglais dans l'interface française. */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <h1 className="text-lg font-semibold" style={{ color: 'var(--color-text)' }}>{t('nav.logs')}</h1>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
-                {logEntries.length} entries
+                {t('logs.entryCount', { count: logEntries.length })}
               </span>
               <button
                 onClick={handleCopy}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap"
                 style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}
               >
                 <Copy size={12} />{t('logs.copyAll')}</button>
               <button
                 onClick={() => void handleClear()}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap"
                 style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-secondary)', border: '1px solid var(--color-border)' }}
               >
                 <Trash2 size={12} />{t('common.clear')}</button>
             </div>
           </div>
           <p className="text-sm mt-2 max-w-2xl" style={{ color: 'var(--color-text-secondary)' }}>
-            Recent activity — chat events, model switches, tool calls, and system messages from this session.
+            {t('logs.subtitle')}
           </p>
         </header>
 
@@ -83,7 +87,7 @@ export function LogsPage() {
         >
           {logEntries.length === 0 ? (
             <div className="text-center py-12" style={{ color: 'var(--color-text-tertiary)' }}>
-              No log entries yet. Logs appear as you chat, switch models, and interact with the app.
+              {t('logs.empty')}
             </div>
           ) : (
             logEntries.map((entry, i) => (
