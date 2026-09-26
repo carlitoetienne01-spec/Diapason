@@ -15,7 +15,9 @@ Ces deux routes disent ce que le SERVEUR voit :
   que le serveur peut s'en servir.
 - ``GET /v1/inference/source`` : ``inference.json``, que l'app de bureau
   écrit, avec la même règle qu'elle : un fichier absent ou illisible vaut
-  Ollama. L'hôte perd tout identifiant embarqué (``user:mot@hôte``).
+  Ollama. L'hôte est réduit à schéma, nom et port : ni identifiants, ni
+  chemin, ni requête. Un hôte qui n'est pas une URL http(s) lisible est
+  omis, et ``hostIllisible`` le dit.
 
 Rien ici n'écrit : choisir une source ou enregistrer une clé reste l'affaire
 de l'app de bureau, qui tient le trousseau.
@@ -85,23 +87,36 @@ def lire_source_inference(chemin: Path | None = None) -> dict[str, Any]:
             source[champ] = valeur
     hote = brut.get("host")
     if isinstance(hote, str) and hote:
-        source["host"] = _hote_sans_identifiants(hote)
+        propre = _hote_sans_identifiants(hote)
+        if propre:
+            source["host"] = propre
+        else:
+            source["hostIllisible"] = True
     return source
 
 
 def _hote_sans_identifiants(hote: str) -> str:
+    """``schéma://nom[:port]`` d'une URL http(s), ou ``""``.
+
+    26/09/2026 : seul ``user:mot@`` était retiré, et seulement quand
+    ``urlsplit`` le voyait. ``u:secretpw@h:1234`` (sans « // ») ressortait
+    intact, ``https://h/v1?api_key=sk-…`` gardait sa requête, et un port non
+    numérique levait hors de tout ``try`` : 500. ``normalize_host`` (lib.rs)
+    n'impose ni schéma ni forme ; c'est donc ici qu'on ne rend que ce qui
+    est sûr.
+    """
     try:
-        morceaux = urlsplit(hote)
+        morceaux = urlsplit(hote.strip())
+        if morceaux.scheme not in ("http", "https") or not morceaux.hostname:
+            return ""
+        port = morceaux.port
     except ValueError:
         return ""
-    if morceaux.username is None and morceaux.password is None:
-        return hote
-    lieu = morceaux.hostname or ""
-    if morceaux.port is not None:
-        lieu = f"{lieu}:{morceaux.port}"
-    return urlunsplit(
-        (morceaux.scheme, lieu, morceaux.path, morceaux.query, morceaux.fragment)
-    )
+    nom = morceaux.hostname
+    if ":" in nom:
+        nom = f"[{nom}]"
+    lieu = nom if port is None else f"{nom}:{port}"
+    return urlunsplit((morceaux.scheme, lieu, "", "", ""))
 
 
 def noms_de_cles_geres(source: dict[str, Any] | None = None) -> list[str]:

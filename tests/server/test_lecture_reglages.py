@@ -159,7 +159,56 @@ class TestLaSourceDInference:
         )
         source = lire_source_inference(chemin)
         assert SECRET not in json.dumps(source)
-        assert source["host"] == "https://serveur.local:8443/base"
+        assert source["host"] == "https://serveur.local:8443"
+
+    @pytest.mark.parametrize(
+        "hote",
+        [
+            # Sans « // », urlsplit ne voit ni utilisateur ni mot de passe.
+            f"moi:{SECRET}@serveur.local:1234",
+            # La requête ressortait intacte.
+            f"https://serveur.local/v1?api_key={SECRET}",
+            f"https://serveur.local/cle/{SECRET}",
+        ],
+    )
+    def test_aucun_secret_ne_sort_quelle_que_soit_la_forme(self, maison, hote):
+        """26/09/2026 : seul un ``user:mot@`` vu par urlsplit était retiré."""
+        chemin = maison / "inference.json"
+        chemin.write_text(json.dumps({"kind": "custom", "host": hote}), "utf-8")
+
+        source = lire_source_inference(chemin)
+
+        assert SECRET not in json.dumps(source), source
+
+    def test_un_hote_illisible_est_omis_et_le_dit(self, maison, client):
+        """Un port non numérique levait hors de tout ``try`` : 500."""
+        (maison / "inference.json").write_text(
+            json.dumps({"kind": "custom", "host": "http://u:p@h:abc"}), "utf-8"
+        )
+
+        reponse = client.get("/v1/inference/source")
+
+        assert reponse.status_code == 200, reponse.text
+        assert reponse.json() == {"kind": "custom", "hostIllisible": True}
+
+
+class TestLesRoutesNeGelentPasLeServeur:
+    """CLAUDE.md §5 : ``get_cloud_key`` lance ``security`` (jusqu'à 5 s par
+    clé). Une route ``async def`` le ferait sur la boucle d'événements, et
+    le WebSocket vocal, le flux du chat et la cloche géleraient avec elle."""
+
+    def test_les_deux_routes_sont_synchrones(self):
+        import inspect
+
+        routes = {
+            route.path: route.endpoint
+            for route in create_lecture_reglages_router().routes
+        }
+
+        for chemin in ("/v1/cloud/keys", "/v1/inference/source"):
+            assert not inspect.iscoroutinefunction(routes[chemin]), (
+                f"{chemin} doit rester une route synchrone"
+            )
 
 
 class TestLesRoutesSontMonteesEtEnLectureSeule:
