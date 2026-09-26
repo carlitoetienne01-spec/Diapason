@@ -150,13 +150,11 @@ class TestLaSurfaceApiNeBougePasParAccident:
     """
 
     def _actuelles(self) -> list[str]:
-        from diapason.vie.routes import router
+        # 25/09/2026 : ce fichier fige désormais l'ALIAS /v1/succes, calculé
+        # sur une application montée (le routeur nu n'a plus de préfixe).
+        from diapason.vie.routes import PREFIXE_HERITE, surface_api
 
-        return sorted(
-            f"{sorted(r.methods - {'HEAD', 'OPTIONS'})[0]} {r.path}"
-            for r in router.routes
-            if getattr(r, "methods", None)
-        )
+        return surface_api(PREFIXE_HERITE)
 
     def test_aucune_route_disparue_ni_renommee(self):
         figees = set(json.loads(SURFACE.read_text(encoding="utf-8")))

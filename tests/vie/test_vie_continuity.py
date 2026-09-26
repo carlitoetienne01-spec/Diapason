@@ -13,7 +13,7 @@ from diapason.tools.vie_continuity import (
 )
 from diapason.vie import store as magasin_taches
 from diapason.vie.continuity import VieContinuityStore
-from diapason.vie.routes import router, set_store_for_tests
+from diapason.vie.routes import monter, set_store_for_tests
 
 
 def store(tmp_path) -> VieContinuityStore:
@@ -199,12 +199,12 @@ def test_legacy_templates_and_quotes_materialize(tmp_path):
 def test_api_lifecycle_and_planner_materialization(tmp_path):
     db = store(tmp_path)
     app = FastAPI()
-    app.include_router(router)
+    monter(app)
     set_store_for_tests(db)
     client = TestClient(app)
     try:
         created = client.post(
-            "/v1/succes/templates",
+            "/v1/vie/templates",
             json={
                 "title": "Tous les jours",
                 "frequency": "daily",
@@ -215,21 +215,21 @@ def test_api_lifecycle_and_planner_materialization(tmp_path):
         assert created.status_code == 201
         template_id = created.json()["template"]["id"]
         assert (
-            client.get("/v1/succes/planner?date=2026-08-15").json()["summary"]["total"]
+            client.get("/v1/vie/planner?date=2026-08-15").json()["summary"]["total"]
             == 1
         )
-        assert client.get("/v1/succes/year-review?year=2026").status_code == 200
-        assert client.get("/v1/succes/export").json()["format"] == "diapason-succes-v3"
+        assert client.get("/v1/vie/year-review?year=2026").status_code == 200
+        assert client.get("/v1/vie/export").json()["format"] == "diapason-succes-v3"
         assert (
             client.request(
                 "DELETE",
-                f"/v1/succes/templates/{template_id}",
+                f"/v1/vie/templates/{template_id}",
                 json={"confirmed": False},
             ).status_code
             == 409
         )
         removed = client.request(
-            "DELETE", f"/v1/succes/templates/{template_id}", json={"confirmed": True}
+            "DELETE", f"/v1/vie/templates/{template_id}", json={"confirmed": True}
         )
         assert removed.status_code == 200
         assert removed.json()["tasksDeleted"] == 1
@@ -269,7 +269,7 @@ class TestUneCitationImporteePuisSupprimeeNeFaitPasTomberLeDemarrage:
     supprimées, si bien que la citation importée puis supprimée semblait
     absente, et `create_quote` faisait un INSERT simple sur une clé primaire
     déjà prise. L'IntegrityError n'est pas une VieError : rien ne la
-    rattrapait, `get_store()` levait, et toutes les routes /v1/succes
+    rattrapait, `get_store()` levait, et toutes les routes /v1/vie
     répondaient 500 — au redémarrage launchd qui suit la suppression, bien
     après un import réussi. Déduit le 25/09/2026 ; ce test l'a reproduit.
     """
@@ -313,15 +313,15 @@ class TestUneCitationImporteePuisSupprimeeNeFaitPasTomberLeDemarrage:
         avant.delete_quote("citation-importee")
 
         app = FastAPI()
-        app.include_router(router)
+        monter(app)
         set_store_for_tests(None)  # le singleton se reconstruit, comme au boot
         try:
             client = TestClient(app, raise_server_exceptions=False)
-            reponse = client.get("/v1/succes/quotes")
+            reponse = client.get("/v1/vie/quotes")
         finally:
             set_store_for_tests(None)
         assert reponse.status_code == 200, (
-            f"/v1/succes/quotes rend {reponse.status_code} après redémarrage"
+            f"/v1/vie/quotes rend {reponse.status_code} après redémarrage"
         )
 
     def test_reimporter_ne_ressuscite_pas_la_citation(self, tmp_path):

@@ -15,7 +15,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from diapason.vie.routes import router, set_store_for_tests
+from diapason.vie.routes import monter, set_store_for_tests
 from diapason.vie.store import VieError, VieStore
 from diapason.vie.sync import VieSyncStore
 
@@ -87,22 +87,22 @@ class TestLaDureeSurLeFil:
     def _client(self, tmp_path) -> TestClient:
         set_store_for_tests(VieStore(tmp_path / "api.db"))
         app = FastAPI()
-        app.include_router(router)
+        monter(app)
         return TestClient(app)
 
     def test_le_champ_voyage_en_entier_et_revient(self, tmp_path) -> None:
         client = self._client(tmp_path)
         try:
             cree = client.post(
-                "/v1/succes/tasks", json={"title": "Contrat", "estimateDays": 4}
+                "/v1/vie/tasks", json={"title": "Contrat", "estimateDays": 4}
             )
             assert cree.status_code == 201
             assert cree.json()["task"]["estimateDays"] == 4
             tid = cree.json()["task"]["id"]
-            patch = client.patch(f"/v1/succes/tasks/{tid}", json={"estimateDays": 6})
+            patch = client.patch(f"/v1/vie/tasks/{tid}", json={"estimateDays": 6})
             assert patch.status_code == 200
             assert patch.json()["task"]["estimateDays"] == 6
-            sans = client.patch(f"/v1/succes/tasks/{tid}", json={"title": "Contrat 2"})
+            sans = client.patch(f"/v1/vie/tasks/{tid}", json={"title": "Contrat 2"})
             assert sans.json()["task"]["estimateDays"] == 6, (
                 "une retouche qui ne parle pas de durée ne l'efface pas"
             )
@@ -113,10 +113,10 @@ class TestLaDureeSurLeFil:
         client = self._client(tmp_path)
         try:
             refuse = client.post(
-                "/v1/succes/tasks", json={"title": "Contrat", "estimateDays": 1.5}
+                "/v1/vie/tasks", json={"title": "Contrat", "estimateDays": 1.5}
             )
             assert refuse.status_code == 422, "1.5 ne doit pas être arrondi en silence"
-            refuse = client.patch("/v1/succes/tasks/x", json={"estimateDays": "2"})
+            refuse = client.patch("/v1/vie/tasks/x", json={"estimateDays": "2"})
             assert refuse.status_code == 422, "« 2 » en texte n'est pas un entier"
         finally:
             set_store_for_tests(None)

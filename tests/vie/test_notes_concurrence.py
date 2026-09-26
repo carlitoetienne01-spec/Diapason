@@ -75,12 +75,12 @@ def test_le_conflit_http_est_explicite_et_le_rejeu_reste_idempotent(
     db = VieContinuityStore(tmp_path / "http.db")
     monkeypatch.setattr(routes, "_store", db)
     app = FastAPI()
-    app.include_router(routes.router)
+    routes.monter(app)
     c = TestClient(app)
     note = c.post(
-        "/v1/succes/notes", json={"title": "Cours", "content": "Initial"}
+        "/v1/vie/notes", json={"title": "Cours", "content": "Initial"}
     ).json()["note"]
-    url = f"/v1/succes/notes/{note['id']}"
+    url = f"/v1/vie/notes/{note['id']}"
     ajout = {"appendContent": "<p>Dessin</p>", "opId": "dessin-unique"}
     assert c.patch(url, json=ajout).status_code == 200
     assert c.patch(url, json=ajout).status_code == 200

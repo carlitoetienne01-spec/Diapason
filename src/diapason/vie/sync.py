@@ -562,7 +562,11 @@ class VieSyncStore(ViePhotosStore):
         if not token.startswith("diapason_pair_"):
             raise VieError("Ce code d'appairage n'a pas un format reconnu.")
         base = normalize_relay_url(relay_url or self.relay_url())
-        remote = relay_post(base, "/v1/succes/sync/pair", {"pairingToken": token})
+        # 25/09/2026 : l'invité appelle le nom neuf. pc-bureau, le seul pair
+        # qui ait jamais servi d'hôte, ne sert plus que de CI (décidé le même
+        # jour) : aucun hôte ancien ne reste à ménager, et émettre l'alias
+        # l'aurait fait compter comme un client à attendre (étape 14c).
+        remote = relay_post(base, "/v1/vie/sync/pair", {"pairingToken": token})
         sync_token = str(remote.get("syncToken") or "")
         peer_id = str(remote.get("peerId") or "")
         if not sync_token.startswith("diapason_sync_") or not peer_id:
@@ -621,7 +625,7 @@ class VieSyncStore(ViePhotosStore):
         try:
             remote = relay_post(
                 base,
-                "/v1/succes/sync/exchange",
+                "/v1/vie/sync/exchange",
                 {
                     "peerToken": token,
                     "cursor": pull_cursor,

@@ -343,7 +343,7 @@ def test_succes_sync_relay_is_still_gated():
 
     with _mode(True):
         with pytest.raises(VieError) as excinfo:
-            relay_post("https://relay.example.com", "/v1/succes/sync/pair", {})
+            relay_post("https://relay.example.com", "/v1/vie/sync/pair", {})
 
     assert "local_only" in str(excinfo.value)
 

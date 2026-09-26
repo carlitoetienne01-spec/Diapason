@@ -1,23 +1,22 @@
-"""Régénère l'instantané de la surface API que le client Succès appelle.
+"""Régénère l'instantané de l'ALIAS /v1/succes du domaine vie.
 
     .venv/bin/python scripts/gen_succes_surface.py
 
-À lancer dans le MÊME commit que tout ajout, retrait ou renommage de route
-sous ``/v1/succes``. Le test de contrat échoue tant que ce n'est pas fait —
-c'est voulu : il force à constater qu'une application mobile déjà installée
-dépend de cette surface.
+Le domaine s'appelle ``vie`` depuis le 25/09/2026 (voir
+``scripts/gen_vie_surface.py``). Cet instantané fige l'alias que les clients
+d'avant le renommage appellent encore : il reste le miroir de
+``vie_api_surface.json`` au préfixe près, jusqu'au retrait volontaire de
+l'alias (étape 14c du plan de la phase 1b). Le test de contrat échoue tant
+qu'il n'est pas régénéré — c'est voulu : il force à constater qu'un client
+déjà installé dépend de cette surface.
 """
 
 import json
 import pathlib
 
-from diapason.vie.routes import router
+from diapason.vie.routes import PREFIXE_HERITE, surface_api
 
-routes = sorted(
-    f"{sorted(r.methods - {'HEAD', 'OPTIONS'})[0]} {r.path}"
-    for r in router.routes
-    if getattr(r, "methods", None)
-)
+routes = surface_api(PREFIXE_HERITE)
 racine = pathlib.Path(__file__).resolve().parents[1]
 cible = racine / "tests/contract/succes_api_surface.json"
 cible.write_text(

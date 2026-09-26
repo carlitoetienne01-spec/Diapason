@@ -88,3 +88,31 @@ class TestFraicheur:
         ca.poser_contexte("/succes/notes")
         ca.oublier()
         assert ca.dernier_contexte() is None
+
+
+class TestLesDeuxPrefixesDuDomaine:
+    """Étape 4 du plan de la phase 1b (25/09/2026) : les pages vivent sous
+    /vie/*, et l'ancien bundle pose encore /succes/*. Un seul des deux dans
+    la liste blanche, et chaque page de l'autre devenait « n'existe pas sur
+    les autres appareils »."""
+
+    @pytest.mark.parametrize(
+        "page", ["projects", "notes", "tasks", "habits", "planner", "dashboard"]
+    )
+    def test_les_deux_chemins_donnent_la_meme_route_courte(self, page):
+        ancien = ca.poser_contexte(f"/succes/{page}")
+        neuf = ca.poser_contexte(f"/vie/{page}")
+        assert ancien is not None and neuf is not None, f"/{page} refusé"
+        assert ca._ECRANS[f"/succes/{page}"] == ca._ECRANS[f"/vie/{page}"], (
+            f"/succes/{page} et /vie/{page} doivent ouvrir le même écran"
+        )
+        assert ca._ECRANS[f"/vie/{page}"][0] is not None, (
+            f"/vie/{page} doit avoir une route courte du maillage"
+        )
+        assert neuf.ecran == ancien.ecran
+
+    def test_les_pages_sans_route_courte_restent_sans(self):
+        for page in ("finances", "year-review"):
+            assert ca._ECRANS[f"/vie/{page}"][0] is None, (
+                f"/vie/{page} n'a pas d'écran ailleurs : pas de promesse"
+            )

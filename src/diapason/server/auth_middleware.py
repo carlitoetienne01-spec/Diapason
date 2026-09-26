@@ -20,6 +20,16 @@ from diapason.security.rate_limiter import RateLimitConfig, RateLimiter
 
 logger = logging.getLogger(__name__)
 
+# Le domaine vie répond sous deux préfixes depuis le 25/09/2026 (voir
+# vie/routes.py::monter). Écrits ici en clair plutôt qu'importés : le
+# middleware ne doit pas charger tout le domaine pour comparer des chaînes.
+_VIE_PREFIXES = ("/v1/vie/", "/v1/succes/")
+_VIE_SANS_LIMITE = _VIE_PREFIXES
+_VIE_SYNC_LIMITEE = tuple(f"{p}sync/" for p in _VIE_PREFIXES)
+_SYNC_SANS_CLE = frozenset(
+    f"{p}sync/{fin}" for p in _VIE_PREFIXES for fin in ("pair", "exchange")
+)
+
 
 class AuthMiddleware(BaseHTTPMiddleware):
     """Validates ``Authorization: Bearer <key>`` on ``/v1/*`` and ``/api/*`` routes.
@@ -84,7 +94,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
         request body, so pair + exchange stay reachable through a trusted HTTPS
         relay without exposing the local Diapason API key.
         """
-        if path in {"/v1/succes/sync/pair", "/v1/succes/sync/exchange"}:
+        # Les deux préfixes (25/09/2026) : un pair qui appelle encore
+        # /v1/succes/sync/pair après le renommage échouerait en 401 sinon.
+        if path in _SYNC_SANS_CLE:
             return False
         # Les deux routes OAuth NAVIGUÉES par le navigateur (24 août 2026) :
         # la fenêtre qui s'ouvre vers /oauth/start ne peut pas porter la clé
@@ -314,7 +326,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # (they authenticate by token in the body), so exempting them from the
         # limiter too would leave the mesh's front door both unauthenticated
         # and unthrottled. Those keep their bucket.
-        if path.startswith("/v1/succes") and not path.startswith("/v1/succes/sync/"):
+        #
+        # 25/09/2026 : les deux préfixes du domaine (/v1/vie et son alias
+        # /v1/succes), chacun AVEC sa barre finale — « /v1/succes » sans barre
+        # exemptait aussi toute route future qui commencerait par ces lettres.
+        if path.startswith(_VIE_SANS_LIMITE) and not path.startswith(_VIE_SYNC_LIMITEE):
             return await call_next(request)
         # La conversation elle-même. La fenêtre principale et le mini-panneau
         # de la réglette sont DEUX instances du bundle — même adresse, même
@@ -373,6 +389,19 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # network can reach at all.
         if path in _OPEN_MESH_ROUTES:
             allowed, wait_seconds = self._open_limiter.check(f"{client}:mesh")
+            if not allowed:
+                return _too_many(wait_seconds, request)
+            return await call_next(request)
+
+        # Constaté le 25/09/2026 en paramétrant les tests sur /v1/vie : le
+        # commentaire plus haut promettait à /sync/pair et /sync/exchange
+        # « leur seau », mais elles se passent de clé, et le limiteur
+        # principal ne tourne que pour les routes qui l'exigent. Elles
+        # n'étaient donc limitées par RIEN : soixante essais de code
+        # d'appairage d'affilée passaient tous. Elles prennent le seau des
+        # portes sans clé, sous leur propre nom.
+        if path in _SYNC_SANS_CLE:
+            allowed, wait_seconds = self._open_limiter.check(f"{client}:vie-sync")
             if not allowed:
                 return _too_many(wait_seconds, request)
             return await call_next(request)

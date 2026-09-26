@@ -236,7 +236,8 @@ répond `UNSUPPORTED`, statut accepté.
 | Instantané | Régénérer avec |
 |---|---|
 | `tests/contract/mesh_api_surface.json` | `scripts/gen_mesh_surface.py` |
-| `tests/contract/succes_api_surface.json` | `scripts/gen_succes_surface.py` |
+| `tests/contract/vie_api_surface.json` | `scripts/gen_vie_surface.py` |
+| `tests/contract/succes_api_surface.json` (l'alias `/v1/succes`, miroir du précédent) | `scripts/gen_succes_surface.py` |
 | `canonical_vectors.json` (dépôt `diapason_mobile`) | `scripts/gen_canonical_vectors.py` |
 | `tests/contract/vecteurs_compte.json` | `scripts/gen_vecteurs_compte.py` |
 | `tests/contract/compte_api_surface.json` | `scripts/gen_compte_surface.py` |

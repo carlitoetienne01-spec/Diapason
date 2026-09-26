@@ -16,6 +16,8 @@ from diapason.server.auth_middleware import (
     ensure_local_api_key,
 )
 
+PREFIXES_VIE = ("/v1/vie", "/v1/succes")
+
 
 def _make_app(
     api_key: str, *, requests_per_minute: int = 600, burst_size: int = 100
@@ -55,17 +57,29 @@ def _make_app(
     async def voice_health():
         return {"available": True}
 
-    @app.get("/v1/succes/projects")
-    async def succes_projects():
-        return {"projects": [], "count": 0}
+    # Le domaine vie sous ses deux préfixes (25/09/2026) : le nom neuf et
+    # l'alias des clients d'avant le renommage.
+    for prefixe in PREFIXES_VIE:
 
-    @app.post("/v1/succes/sync/pair")
-    async def succes_sync_pair():
-        return {"ok": True}
+        @app.get(f"{prefixe}/projects")
+        async def vie_projects():
+            return {"projects": [], "count": 0}
 
-    @app.post("/v1/succes/sync/exchange")
-    async def succes_sync_exchange():
-        return {"ok": True}
+        @app.get(f"{prefixe}/tasks")
+        async def vie_tasks():
+            return {"tasks": [], "count": 0}
+
+        @app.get(f"{prefixe}/sync/status")
+        async def vie_sync_status():
+            return {"role": "ready"}
+
+        @app.post(f"{prefixe}/sync/pair")
+        async def vie_sync_pair():
+            return {"ok": True}
+
+        @app.post(f"{prefixe}/sync/exchange")
+        async def vie_sync_exchange():
+            return {"ok": True}
 
     @app.post("/v1/chat/completions")
     async def chat_completions():
@@ -150,17 +164,67 @@ class TestAuthMiddleware:
         assert client.get("/v1/voice/live/health", headers=headers).status_code == 200
         assert client.get("/v1/voice/live/health").status_code == 401
 
-    def test_succes_routes_are_authenticated_but_not_rate_limited(self):
+    @pytest.mark.parametrize("prefixe", PREFIXES_VIE)
+    def test_vie_routes_are_authenticated_but_not_rate_limited(self, prefixe):
         client = TestClient(
             _make_app("oj_sk_test123", requests_per_minute=1, burst_size=1)
         )
         headers = {"Authorization": "Bearer oj_sk_test123"}
 
-        # Exhausting the shared bucket must not block local Succès CRUD.
+        # Exhausting the shared bucket must not block local vie CRUD.
         assert client.get("/v1/models", headers=headers).status_code == 200
         assert client.get("/v1/models", headers=headers).status_code == 429
-        assert client.get("/v1/succes/projects", headers=headers).status_code != 429
-        assert client.get("/v1/succes/projects").status_code == 401
+        assert client.get(f"{prefixe}/projects", headers=headers).status_code != 429
+        assert client.get(f"{prefixe}/projects").status_code == 401
+
+    @pytest.mark.parametrize("prefixe", PREFIXES_VIE)
+    def test_soixante_requetes_rapides_sans_un_429(self, prefixe):
+        """Étape 4 du plan de la phase 1b : un préfixe oublié dans
+        l'exemption, et l'autosave prend des 429 que le cache masque."""
+        client = TestClient(
+            _make_app("oj_sk_test123", requests_per_minute=10, burst_size=10)
+        )
+        headers = {"Authorization": "Bearer oj_sk_test123"}
+        codes = [
+            client.get(f"{prefixe}/tasks", headers=headers).status_code
+            for _ in range(60)
+        ]
+        assert codes.count(429) == 0, (
+            f"{codes.count(429)} réponses 429 sur {prefixe}/tasks : le domaine "
+            "vie doit rester hors du limiteur"
+        )
+
+    @pytest.mark.parametrize("prefixe", PREFIXES_VIE)
+    @pytest.mark.parametrize("porte", ["pair", "exchange"])
+    def test_la_synchro_sans_cle_garde_un_limiteur(self, prefixe, porte):
+        """/sync/pair et /sync/exchange se passent de la clé : sans seau,
+        soixante essais de code d'appairage d'affilée passaient tous
+        (constaté le 25/09/2026, malgré un commentaire qui disait le
+        contraire)."""
+        client = TestClient(
+            _make_app("oj_sk_test123", requests_per_minute=10, burst_size=10)
+        )
+        codes = [client.post(f"{prefixe}/sync/{porte}").status_code for _ in range(60)]
+        assert 429 in codes, f"{prefixe}/sync/{porte} n'est limité par rien"
+
+    @pytest.mark.parametrize("prefixe", PREFIXES_VIE)
+    def test_la_synchro_avec_cle_garde_le_seau_commun(self, prefixe):
+        client = TestClient(
+            _make_app("oj_sk_test123", requests_per_minute=10, burst_size=10)
+        )
+        headers = {"Authorization": "Bearer oj_sk_test123"}
+        codes = [
+            client.get(f"{prefixe}/sync/status", headers=headers).status_code
+            for _ in range(60)
+        ]
+        assert 429 in codes, f"{prefixe}/sync/status doit rester limité"
+
+    def test_un_prefixe_voisin_n_est_pas_exempte(self):
+        """« /v1/succes » sans barre finale exemptait aussi « /v1/successeur »."""
+        from diapason.server.auth_middleware import _VIE_SANS_LIMITE
+
+        assert not "/v1/successeur".startswith(_VIE_SANS_LIMITE)
+        assert not "/v1/viennoiserie".startswith(_VIE_SANS_LIMITE)
 
     def test_le_chat_est_authentifie_mais_jamais_limite(self):
         """§82/§100 — le mini-panneau de la réglette est une 2e instance du
@@ -206,10 +270,14 @@ class TestAuthMiddleware:
             "sans clé, le mur d'authentification doit rester fermé"
         )
 
-    def test_succes_sync_pair_and_exchange_skip_api_key(self, client):
-        assert client.post("/v1/succes/sync/pair").status_code == 200
-        assert client.post("/v1/succes/sync/exchange").status_code == 200
-        assert client.get("/v1/succes/projects").status_code == 401
+    @pytest.mark.parametrize("prefixe", PREFIXES_VIE)
+    def test_vie_sync_pair_and_exchange_skip_api_key(self, client, prefixe):
+        assert client.post(f"{prefixe}/sync/pair").status_code == 200
+        assert client.post(f"{prefixe}/sync/exchange").status_code == 200
+        assert client.get(f"{prefixe}/projects").status_code == 401
+        assert client.get(f"{prefixe}/sync/status").status_code == 401, (
+            "seules pair et exchange se passent de la clé"
+        )
 
 
 class TestLocalApiKeyProvisioning:

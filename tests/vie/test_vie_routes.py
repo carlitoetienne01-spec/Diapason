@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from diapason.vie.routes import router, set_store_for_tests
+from diapason.vie.routes import monter, set_store_for_tests
 from diapason.vie.store import VieStore
 
 
@@ -11,11 +11,11 @@ def test_local_api_create_plan_complete_and_confirm_delete(tmp_path) -> None:
     store = VieStore(tmp_path / "api-succes.db")
     set_store_for_tests(store)
     app = FastAPI()
-    app.include_router(router)
+    monter(app)
     client = TestClient(app)
     try:
         created = client.post(
-            "/v1/succes/tasks",
+            "/v1/vie/tasks",
             json={
                 "title": "Préparer le cours",
                 "date": "2026-08-14",
@@ -26,7 +26,7 @@ def test_local_api_create_plan_complete_and_confirm_delete(tmp_path) -> None:
         task = created.json()["task"]
         assert created.json()["persistence"] == "local"
 
-        planner = client.get("/v1/succes/planner?date=2026-08-14")
+        planner = client.get("/v1/vie/planner?date=2026-08-14")
         assert planner.status_code == 200
         assert planner.json()["summary"] == {
             "total": 1,
@@ -34,15 +34,13 @@ def test_local_api_create_plan_complete_and_confirm_delete(tmp_path) -> None:
             "open": 1,
         }
 
-        completed = client.post(
-            f"/v1/succes/tasks/{task['id']}/done", json={"done": True}
-        )
+        completed = client.post(f"/v1/vie/tasks/{task['id']}/done", json={"done": True})
         assert completed.status_code == 200
         assert completed.json()["task"]["done"] is True
 
         refused = client.request(
             "DELETE",
-            f"/v1/succes/tasks/{task['id']}",
+            f"/v1/vie/tasks/{task['id']}",
             json={"confirmed": False},
         )
         assert refused.status_code == 409
@@ -50,7 +48,7 @@ def test_local_api_create_plan_complete_and_confirm_delete(tmp_path) -> None:
 
         deleted = client.request(
             "DELETE",
-            f"/v1/succes/tasks/{task['id']}",
+            f"/v1/vie/tasks/{task['id']}",
             json={"confirmed": True},
         )
         assert deleted.status_code == 200
@@ -63,11 +61,11 @@ def test_api_refuses_ambiguous_date_without_writing(tmp_path) -> None:
     store = VieStore(tmp_path / "ambiguous-succes.db")
     set_store_for_tests(store)
     app = FastAPI()
-    app.include_router(router)
+    monter(app)
     client = TestClient(app)
     try:
         response = client.post(
-            "/v1/succes/tasks",
+            "/v1/vie/tasks",
             json={"title": "Tâche ambiguë", "date": "vendredi prochain"},
         )
         assert response.status_code == 409
@@ -83,14 +81,14 @@ def test_finance_transaction_create_accepts_json_body(tmp_path) -> None:
     store = VieSyncStore(tmp_path / "finance-api.db")
     set_store_for_tests(store)
     app = FastAPI()
-    app.include_router(router)
+    monter(app)
     client = TestClient(app)
     try:
-        accounts = client.get("/v1/succes/finances/accounts").json()["accounts"]
-        categories = client.get("/v1/succes/finances/categories").json()["categories"]
+        accounts = client.get("/v1/vie/finances/accounts").json()["accounts"]
+        categories = client.get("/v1/vie/finances/categories").json()["categories"]
         rent = next(cat for cat in categories if "Loyer" in cat["name"])
         created = client.post(
-            "/v1/succes/finances/transactions",
+            "/v1/vie/finances/transactions",
             json={
                 "accountId": accounts[0]["id"],
                 "type": "expense",

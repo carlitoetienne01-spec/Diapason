@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from diapason.server.auth_middleware import AuthMiddleware
-from diapason.vie.routes import router, set_store_for_tests
+from diapason.vie.routes import monter, set_store_for_tests
 from diapason.vie.store import VieError
 from diapason.vie.sync import VieSyncStore
 
@@ -89,26 +89,26 @@ def test_sync_routes_expose_diagnostics_and_local_exchange(tmp_path) -> None:
     db = store(tmp_path, "routes")
     set_store_for_tests(db)
     app = FastAPI()
-    app.include_router(router)
+    monter(app)
     client = TestClient(app)
     try:
-        status = client.get("/v1/succes/sync/status")
+        status = client.get("/v1/vie/sync/status")
         assert status.status_code == 200
         assert status.json()["transport"] == "loopback_only"
         assert status.json()["role"] == "ready"
 
         invitation = client.post(
-            "/v1/succes/sync/pairings", json={"deviceName": "Android test"}
+            "/v1/vie/sync/pairings", json={"deviceName": "Android test"}
         )
         assert invitation.status_code == 200
         paired = client.post(
-            "/v1/succes/sync/pair",
+            "/v1/vie/sync/pair",
             json={"pairingToken": invitation.json()["pairingToken"]},
         )
         assert paired.status_code == 200
 
         exchange = client.post(
-            "/v1/succes/sync/exchange",
+            "/v1/vie/sync/exchange",
             json={
                 "peerToken": paired.json()["syncToken"],
                 "cursor": 0,
@@ -128,25 +128,25 @@ def test_peer_token_cannot_access_general_api_but_exchange_is_token_auth(
     peer = authorize_peer(db)
     set_store_for_tests(db)
     app = FastAPI()
-    app.include_router(router)
+    monter(app)
     local_key = "local-key-that-is-long-enough-for-this-test"
     app.add_middleware(AuthMiddleware, api_key=local_key)
     client = TestClient(app)
     try:
         rejected = client.get(
-            "/v1/succes/sync/status",
+            "/v1/vie/sync/status",
             headers={"Authorization": f"Bearer {peer['syncToken']}"},
         )
         assert rejected.status_code == 401
 
         accepted = client.post(
-            "/v1/succes/sync/exchange",
+            "/v1/vie/sync/exchange",
             json={"peerToken": peer["syncToken"], "cursor": 0, "operations": []},
         )
         assert accepted.status_code == 200
 
         with_key = client.get(
-            "/v1/succes/sync/status",
+            "/v1/vie/sync/status",
             headers={"Authorization": f"Bearer {local_key}"},
         )
         assert with_key.status_code == 200
@@ -159,7 +159,7 @@ def test_guest_join_and_exchange_through_http_relay(tmp_path) -> None:
     guest = store(tmp_path, "guest")
     set_store_for_tests(host)
     app = FastAPI()
-    app.include_router(router)
+    monter(app)
     client = TestClient(app)
     try:
         invitation = host.create_pairing("Mac secondaire")

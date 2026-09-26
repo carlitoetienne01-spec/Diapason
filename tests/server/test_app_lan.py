@@ -49,6 +49,8 @@ class TestCeQuiEstExpose:
             "/v1/voice/live",
             "/v1/gestures/frame",
             "/v1/succes/tasks",
+            # Le nom neuf du domaine (25/09/2026) : fermé comme l'ancien.
+            "/v1/vie/tasks",
         ):
             assert interdit not in exposees
 

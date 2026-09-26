@@ -34,15 +34,28 @@ TTL_S = 180.0
 
 # Les écrans que le maillage sait ouvrir ailleurs, et le mot français qui les
 # nomme. Liste blanche : un écran inconnu n'entre pas dans le cliché.
+#
+# 25/09/2026 : les pages du domaine vivent sous /vie/*, et /succes/* reste
+# accepté tant que la fenêtre installée et le mini-panneau servent l'ancien
+# bundle. Sans l'un des deux préfixes, chaque page de ce préfixe devenait
+# « n'existe pas sur les autres appareils » (tools/mesh_tools.py), sans
+# autre signe.
+_PAGES_VIE = {
+    "projects": ("projects", "les Projets"),
+    "notes": ("notes", "les Notes"),
+    "tasks": ("tasks", "les Tâches"),
+    "habits": ("habits", "les Habitudes"),
+    "planner": ("today", "le Planificateur"),
+    "dashboard": ("today", "le Tableau de bord"),
+    "finances": (None, "les Finances"),
+    "year-review": (None, "le Bilan annuel"),
+}
 _ECRANS = {
-    "/succes/projects": ("projects", "les Projets"),
-    "/succes/notes": ("notes", "les Notes"),
-    "/succes/tasks": ("tasks", "les Tâches"),
-    "/succes/habits": ("habits", "les Habitudes"),
-    "/succes/planner": ("today", "le Planificateur"),
-    "/succes/dashboard": ("today", "le Tableau de bord"),
-    "/succes/finances": (None, "les Finances"),
-    "/succes/year-review": (None, "le Bilan annuel"),
+    **{
+        f"/{prefixe}/{page}": entree
+        for prefixe in ("vie", "succes")
+        for page, entree in _PAGES_VIE.items()
+    },
     "/devices": (None, "les Appareils"),
     "/data-sources": (None, "les Sources de données"),
     "/agents": (None, "les Agents"),

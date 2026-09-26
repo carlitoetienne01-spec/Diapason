@@ -21,7 +21,7 @@ from diapason.vie.photos import (
     decoder_base64,
     mime_depuis_signature,
 )
-from diapason.vie.routes import router, set_store_for_tests
+from diapason.vie.routes import monter, set_store_for_tests
 from diapason.vie.store import VieError, VieNotFound
 from diapason.vie.sync import VieSyncStore
 
@@ -305,7 +305,7 @@ class TestLesRoutes:
     def client(self, magasin: ViePhotosStore):
         set_store_for_tests(magasin)
         app = FastAPI()
-        app.include_router(router)
+        monter(app)
         try:
             yield TestClient(app)
         finally:
@@ -314,13 +314,13 @@ class TestLesRoutes:
     def test_le_cycle_complet_par_http(self, client: TestClient, projet: dict) -> None:
         pid = projet["id"]
         creee = client.post(
-            f"/v1/succes/projects/{pid}/photo-piles", json={"name": "Python"}
+            f"/v1/vie/projects/{pid}/photo-piles", json={"name": "Python"}
         )
         assert creee.status_code == 201
         pile = creee.json()["pile"]
 
         ajout = client.post(
-            f"/v1/succes/photo-piles/{pile['id']}/photos",
+            f"/v1/vie/photo-piles/{pile['id']}/photos",
             json={
                 "fileName": "capture.png",
                 "dataBase64": b64(PNG),
@@ -335,34 +335,34 @@ class TestLesRoutes:
         photo = ajout.json()["photo"]
         assert photo["caption"] == "Première"
 
-        liste = client.get(f"/v1/succes/projects/{pid}/photo-piles")
+        liste = client.get(f"/v1/vie/projects/{pid}/photo-piles")
         assert liste.status_code == 200
         assert liste.json()["piles"][0]["count"] == 1
         assert liste.json()["piles"][0]["tint"] == "#123456"
 
-        contenu = client.get(f"/v1/succes/photos/{photo['id']}/contenu")
+        contenu = client.get(f"/v1/vie/photos/{photo['id']}/contenu")
         assert contenu.status_code == 200
         assert base64.b64decode(contenu.json()["dataBase64"]) == PNG
 
         renommee = client.patch(
-            f"/v1/succes/photo-piles/{pile['id']}", json={"name": "Python 3"}
+            f"/v1/vie/photo-piles/{pile['id']}", json={"name": "Python 3"}
         )
         assert renommee.status_code == 200
         assert renommee.json()["pile"]["name"] == "Python 3"
 
         legende = client.patch(
-            f"/v1/succes/photos/{photo['id']}", json={"caption": "Renommée"}
+            f"/v1/vie/photos/{photo['id']}", json={"caption": "Renommée"}
         )
         assert legende.json()["photo"]["caption"] == "Renommée"
 
         refus = client.request(
-            "DELETE", f"/v1/succes/photos/{photo['id']}", json={"confirmed": False}
+            "DELETE", f"/v1/vie/photos/{photo['id']}", json={"confirmed": False}
         )
         assert refus.status_code == 409
         assert refus.json()["detail"]["code"] == "confirmation_required"
 
         supprimee = client.request(
-            "DELETE", f"/v1/succes/photo-piles/{pile['id']}", json={"confirmed": True}
+            "DELETE", f"/v1/vie/photo-piles/{pile['id']}", json={"confirmed": True}
         )
         assert supprimee.status_code == 200
         assert supprimee.json()["photos"] == 1
@@ -372,25 +372,21 @@ class TestLesRoutes:
     ) -> None:
         pid = projet["id"]
         pile = client.post(
-            f"/v1/succes/projects/{pid}/photo-piles", json={"name": "A"}
+            f"/v1/vie/projects/{pid}/photo-piles", json={"name": "A"}
         ).json()["pile"]
-        doublon = client.post(
-            f"/v1/succes/projects/{pid}/photo-piles", json={"name": "a"}
-        )
+        doublon = client.post(f"/v1/vie/projects/{pid}/photo-piles", json={"name": "a"})
         assert doublon.status_code == 409
         faux = client.post(
-            f"/v1/succes/photo-piles/{pile['id']}/photos",
+            f"/v1/vie/photo-piles/{pile['id']}/photos",
             json={"dataBase64": b64(HTML), "thumbBase64": b64(JPEG)},
         )
         assert faux.status_code == 409
         assert "pas une image" in faux.json()["detail"]
-        absente = client.get("/v1/succes/photo-piles/inconnue/photos")
+        absente = client.get("/v1/vie/photo-piles/inconnue/photos")
         assert absente.status_code == 404
         # Un projet supprimé n'accepte plus de pile.
-        client.request("DELETE", f"/v1/succes/projects/{pid}", json={"confirmed": True})
-        morte = client.post(
-            f"/v1/succes/projects/{pid}/photo-piles", json={"name": "B"}
-        )
+        client.request("DELETE", f"/v1/vie/projects/{pid}", json={"confirmed": True})
+        morte = client.post(f"/v1/vie/projects/{pid}/photo-piles", json={"name": "B"})
         assert morte.status_code == 404
 
 
@@ -467,11 +463,11 @@ class TestLeRangement:
         pile, ids = self._trois(magasin, projet)
         set_store_for_tests(magasin)
         app = FastAPI()
-        app.include_router(router)
+        monter(app)
         try:
             client = TestClient(app)
             reponse = client.put(
-                f"/v1/succes/photo-piles/{pile['id']}/ordre",
+                f"/v1/vie/photo-piles/{pile['id']}/ordre",
                 json={"photoIds": [ids[1], ids[0], ids[2]]},
             )
             assert reponse.status_code == 200, reponse.text
@@ -481,7 +477,7 @@ class TestLeRangement:
                 ids[2],
             ]
             vide = client.put(
-                f"/v1/succes/photo-piles/{pile['id']}/ordre", json={"photoIds": []}
+                f"/v1/vie/photo-piles/{pile['id']}/ordre", json={"photoIds": []}
             )
             assert vide.status_code == 422
         finally:
@@ -660,28 +656,28 @@ class TestLaRetoucheEtLesAnnotations:
         photo = self._photo(magasin, projet)
         set_store_for_tests(magasin)
         app = FastAPI()
-        app.include_router(router)
+        monter(app)
         try:
             client = TestClient(app)
             pose = client.patch(
-                f"/v1/succes/photos/{photo['id']}",
+                f"/v1/vie/photos/{photo['id']}",
                 json={"crop": {"x": 0, "y": 0, "w": 0.5, "h": 0.5}, "rotation": 180},
             )
             assert pose.status_code == 200, pose.text
             assert pose.json()["photo"]["rotation"] == 180
             efface = client.patch(
-                f"/v1/succes/photos/{photo['id']}", json={"effacerCadre": True}
+                f"/v1/vie/photos/{photo['id']}", json={"effacerCadre": True}
             )
             assert efface.json()["photo"]["crop"] is None
             assert efface.json()["photo"]["rotation"] == 180, "la rotation reste"
             recherche = client.get(
-                f"/v1/succes/projects/{projet['id']}/photos/recherche",
+                f"/v1/vie/projects/{projet['id']}/photos/recherche",
                 params={"q": "photo"},
             )
             assert recherche.status_code == 200
             assert recherche.json()["count"] == 1
             faux = client.post(
-                "/v1/succes/photos/exporter",
+                "/v1/vie/photos/exporter",
                 json={"path": "/etc/x.pdf", "dataBase64": b64(b"%PDF-1.4")},
             )
             assert faux.status_code == 409

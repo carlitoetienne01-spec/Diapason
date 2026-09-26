@@ -10,7 +10,7 @@ from diapason.tools.vie_workspace import (
     VieDeleteItemTool,
     VieWorkspaceTool,
 )
-from diapason.vie.routes import router, set_store_for_tests
+from diapason.vie.routes import monter, set_store_for_tests
 from diapason.vie.store import VieError, VieStore
 from diapason.vie.workspace import NOTE_CONTENT_MAX, VieWorkspaceStore
 
@@ -186,38 +186,36 @@ def test_workspace_api_project_habit_note_lifecycle(tmp_path) -> None:
     store = VieWorkspaceStore(tmp_path / "workspace-api.db")
     set_store_for_tests(store)
     app = FastAPI()
-    app.include_router(router)
+    monter(app)
     client = TestClient(app)
     today = date.today().isoformat()
     try:
-        project = client.post(
-            "/v1/succes/projects", json={"name": "Application Diapason"}
-        )
+        project = client.post("/v1/vie/projects", json={"name": "Application Diapason"})
         assert project.status_code == 201
 
         habit = client.post(
-            "/v1/succes/habits",
+            "/v1/vie/habits",
             json={"name": "Planifier la journée", "frequency": "daily"},
         )
         assert habit.status_code == 201
         habit_id = habit.json()["habit"]["id"]
         logged = client.post(
-            f"/v1/succes/habits/{habit_id}/log",
+            f"/v1/vie/habits/{habit_id}/log",
             json={"date": today, "done": True},
         )
         assert logged.json()["habit"]["done"] is True
 
         note = client.post(
-            "/v1/succes/notes", json={"title": "Décision", "content": "Local"}
+            "/v1/vie/notes", json={"title": "Décision", "content": "Local"}
         )
         assert note.status_code == 201
         note_id = note.json()["note"]["id"]
         refused = client.request(
-            "DELETE", f"/v1/succes/notes/{note_id}", json={"confirmed": False}
+            "DELETE", f"/v1/vie/notes/{note_id}", json={"confirmed": False}
         )
         assert refused.status_code == 409
 
-        dashboard = client.get(f"/v1/succes/dashboard?date={today}")
+        dashboard = client.get(f"/v1/vie/dashboard?date={today}")
         assert dashboard.status_code == 200
         assert dashboard.json()["projects"] == 1
         assert dashboard.json()["habits"] == {"due": 1, "completed": 1}

@@ -122,18 +122,18 @@ class TestResumesNotes:
         monkeypatch.setattr(routes, "_store", db)
         note = db.create_note({"title": "A", "content": "Texte caché recherché"})
         app = FastAPI()
-        app.include_router(routes.router)
+        routes.monter(app)
 
         async def scenario():
             async with httpx.AsyncClient(
                 transport=httpx.ASGITransport(app=app), base_url="http://test"
             ) as client:
-                legacy = await client.get("/v1/succes/notes")
+                legacy = await client.get("/v1/vie/notes")
                 resume = await client.get(
-                    "/v1/succes/notes/resumes", params={"search": "recherché"}
+                    "/v1/vie/notes/resumes", params={"search": "recherché"}
                 )
-                detail = await client.get("/v1/succes/notes/" + note["id"])
-                absent = await client.get("/v1/succes/notes/inconnue")
+                detail = await client.get("/v1/vie/notes/" + note["id"])
+                absent = await client.get("/v1/vie/notes/inconnue")
                 assert legacy.json()["notes"][0]["content"] == note["content"]
                 assert resume.json()["notes"][0]["id"] == note["id"], (
                     "la recherche couvre encore le contenu"
@@ -157,7 +157,7 @@ class TestReactiviteServeur:
 
         monkeypatch.setattr(db, "list_tasks", lente)
         app = FastAPI()
-        app.include_router(routes.router)
+        routes.monter(app)
 
         @app.get("/ping")
         async def ping():
@@ -167,7 +167,7 @@ class TestReactiviteServeur:
             async with httpx.AsyncClient(
                 transport=httpx.ASGITransport(app=app), base_url="http://test"
             ) as client:
-                lecture = asyncio.create_task(client.get("/v1/succes/tasks"))
+                lecture = asyncio.create_task(client.get("/v1/vie/tasks"))
                 await asyncio.to_thread(entree.wait, 2)
                 avant = time.perf_counter()
                 reponse = await client.get("/ping")

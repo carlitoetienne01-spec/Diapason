@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from diapason.vie.project_kits import list_project_kits
-from diapason.vie.routes import router, set_store_for_tests
+from diapason.vie.routes import monter, set_store_for_tests
 from diapason.vie.store import VieError
 from diapason.vie.workspace import VieWorkspaceStore
 
@@ -72,15 +72,15 @@ def test_project_kits_and_tree_api(tmp_path) -> None:
     store = VieWorkspaceStore(tmp_path / "api-tree.db")
     set_store_for_tests(store)
     app = FastAPI()
-    app.include_router(router)
+    monter(app)
     client = TestClient(app)
 
-    kits = client.get("/v1/succes/project-kits")
+    kits = client.get("/v1/vie/project-kits")
     assert kits.status_code == 200
     assert kits.json()["count"] >= 3
 
     created = client.post(
-        "/v1/succes/projects",
+        "/v1/vie/projects",
         json={"name": "Podcast perso", "kitId": "podcast-launch"},
     )
     assert created.status_code == 201
@@ -89,7 +89,7 @@ def test_project_kits_and_tree_api(tmp_path) -> None:
     assert project["taskTotal"] > 0
 
     root = client.post(
-        "/v1/succes/tasks",
+        "/v1/vie/tasks",
         json={
             "title": "Idée bonus",
             "notes": "À creuser",
@@ -99,7 +99,7 @@ def test_project_kits_and_tree_api(tmp_path) -> None:
     assert root.status_code == 201
     root_task = root.json()["task"]
     child = client.post(
-        "/v1/succes/tasks",
+        "/v1/vie/tasks",
         json={
             "title": "Sous-idée",
             "projectId": project["id"],

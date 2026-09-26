@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import logging
+import time
 from threading import Lock
 from typing import Any, Literal
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from diapason.vie.continuity import VieContinuityStore
@@ -34,9 +36,108 @@ from diapason.vie.workspace import (
 # 19/09/2026 : les routes SQLite et sync réseau étaient async sans await.
 # Elles bloquaient le chat et la voix sur la boucle commune. Les handlers
 # synchrones passent par le pool Starlette ; le contrat HTTP reste identique.
-router = APIRouter(prefix="/v1/succes", tags=["succes"])
+#
+# 25/09/2026 : le routeur n'a plus de préfixe figé. `monter()` le pose deux
+# fois — sous /v1/vie, le nom du domaine, et sous /v1/succes, l'alias que la
+# fenêtre installée, le mini-panneau, un bundle en cache et le script lacite
+# appellent encore. Retirer l'ancien préfixe d'un coup les aurait tous mis en
+# 404, dans des outils qui ne l'affichent pas.
+router = APIRouter(tags=["vie"])
+PREFIXE = "/v1/vie"
+PREFIXE_HERITE = "/v1/succes"
 _store: VieStore | None = None
 _store_lock = Lock()
+
+logger = logging.getLogger(__name__)
+
+# Une ligne de journal au plus toutes les dix minutes, avec le total : la
+# page Tâches encore servie sous l'ancien nom appelle l'alias à chaque
+# frappe (autosave), et une ligne par requête noierait serve.err.log. Dix
+# minutes, c'est le rythme de la ligne « préfixe » du journal du chat : assez
+# pour dater le dernier appel, trop peu pour gêner.
+_JOURNAL_ALIAS_S = 600.0
+
+
+class CompteurAlias:
+    """Les accès à /v1/succes, qui diront quand retirer l'alias.
+
+    Étape 14c du plan : l'alias ne part que lorsque ce compteur est resté à
+    zéro N jours. Sans lui, on retirerait l'alias au jugé — et le premier à
+    le savoir serait un client hors de vue, en 404.
+    """
+
+    def __init__(self) -> None:
+        self._verrou = Lock()
+        self.total = 0
+        self.par_chemin: dict[str, int] = {}
+        self._dernier_journal = 0.0
+
+    def noter(self, chemin: str, *, maintenant: float | None = None) -> None:
+        instant = time.monotonic() if maintenant is None else maintenant
+        with self._verrou:
+            self.total += 1
+            self.par_chemin[chemin] = self.par_chemin.get(chemin, 0) + 1
+            if self.total > 1 and instant - self._dernier_journal < _JOURNAL_ALIAS_S:
+                return
+            self._dernier_journal = instant
+            total = self.total
+        logger.warning(
+            "alias %s appelé (%s) — %d accès depuis le démarrage ; l'alias ne "
+            "se retire qu'une fois ce compte resté à zéro",
+            PREFIXE_HERITE,
+            chemin,
+            total,
+        )
+
+    def remettre_a_zero(self) -> None:
+        with self._verrou:
+            self.total = 0
+            self.par_chemin.clear()
+            self._dernier_journal = 0.0
+
+
+compteur_alias = CompteurAlias()
+
+
+async def _noter_acces_herite(request: Request) -> None:
+    # `async def` et sans disque : ce n'est qu'un compteur en mémoire et une
+    # ligne de journal bornée, rien qui fige la boucle (§5 de CLAUDE.md).
+    compteur_alias.noter(request.url.path)
+
+
+def monter(app: Any) -> None:
+    """Pose le domaine vie sous /v1/vie et son alias /v1/succes.
+
+    L'alias reste hors du schéma OpenAPI : chaque route y figurerait deux
+    fois, avec deux ``operationId`` pour un même geste, et un générateur de
+    client en tirerait deux méthodes.
+    """
+    app.include_router(router, prefix=PREFIXE)
+    app.include_router(
+        router,
+        prefix=PREFIXE_HERITE,
+        include_in_schema=False,
+        dependencies=[Depends(_noter_acces_herite)],
+    )
+
+
+def surface_api(prefixe: str) -> list[str]:
+    """« MÉTHODE chemin » de chaque route montée sous ``prefixe``, triées.
+
+    Lue par les deux instantanés (tests/contract/*_api_surface.json) et
+    leurs générateurs : calculée sur une application réellement montée, pas
+    sur ``router.routes``, qui n'a plus de préfixe — un instantané tiré du
+    routeur nu aurait figé « GET /tasks », une route que personne n'appelle.
+    """
+    from fastapi import FastAPI  # noqa: PLC0415
+
+    app = FastAPI()
+    monter(app)
+    return sorted(
+        f"{sorted(r.methods - {'HEAD', 'OPTIONS'})[0]} {r.path}"
+        for r in app.routes
+        if getattr(r, "methods", None) and r.path.startswith(prefixe + "/")
+    )
 
 
 def get_store() -> VieStore:
@@ -1104,4 +1205,13 @@ from diapason.vie.photos_routes import register_photos_routes  # noqa: E402
 register_photos_routes(router, get_store=get_store, domain_error=_domain_error)
 
 
-__all__ = ["get_store", "router", "set_store_for_tests"]
+__all__ = [
+    "PREFIXE",
+    "PREFIXE_HERITE",
+    "compteur_alias",
+    "get_store",
+    "monter",
+    "surface_api",
+    "router",
+    "set_store_for_tests",
+]
