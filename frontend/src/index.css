@@ -825,6 +825,25 @@ html[data-diapason-compact='1'] [data-sonner-toaster] [data-sonner-toast] {
   .prose {
     line-height: 1.55;
     font-size: 0.875rem;
+    /* 26/09/2026 : une adresse de 90 caractères sans espace faisait 601 px de
+       large dans une bulle de 337 — le fil entier défilait de côté à 375 px
+       (et à 340 dans le mini-panneau). Un mot plus long que la ligne se
+       coupe ; `anywhere` pour les liens et le code en ligne, que
+       `break-word` ne coupe pas dans une cellule de tableau. */
+    overflow-wrap: break-word;
+  }
+  .prose a,
+  .prose code:not(pre code) {
+    overflow-wrap: anywhere;
+  }
+  /* Un tableau large défile dans son cadre, comme un bloc de code, au lieu
+     d'élargir la bulle (MessageBubble.tsx l'enveloppe). */
+  .prose .tableau-defilant {
+    overflow-x: auto;
+    margin: 0.75em 0;
+  }
+  .prose .tableau-defilant table {
+    margin: 0;
   }
 
   .prose p {

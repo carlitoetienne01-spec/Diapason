@@ -1,4 +1,4 @@
-import { memo, lazy, Suspense, createContext, useContext, useState, useMemo, useRef, type RefObject } from 'react';
+import { memo, lazy, Suspense, createContext, useContext, useState, useMemo, useRef, type ComponentPropsWithoutRef, type RefObject } from 'react';
 import { toast } from 'sonner';
 import ReactMarkdown from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
@@ -59,6 +59,15 @@ function getTextContent(node: any): string {
     return getTextContent(node.props.children);
   }
   return '';
+}
+
+/** Un tableau large défile dans son cadre au lieu d'élargir la bulle. */
+function TableauDefilant({ node: _node, ...props }: ComponentPropsWithoutRef<'table'> & { node?: unknown }) {
+  return (
+    <div className="tableau-defilant">
+      <table {...props} />
+    </div>
+  );
 }
 
 function CodeBlockPre({ children, node: _node, ...props }: any) {
@@ -309,6 +318,7 @@ export const MessageBubble = memo(function MessageBubble({ message, isLive = fal
             rehypePlugins={rehypePlugins}
             components={{
               pre: CodeBlockPre,
+              table: TableauDefilant,
             }}
           >
             {cleanContent}
