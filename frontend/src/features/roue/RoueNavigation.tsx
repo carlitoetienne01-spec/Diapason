@@ -56,6 +56,7 @@ import {
   type Cote,
   type Geometrie,
 } from './geometrieRoue';
+import { clavierOuvert, estUneSaisie, suivreHauteurMax } from './clavier';
 import { freresARendreInertes, rendreInertes, reponseAuRetour } from './fermetureRoue';
 import { annoncerLeMenuDeLApp, OUVRIR_MENU_APP } from './menuDeLApp';
 import { PAGES_ROUE, indexDeLaPage } from './pagesRoue';
@@ -352,6 +353,33 @@ export function RoueNavigation() {
     if (!ouverte || !pontNatif) return undefined;
     return pontNatif.surRetour(() => reponseAuRetour(ouverteRef.current, fermerEtRendreLeFocus));
   }, [ouverte, fermerEtRendreLeFocus]);
+
+  // Clavier ouvert, le bouton et sa bande se retirent (clavier.ts, index.css).
+  useEffect(() => {
+    const racine = document.documentElement;
+    const maxima = new Map<number, number>();
+    const evaluer = () => {
+      const hauteur = Math.min(window.innerHeight, window.visualViewport?.height ?? window.innerHeight);
+      const hauteurMax = suivreHauteurMax(maxima, window.innerWidth, hauteur);
+      const ouvert = clavierOuvert({ hauteur, hauteurMax, saisie: estUneSaisie(document.activeElement) });
+      if (ouvert) racine.setAttribute('data-clavier-ouvert', '');
+      else racine.removeAttribute('data-clavier-ouvert');
+    };
+    // Le focus sort avant d'entrer ailleurs : on lit après la bascule.
+    const plusTard = () => window.setTimeout(evaluer, 0);
+    evaluer();
+    window.addEventListener('resize', evaluer);
+    window.visualViewport?.addEventListener('resize', evaluer);
+    document.addEventListener('focusin', evaluer);
+    document.addEventListener('focusout', plusTard);
+    return () => {
+      window.removeEventListener('resize', evaluer);
+      window.visualViewport?.removeEventListener('resize', evaluer);
+      document.removeEventListener('focusin', evaluer);
+      document.removeEventListener('focusout', plusTard);
+      racine.removeAttribute('data-clavier-ouvert');
+    };
+  }, []);
 
   // Une navigation venue d'ailleurs (le maillage, la voix) ferme la roue.
   const cheminOuvert = useRef(pathname);

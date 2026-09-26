@@ -33,10 +33,17 @@ describe('Layout.tsx', () => {
     expect(layout.match(/<Sidebar\b/g)?.length, 'une seule barre latérale').toBe(1);
   });
 
-  it('ne réserve la bande de la roue qu’au téléphone', () => {
-    for (const ligne of layout.split('\n').filter((l) => l.includes('--reserve-roue'))) {
-      expect(ligne, 'la réserve de la roue dépend d’estMobile').toContain('estMobile');
-    }
+  it('ne réserve la bande de la roue qu’au téléphone, autour de la seule Discussion', () => {
+    const lignes = layout.split('\n').filter((l) => l.includes('--reserve-roue'));
+    expect(lignes.length).toBe(1);
+    // 26/09/2026, contre-épreuve : réservée autour de chaque page, la bande
+    // faisait 68 px morts en bas de l'écran, où rien ne défilait.
+    expect(lignes[0], 'au téléphone, sur la Discussion seulement').toContain("estMobile && pathname === '/'");
+    expect(layout, 'la colonne se laisse viser par index.css').toContain('data-colonne-page=""');
+    const css = lire('index.css');
+    expect(css, 'ailleurs, la bande vit dans le défileur de la page').toMatch(
+      /\[data-colonne-page\] > \.overflow-y-auto \{\s*padding-bottom: calc\(var\(--reserve-roue\) \+ 1rem\) !important;/,
+    );
   });
 });
 

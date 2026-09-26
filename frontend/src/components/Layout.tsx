@@ -146,13 +146,19 @@ export function Layout() {
               propre en-tête ; les autres pages reçoivent une bande au-dessus
               d'elles (index.css, `--bande-barre-fermee`). */}
           <div
+            data-colonne-page=""
             className="flex-1 flex flex-col min-w-0 min-h-0 relative z-[2]"
             style={{
               paddingTop: pathname === '/' ? 0 : 'var(--bande-barre-fermee, 0px)',
-              // Au téléphone, la bande du bouton « Aller à… » : rien de la
-              // page — ni le bas d'une liste, ni le bouton d'envoi du
-              // compositeur — ne passe sous lui (index.css, `--reserve-roue`).
-              paddingBottom: estMobile ? 'var(--reserve-roue, 0px)' : undefined,
+              // Au téléphone, la bande du bouton « Aller à… » n'est réservée
+              // AUTOUR de la page que sur la Discussion, pour le compositeur.
+              // Ailleurs, elle vit DANS le défileur de la page (index.css) :
+              // le contenu passe sous le bouton en défilant et ne s'arrête
+              // au-dessus qu'en fin de liste. 26/09/2026, contre-épreuve :
+              // réservée autour, c'était 68 px morts en bas de chaque page,
+              // où aucun glissé ne faisait défiler (scrollTop 0 depuis
+              // (200, 760) sur 12 pages).
+              paddingBottom: estMobile && pathname === '/' ? 'var(--reserve-roue, 0px)' : undefined,
             }}
           >
             <Outlet />

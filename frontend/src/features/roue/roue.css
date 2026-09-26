@@ -42,6 +42,8 @@
   -webkit-tap-highlight-color: transparent;
   transition: transform 150ms ease-out;
 }
+/* Clavier ouvert, roue fermée : le bouton se retire (index.css). */
+html[data-clavier-ouvert] .roue-bouton[aria-expanded='false'] { display: none; }
 .roue-bouton[data-cote='droite'] { right: 12px; }
 .roue-bouton[data-cote='gauche'] { left: 12px; }
 .roue-bouton:active { transform: scale(0.94); }
@@ -193,7 +195,9 @@
 .roue-simple {
   list-style: none;
   margin: 0;
-  padding: 4px 16px 16px;
+  /* En bas, la place du bouton X (52 px, 8 d'air dessous, 8 dessus) : au bout
+   * de la liste, « Journaux » passait sous lui (26/09/2026, contre-épreuve). */
+  padding: 4px 16px calc(var(--roue-bouton) + 16px);
   overflow-y: auto;
   flex: 1;
   min-height: 0;

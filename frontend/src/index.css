@@ -103,6 +103,22 @@ html[data-diapason-mobile='1'] {
   --degagement-barre-fermee: 0px;
   --reserve-roue: 68px;
 }
+/* La bande du bouton vit DANS le défileur de chaque page (sous forme de
+ * marge intérieure basse), pas autour de lui : le défileur descend jusqu'au
+ * bas de l'écran, le contenu passe sous le bouton en défilant et ne s'arrête
+ * au-dessus qu'en fin de liste. 26/09/2026, contre-épreuve : réservée
+ * autour de la colonne (Layout.tsx), la bande faisait 68 px morts — 8 % de
+ * l'écran — où rien ne défilait. */
+html[data-diapason-mobile='1'] [data-colonne-page] > .overflow-y-auto {
+  padding-bottom: calc(var(--reserve-roue) + 1rem) !important;
+}
+/* Clavier ouvert (RoueNavigation.tsx, `clavierOuvert`), le bouton se retire
+ * et sa bande avec lui : la Discussion gardait 97 px sous le compositeur sur
+ * les 482 qui restent au-dessus du clavier (14 %). Le glissé depuis le bord
+ * reste, et le bouton revient dès que le clavier se ferme. */
+html[data-diapason-mobile='1'][data-clavier-ouvert] {
+  --reserve-roue: 0px;
+}
 
 /*
  * Diapason design tokens.
