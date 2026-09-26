@@ -355,3 +355,154 @@ class TestApprovalStoreIntegration:
         resp = client.get("/v1/approvals/pending")
         tiers = {a["tier"] for a in resp.json()["actions"]}
         assert tiers == {"trivial", "low", "medium", "high"}
+
+
+# ── la boucle reste libre (CLAUDE.md §5) ─────────────────────────────────
+#
+# 26/09/2026, phase 5 du plan mobile : le téléphone sonde ces routes en plus
+# de la cloche du Mac. Un cœur bat toutes les 10 ms pendant l'appel ; le
+# magasin est ralenti de 0,5 s — ce qu'un verrou SQLite tenu par un autre
+# écrivain coûte au moins. Un trou de plus de 0,3 s entre deux battements
+# dit que la route a gelé la boucle.
+
+_LENT_S = 0.5
+_TROU_TOLERE_S = 0.3
+
+
+def _plus_long_trou(scenario) -> float:
+    import asyncio
+    import time
+
+    async def mener():
+        instants: list[float] = []
+        arret = asyncio.Event()
+
+        async def coeur():
+            while True:
+                instants.append(time.monotonic())
+                if arret.is_set():
+                    return
+                await asyncio.sleep(0.01)
+
+        battre = asyncio.ensure_future(coeur())
+        await asyncio.sleep(0.05)
+        await scenario()
+        arret.set()
+        await battre
+        return max(b - a for a, b in zip(instants, instants[1:]))
+
+    return asyncio.run(mener())
+
+
+def _ralentir(store: ApprovalStore, monkeypatch, *noms: str) -> None:
+    import time
+
+    for nom in noms:
+        original = getattr(store, nom)
+
+        def lent(*args, _original=original, **kwargs):
+            time.sleep(_LENT_S)
+            return _original(*args, **kwargs)
+
+        monkeypatch.setattr(store, nom, lent)
+
+
+@pytest.mark.skipif(not HAS_FASTAPI, reason="fastapi not installed")
+class TestLaClocheNeGelePasLaBoucle:
+    """Phase 5 du plan mobile : la cloche est sondée par le Mac ET le
+    téléphone ; une lecture de la base ne doit jamais figer le flux du chat
+    ni la voix."""
+
+    def _app(self):
+        from diapason.server.approval_routes import router
+
+        app = FastAPI()
+        app.include_router(router)
+        return app
+
+    def test_la_liste_des_demandes_se_lit_dans_un_fil(
+        self, approval_store, monkeypatch
+    ):
+        from httpx import ASGITransport, AsyncClient
+
+        _queue(approval_store)
+        _ralentir(approval_store, monkeypatch, "expire_stale")
+        app = self._app()
+
+        async def scenario():
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://t"
+            ) as c:
+                reponse = await c.get("/v1/approvals/pending")
+                assert reponse.json()["count"] == 1, "la demande doit rester listée"
+
+        trou = _plus_long_trou(scenario)
+        assert trou < _TROU_TOLERE_S, f"la boucle a gelé {trou:.2f} s en listant"
+
+    def test_approuver_et_refuser_s_ecrivent_dans_un_fil(
+        self, approval_store, monkeypatch
+    ):
+        from httpx import ASGITransport, AsyncClient
+
+        a = _queue(approval_store)
+        b = _queue(approval_store)
+        _ralentir(approval_store, monkeypatch, "get_action")
+        app = self._app()
+
+        async def scenario():
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://t"
+            ) as c:
+                assert (await c.post(f"/v1/approvals/{a}/approve")).status_code == 200
+                assert (await c.post(f"/v1/approvals/{b}/deny")).status_code == 200
+
+        trou = _plus_long_trou(scenario)
+        assert trou < _TROU_TOLERE_S, f"la boucle a gelé {trou:.2f} s en décidant"
+
+    def test_deux_appareils_qui_decident_ensemble_n_ecrivent_qu_une_decision(
+        self, approval_store, monkeypatch
+    ):
+        """Le Mac approuve pendant que le téléphone refuse : dans des fils,
+        sans verrou, les deux passaient le contrôle « pending » et le second
+        écrasait le premier. Un seul 200, l'autre 409, et la base garde la
+        décision qui a répondu 200."""
+        import asyncio
+        import threading
+
+        from httpx import ASGITransport, AsyncClient
+
+        action_id = _queue(approval_store)
+        # Un rendez-vous plutôt qu'un simple retard : chaque lecture attend
+        # (1 s au plus) que l'autre décision lise aussi. Sans verrou, les
+        # deux lisent « pending » ensemble ; avec, la seconde ne peut pas
+        # lire tant que la première n'a pas écrit, et le rendez-vous expire.
+        arrivees = threading.Barrier(2, timeout=1.0)
+        original = approval_store.get_action
+
+        def lecture_au_rendez_vous(*args, **kwargs):
+            try:
+                arrivees.wait()
+            except threading.BrokenBarrierError:
+                pass
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(approval_store, "get_action", lecture_au_rendez_vous)
+        app = self._app()
+
+        async def scenario():
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://t"
+            ) as c:
+                return await asyncio.gather(
+                    c.post(f"/v1/approvals/{action_id}/approve"),
+                    c.post(f"/v1/approvals/{action_id}/deny"),
+                )
+
+        oui, non = asyncio.run(scenario())
+        statuts = sorted([oui.status_code, non.status_code])
+        assert statuts == [200, 409], f"une seule décision doit passer, pas {statuts}"
+        gagnante = oui if oui.status_code == 200 else non
+        attendu = STATUS_APPROVED if gagnante is oui else STATUS_DENIED
+        assert approval_store.get_action(action_id).status == attendu, (
+            "la base doit garder la décision qui a répondu 200"
+        )
