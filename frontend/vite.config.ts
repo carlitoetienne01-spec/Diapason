@@ -41,6 +41,13 @@ export default defineConfig({
     !isTauriBuild &&
       VitePWA({
         registerType: 'autoUpdate',
+        // 26/09/2026 : servi par la passerelle du tailnet, tout chemin du
+        // bundle exige le cookie de session d'appareil (classe `session` de
+        // `GET /{full_path:path}`). Un <link rel="manifest"> sans crossorigin
+        // est demandé SANS cookie : 401, et la WebView du téléphone n'avait
+        // ni nom, ni icône, ni couleur de thème. Même origine sur le Mac :
+        // l'attribut n'y change rien.
+        useCredentials: true,
         manifest: {
           name: 'Diapason',
           short_name: 'Diapason',
