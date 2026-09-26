@@ -2185,6 +2185,152 @@ fn authenticated(request: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Fermeture : la dernière synchronisation du compte (compte-chiffre.md P10)
+// ---------------------------------------------------------------------------
+
+/// P10 : 3 s au plus pour la dernière poussée. Au-delà, la personne qui a
+/// cliqué « Quitter » attend une fenêtre qui ne se ferme pas ; ce qui n'est
+/// pas parti partira au lancement suivant (« N modifications n'avaient pas
+/// pu partir à la fermeture »).
+const DERNIERE_SYNCHRO: Duration = Duration::from_secs(3);
+
+/// Posé à la première demande de fermeture qui attend la synchronisation.
+static FERMETURE_EN_COURS: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Posé juste avant NOTRE `exit(0)`, une fois `stop_all` fait : seul ce
+/// `ExitRequested`-là passe. 24/09/2026 : un seul drapeau servait aux deux,
+/// et une seconde demande (un second Cmd+Q pendant la synchronisation)
+/// trouvait la fermeture « en cours », rendait la main sans `prevent_exit`,
+/// et l'app sortait avant `stop_all` — le serveur, lancé en
+/// `process_group(0)`, survivait orphelin.
+static SORTIE_AUTORISEE: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+#[derive(Debug, PartialEq, Eq)]
+enum DecisionFermeture {
+    /// Sans compte, ou une relance : `stop_all` lancé, sortie aussitôt —
+    /// exactement la fermeture d'avant le compte.
+    ArreterSansAttendre,
+    /// Notre propre `exit(0)`, après `stop_all` : laisser sortir.
+    Laisser,
+    /// Une fermeture attend déjà la synchronisation : retenir celle-ci.
+    Retenir,
+    /// Première demande, un compte existe : retenir, synchroniser, arrêter.
+    SynchroniserPuisSortir,
+}
+
+/// Pure, pour que le test la lise sans lancer l'app. `a_un_compte` n'est
+/// évalué (un `stat`) que si rien d'autre n'a déjà décidé.
+///
+/// Une RELANCE (`RESTART_EXIT_CODE`, mise à jour) ne peut pas être retenue :
+/// Tauri ignore `prevent_exit` pour elle (tauri `app.rs`, `ExitRequestApi`).
+/// Lancer la synchronisation avant `stop_all` lui faisait perdre la course —
+/// l'app relancée se rattachait à l'ANCIEN serveur (« Connected to existing
+/// API server »). Elle arrête donc tout de suite, sans synchronisation.
+fn decision_de_fermeture(
+    code: Option<i32>,
+    sortie_autorisee: bool,
+    fermeture_en_cours: bool,
+    a_un_compte: impl FnOnce() -> bool,
+) -> DecisionFermeture {
+    if sortie_autorisee {
+        return DecisionFermeture::Laisser;
+    }
+    if code == Some(tauri::RESTART_EXIT_CODE) || !a_un_compte() {
+        return DecisionFermeture::ArreterSansAttendre;
+    }
+    if fermeture_en_cours {
+        return DecisionFermeture::Retenir;
+    }
+    DecisionFermeture::SynchroniserPuisSortir
+}
+
+/// La racine de Diapason (`~/.diapason`, ou `DIAPASON_HOME`, ou
+/// `XDG_DATA_HOME/diapason`) : le parent de `auth/local_api_key`, résolu
+/// par les mêmes règles que `get_config_dir()` côté Python.
+fn racine_diapason() -> std::path::PathBuf {
+    local_api_key_path()
+        .parent()
+        .and_then(std::path::Path::parent)
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(|| std::path::PathBuf::from(home_dir()).join(".diapason"))
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum PlanFermeture {
+    /// Aucun compte sur cet appareil : `stop_all` tout de suite, comme avant.
+    Immediate,
+    /// Un compte existe : demander au serveur local s'il reste à pousser.
+    DemanderAuServeur,
+}
+
+/// 24/09/2026, étape 10 : les comptes sont FERMÉS sur l'appareil
+/// (`service.COMPTES_OUVERTS`), et la fermeture de l'app ne devait pas
+/// attendre UNE milliseconde de plus pour une synchronisation que personne
+/// n'a. Le signe qu'un compte existe est un FICHIER — `compte/etat.key`,
+/// qui n'existe qu'avec un compte (`compte/etat.py`) — et le lire ne coûte
+/// qu'un `stat`, sans réseau ni requête au serveur local. Un dossier du même
+/// nom, ou un lien, ne vaut pas compte.
+fn plan_de_fermeture(racine: &std::path::Path) -> PlanFermeture {
+    let etat = racine.join("compte").join("etat.key");
+    match std::fs::symlink_metadata(&etat) {
+        Ok(meta) if meta.file_type().is_file() => PlanFermeture::DemanderAuServeur,
+        _ => PlanFermeture::Immediate,
+    }
+}
+
+/// Ce que `GET /v1/account/status` doit dire pour que la fermeture attende
+/// la dernière poussée : un compte DÉVERROUILLÉ (verrouillé, rien ne peut
+/// être scellé) et des écritures en attente (`pendingCount` > 0 — `null`
+/// veut dire « aucun moteur », pas « zéro »).
+fn doit_synchroniser_avant_fermeture(statut: &serde_json::Value) -> bool {
+    let deverrouille = statut.get("unlocked").and_then(serde_json::Value::as_bool) == Some(true);
+    let etat_ouvert = matches!(
+        statut.get("state").and_then(serde_json::Value::as_str),
+        Some("unlocked") | Some("resetPending")
+    );
+    let en_attente = statut
+        .get("sync")
+        .and_then(|s| s.get("pendingCount"))
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
+    deverrouille && etat_ouvert && en_attente > 0
+}
+
+/// Au plus `DERNIERE_SYNCHRO` en tout : le statut, puis `sync-now` s'il le
+/// faut. Toute erreur (serveur déjà mort, délai) laisse fermer.
+async fn derniere_synchronisation() {
+    let base = api_base();
+    let Ok(client) = constructeur_client_http(&base)
+        .timeout(DERNIERE_SYNCHRO)
+        .build()
+    else {
+        return;
+    };
+    let travail = async {
+        let statut: serde_json::Value =
+            authenticated(client.get(format!("{base}/v1/account/status")))
+                .send()
+                .await
+                .ok()?
+                .json()
+                .await
+                .ok()?;
+        if !doit_synchroniser_avant_fermeture(&statut) {
+            return Some(());
+        }
+        eprintln!("[desktop] fermeture : dernière synchronisation du compte");
+        let _ = authenticated(client.post(format!("{base}/v1/account/sync-now")))
+            .json(&serde_json::json!({}))
+            .send()
+            .await;
+        Some(())
+    };
+    let _ = tokio::time::timeout(DERNIERE_SYNCHRO, travail).await;
+}
+
 #[tauri::command]
 async fn get_setup_status(state: tauri::State<'_, SharedStatus>) -> Result<SetupStatus, String> {
     Ok(state.lock().await.clone())
@@ -5766,12 +5912,46 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building Diapason Desktop")
-        .run(move |_app, event| {
-            if let tauri::RunEvent::ExitRequested { .. } = event {
-                let b = backend.clone();
-                tauri::async_runtime::spawn(async move {
-                    b.lock().await.stop_all().await;
-                });
+        .run(move |app, event| {
+            if let tauri::RunEvent::ExitRequested { api, code, .. } = event {
+                use std::sync::atomic::Ordering;
+                let decision = decision_de_fermeture(
+                    code,
+                    SORTIE_AUTORISEE.load(Ordering::SeqCst),
+                    FERMETURE_EN_COURS.load(Ordering::SeqCst),
+                    || plan_de_fermeture(&racine_diapason()) == PlanFermeture::DemanderAuServeur,
+                );
+                match decision {
+                    DecisionFermeture::Laisser => {}
+                    DecisionFermeture::ArreterSansAttendre => {
+                        // Sans compte : exactement la fermeture d'avant, sans
+                        // requête ni attente.
+                        let b = backend.clone();
+                        tauri::async_runtime::spawn(async move {
+                            b.lock().await.stop_all().await;
+                        });
+                    }
+                    DecisionFermeture::Retenir => api.prevent_exit(),
+                    DecisionFermeture::SynchroniserPuisSortir => {
+                        FERMETURE_EN_COURS.store(true, Ordering::SeqCst);
+                        api.prevent_exit();
+                        let b = backend.clone();
+                        let poignee = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            // Un serveur que l'app n'a pas lancé (l'agent
+                            // launchd sur le Mac de Carlito) survit à la
+                            // fermeture et continue de synchroniser seul
+                            // (§4.10) : rien à attendre ici.
+                            let serveur_a_nous = b.lock().await.diapason.is_some();
+                            if serveur_a_nous {
+                                derniere_synchronisation().await;
+                            }
+                            b.lock().await.stop_all().await;
+                            SORTIE_AUTORISEE.store(true, Ordering::SeqCst);
+                            poignee.exit(0);
+                        });
+                    }
+                }
             }
         });
 }
@@ -6458,6 +6638,133 @@ mod tests {
                 std::env::set_var("APPIMAGE", v);
             }
         }
+    }
+
+    // --- Fermeture et dernière synchronisation (compte-chiffre.md P10) ---
+
+    #[test]
+    fn sans_compte_la_fermeture_n_attend_rien() {
+        // Exigence du 24/09/2026 : les comptes sont fermés sur l'appareil, et
+        // la fermeture ne doit pas attendre une milliseconde de plus.
+        let racine = tempfile::tempdir().unwrap();
+        assert_eq!(
+            super::plan_de_fermeture(racine.path()),
+            super::PlanFermeture::Immediate,
+            "sans compte/etat.key, stop_all tout de suite"
+        );
+        std::fs::create_dir_all(racine.path().join("compte")).unwrap();
+        assert_eq!(
+            super::plan_de_fermeture(racine.path()),
+            super::PlanFermeture::Immediate,
+            "un dossier compte/ vide (« Plus tard ») n'est pas un compte"
+        );
+        std::fs::create_dir_all(racine.path().join("compte").join("etat.key")).unwrap();
+        assert_eq!(
+            super::plan_de_fermeture(racine.path()),
+            super::PlanFermeture::Immediate,
+            "un DOSSIER nommé etat.key n'est pas un compte"
+        );
+    }
+
+    #[test]
+    fn avec_un_compte_la_fermeture_demande_au_serveur() {
+        let racine = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(racine.path().join("compte")).unwrap();
+        std::fs::write(racine.path().join("compte").join("etat.key"), b"").unwrap();
+        assert_eq!(
+            super::plan_de_fermeture(racine.path()),
+            super::PlanFermeture::DemanderAuServeur
+        );
+    }
+
+    #[test]
+    fn une_seconde_demande_pendant_la_synchronisation_est_retenue() {
+        // 24/09/2026 : un second Cmd+Q pendant la dernière synchronisation
+        // rendait la main sans `prevent_exit` — l'app sortait avant
+        // `stop_all`, le serveur survivait orphelin.
+        use super::{decision_de_fermeture as decide, DecisionFermeture as D};
+        assert_eq!(
+            decide(None, false, false, || true),
+            D::SynchroniserPuisSortir,
+            "première demande, un compte : synchroniser puis sortir"
+        );
+        assert_eq!(
+            decide(None, false, true, || true),
+            D::Retenir,
+            "une seconde demande pendant la synchronisation est retenue"
+        );
+        assert_eq!(
+            decide(Some(0), false, true, || true),
+            D::Retenir,
+            "un exit(0) venu d'ailleurs ne court-circuite pas stop_all"
+        );
+        assert_eq!(
+            decide(Some(0), true, true, || true),
+            D::Laisser,
+            "seul notre exit(0), après stop_all, sort"
+        );
+    }
+
+    #[test]
+    fn une_relance_arrete_tout_sans_synchroniser() {
+        // `prevent_exit` est ignoré pour une relance : la synchronisation
+        // avant `stop_all` perdait la course, et l'app relancée se
+        // rattachait à l'ancien serveur.
+        use super::{decision_de_fermeture as decide, DecisionFermeture as D};
+        assert_eq!(
+            decide(Some(tauri::RESTART_EXIT_CODE), false, false, || true),
+            D::ArreterSansAttendre
+        );
+        assert_eq!(
+            decide(Some(tauri::RESTART_EXIT_CODE), false, true, || true),
+            D::ArreterSansAttendre,
+            "même pendant une synchronisation déjà lancée"
+        );
+    }
+
+    #[test]
+    fn sans_compte_aucune_decision_n_attend() {
+        use super::{decision_de_fermeture as decide, DecisionFermeture as D};
+        assert_eq!(decide(None, false, false, || false), D::ArreterSansAttendre);
+        let mut regarde = false;
+        assert_eq!(
+            decide(Some(0), true, true, || {
+                regarde = true;
+                true
+            }),
+            D::Laisser
+        );
+        assert!(!regarde, "notre propre exit(0) ne regarde même pas le disque");
+    }
+
+    #[test]
+    fn seul_un_compte_deverrouille_avec_des_ecritures_en_attente_retient_la_fermeture() {
+        use serde_json::json;
+        let doit = super::doit_synchroniser_avant_fermeture;
+        let statut = |unlocked: bool, state: &str, attente: serde_json::Value| json!({"unlocked": unlocked, "state": state, "sync": {"pendingCount": attente}});
+        assert!(doit(&statut(true, "unlocked", json!(3))));
+        assert!(doit(&statut(true, "resetPending", json!(1))));
+        assert!(
+            !doit(&statut(true, "unlocked", json!(0))),
+            "rien en attente"
+        );
+        assert!(
+            !doit(&statut(true, "unlocked", serde_json::Value::Null)),
+            "null veut dire « aucun moteur », pas « zéro » ni « beaucoup »"
+        );
+        assert!(
+            !doit(&statut(false, "locked", json!(3))),
+            "verrouillé : rien à sceller"
+        );
+        assert!(
+            !doit(&statut(false, "resetPending", json!(3))),
+            "resetPending verrouillé ne se pousse pas"
+        );
+        assert!(
+            !doit(&statut(true, "sessionExpired", json!(3))),
+            "une session perdue ne pousse rien"
+        );
+        assert!(!doit(&json!({})), "un statut illisible laisse fermer");
     }
 
     #[cfg(target_os = "linux")]
