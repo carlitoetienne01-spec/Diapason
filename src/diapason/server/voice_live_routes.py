@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any, Optional
 
@@ -197,8 +198,15 @@ async def websocket_voice_live(websocket: WebSocket) -> None:
         if raw.get("instructions"):
             instructions = str(raw["instructions"])
         elif raw.get("include_memory", True):
-            instructions = _load_system_instructions(
-                websocket.app.state, enable_tools=enable_tools, telephone=telephone
+            # En fil (26/09/2026) : SOUL.md, USER.md et la mémoire se lisent
+            # sur le disque. En ligne dans cette route async, la lecture
+            # figeait la boucle — le flux du chat, la cloche d'approbation et
+            # les autres voix (CLAUDE.md §5).
+            instructions = await asyncio.to_thread(
+                _load_system_instructions,
+                websocket.app.state,
+                enable_tools=enable_tools,
+                telephone=telephone,
             )
 
         # La voix nourrit la mémoire vivante COMME le chat (24 août 2026) :
@@ -252,8 +260,17 @@ async def websocket_voice_live(websocket: WebSocket) -> None:
 @voice_live_router.get("/v1/voice/live/health")
 async def voice_live_health(request: Request) -> dict[str, Any]:
     """Report realtime voice availability (keys + config)."""
+    # En fil (26/09/2026) : le trousseau (un processus `security`), la sonde
+    # d'Ollama (jusqu'à 1,5 s quand il ne répond pas) et le chargement des
+    # outils s'exécutaient EN LIGNE dans cette route async — sur la boucle,
+    # que le bureau sonde toutes les 5 s. Chaque sonde lente figeait le
+    # flux du chat, la voix et la cloche (CLAUDE.md §5). asyncio.to_thread
+    # copie le contexte : la marque du téléphone suit.
+    return await asyncio.to_thread(_sante_de_la_voix, request.app.state)
 
-    defaults = _realtime_defaults(request.app.state)
+
+def _sante_de_la_voix(app_state: Any) -> dict[str, Any]:
+    defaults = _realtime_defaults(app_state)
     from diapason.core.cloud_keys import get_cloud_key
 
     # Same resolution as the sessions themselves (env, then the desktop

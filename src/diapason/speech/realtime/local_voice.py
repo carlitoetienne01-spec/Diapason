@@ -958,7 +958,10 @@ class LocalVoiceSession(RealtimeVoiceSession):
     # -- lifecycle -----------------------------------------------------------
 
     async def connect(self) -> None:
-        if not ollama_reachable():
+        # En fil (26/09/2026) : la sonde attend jusqu'à 1,5 s un Ollama qui ne
+        # répond pas. Appelée en ligne, elle figeait la boucle entière à
+        # chaque « Démarrer » — le chat, la cloche, les autres séances.
+        if not await asyncio.to_thread(ollama_reachable):
             raise RuntimeError(
                 "Local voice needs Ollama running (start the Ollama app, "
                 "or `ollama serve`)."
