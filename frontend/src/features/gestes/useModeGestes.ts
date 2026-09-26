@@ -25,6 +25,8 @@ import {
   type ModeGeste,
 } from './api';
 import { appliquerPointeur, notifierSessionGestes, pointeurNatifDisponible } from './pointeurNatif';
+import { estMobile } from '../../lib/natif';
+import { traduire } from '../../i18n/translate';
 
 // La cadence de DÉPART, avant que le serveur ne dise la sienne. Le serveur
 // reconnaît en ~4 ms ; la limite est le codage JPEG et la boucle locale, pas
@@ -245,6 +247,15 @@ export function useModeGestes(): ModeGestes {
     dejaArme = false,
     verrouDemande: ModeGeste = verrouCourant.current,
   ) => {
+    // 26/09/2026 : dans le téléphone, getUserMedia ouvrirait la caméra DU
+    // TÉLÉPHONE, pas celle du Mac que les gestes pilotent — et un double-clap
+    // capté par le Mac (sondage de `dejaArme`) suffisait à l'y allumer. La
+    // porte de la caméra refuse ici, avant tout armement ; le panneau n'est
+    // de toute façon pas proposé dans le téléphone (§78, §82).
+    if (estMobile) {
+      setErreur(traduire('gestes.pasSurTelephone'));
+      return;
+    }
     // Un seul allumage à la fois. Sans ce verrou, un second clic pendant
     // l'armement ouvre une seconde caméra dont plus rien ne tient la
     // référence — et une caméra qu'on ne désigne plus ne s'éteint plus.

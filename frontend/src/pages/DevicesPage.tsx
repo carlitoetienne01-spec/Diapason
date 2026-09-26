@@ -33,6 +33,8 @@ import type {
 } from '../features/mesh/types';
 import { useConfirm } from '../components/ConfirmDialog';
 import { PanneauGestes } from '../features/gestes/PanneauGestes';
+import { estMobile } from '../lib/natif';
+import { useTranslation } from '../i18n/useTranslation';
 
 const DEVICE_ICONS: Record<MeshDeviceType, typeof Monitor> = {
   DESKTOP: Monitor,
@@ -64,6 +66,7 @@ function formatDate(value: number | null | undefined) {
 
 export function DevicesPage() {
   const confirm = useConfirm();
+  const { t } = useTranslation();
   const [identity, setIdentity] = useState<MeshIdentity | null>(null);
   const [devices, setDevices] = useState<MeshDeviceWithPresence[]>([]);
   const [loading, setLoading] = useState(true);
@@ -286,7 +289,16 @@ export function DevicesPage() {
             des appareils : un geste est une manière de désigner un appareil
             autant qu'une manière d'agir. */}
         <div className="mb-7">
-          <PanneauGestes />
+          {/* 26/09/2026 : dans le téléphone, le panneau ouvrirait la caméra
+              du téléphone. Le dire plutôt que le taire (§5) ; tout ce que
+              les gestes font reste atteignable au doigt (§82). */}
+          {estMobile ? (
+            <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+              {t('gestes.pasSurTelephone')}
+            </p>
+          ) : (
+            <PanneauGestes />
+          )}
         </div>
 
         {identity && (

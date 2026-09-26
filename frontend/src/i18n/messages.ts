@@ -1526,6 +1526,7 @@ export const MESSAGES = {
     "desktopOnly.cloudKey": "API keys are saved from the Diapason app on the Mac.",
     "desktopOnly.inferenceSource": "The inference source is chosen in the Diapason app on the Mac.",
     "inference.readFailed": "Could not read the Mac’s inference source (HTTP {status}).",
+    "gestes.pasSurTelephone": "Hand gestures use the Mac’s camera, so they are not offered on the phone. Everything they do is also reachable by tap, keyboard and voice.",
   },
 
   fr: {
@@ -3037,5 +3038,6 @@ export const MESSAGES = {
     "desktopOnly.cloudKey": "Les clés d’API s’enregistrent depuis l’app Diapason du Mac.",
     "desktopOnly.inferenceSource": "La source d’inférence se choisit dans l’app Diapason du Mac.",
     "inference.readFailed": "Impossible de lire la source d’inférence du Mac (HTTP {status}).",
+    "gestes.pasSurTelephone": "Les gestes de la main passent par la caméra du Mac : ils ne sont pas proposés sur le téléphone. Tout ce qu’ils font reste possible au doigt, au clavier et à la voix.",
   },
 } as const;

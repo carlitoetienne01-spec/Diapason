@@ -51,7 +51,7 @@ export function detectLocale(
 export function localeDuDocument(
   lang: string | null = typeof document === 'undefined'
     ? null
-    : document.documentElement.getAttribute('lang'),
+    : (document.documentElement?.getAttribute?.('lang') ?? null),
   languages?: readonly string[],
 ): Locale {
   return isLocale(lang) ? lang : detectLocale(languages);
