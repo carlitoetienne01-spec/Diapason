@@ -39,6 +39,18 @@ l'implémentation Python réelle.
 Écrit dans `~/Projets/diapason_mobile/test/mesh/canonical_vectors.json`, à
 commiter **dans le dépôt diapason_mobile**.
 
+Depuis le 26/09/2026, un vecteur y est **nommé** : `enveloppe-de-session`,
+l'enveloppe `webview-session` que le téléphone signe pour ouvrir sa
+session d'appareil sur la passerelle du tailnet. Les octets ne suffisent
+pas pour elle : l'hôte refuse une clé en trop ou en moins avant toute
+cryptographie. Pytest exige donc ses clés (`SESSION_REQUEST_FIELDS`), et le
+Dart exige que son constructeur rende exactement ce vecteur.
+
+Dans l'autre sens, `test/mesh/telecommande_signee.json` (dépôt mobile) porte
+deux ordres `desktop.open` signés par le vrai constructeur Dart, l'un
+confirmé, l'autre non ; `tests/contract/test_telecommande_du_telephone.py`
+les passe au vrai `verify_command` (contrôle n°10).
+
 ### 2. Les routes du maillage : `success://` et `vie://`
 
 `app.navigate` et `app.show_resource` nomment un écran par une route
@@ -78,6 +90,8 @@ se manifester au téléphone, loin du commit qui l'a causée.
 | Le test échoue quand… | Ce qu'il faut faire |
 |---|---|
 | `canonical_bytes` a changé sans régénération | relancer `gen_canonical_vectors.py`, commiter côté diapason_mobile |
+| `build_session_request` ou `SESSION_REQUEST_FIELDS` a changé | régénérer les vecteurs, adapter `MeshApi.enveloppeDeSession` dans le même thème |
+| la télécommande signée n'est plus acceptée (ou plus refusée sans confirmation) | voir `verify_command` ; régénérer la fixture côté mobile (`DIAPASON_ECRIRE_TELECOMMANDE=1`) si le Dart a changé |
 | une route `/v1/vie` disparaît ou est renommée | régénérer les deux instantanés **dans le même commit**, et prévoir la version mobile qui cessera de fonctionner |
 | une route neuve n'est pas dans l'instantané | régénérer — ajouter est inoffensif, mais l'instantané doit rester un miroir exact |
 | un écran ou un schéma de route n'est accepté que d'un côté | corriger la table en retard, dans les deux dépôts s'il le faut |
