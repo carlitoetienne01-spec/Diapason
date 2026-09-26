@@ -119,7 +119,7 @@ class RemoteToolSpec:
 REMOTE_TOOLS: dict[str, RemoteToolSpec] = {
     "app.navigate": RemoteToolSpec(
         name="app.navigate",
-        description="Ouvrir un écran de Succès sur l'appareil cible.",
+        description="Ouvrir un écran de Diapason sur l'appareil cible.",
         capability="app.navigate",
         parameters={
             # A route, not a URL: the target resolves it against its own
@@ -176,7 +176,7 @@ REMOTE_TOOLS: dict[str, RemoteToolSpec] = {
     ),
     "app.open": RemoteToolSpec(
         name="app.open",
-        description="Mettre Succès au premier plan sur l'appareil cible.",
+        description="Mettre Diapason au premier plan sur l'appareil cible.",
         capability="app.open",
         parameters={},
         offline_policy="REQUIRE_ONLINE",

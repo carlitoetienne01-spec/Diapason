@@ -101,7 +101,7 @@ function notificationCopy(habit: VieHabit, hour: number): { title: string; body:
   const hourLabel = `${String(hour).padStart(2, '0')}h`;
   return {
     title: `${icon} ${name}`,
-    body: `Rappel ${hourLabel} — cochez-la dans Succès tant que Diapason est ouvert.`,
+    body: `Rappel ${hourLabel} — cochez-la dans Habitudes tant que Diapason est ouvert.`,
   };
 }
 

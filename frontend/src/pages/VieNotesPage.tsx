@@ -1109,7 +1109,7 @@ export function VieNotesPage() {
           <div className="min-w-0">
             <div className="flex items-center gap-2 mb-1 sm:mb-2">
               <span className="text-xs font-medium tracking-[0.16em] uppercase" style={{ color: 'var(--color-accent)' }}>
-                Succès
+                Diapason
               </span>
               {(loading || rafraichit) && <Loader2 size={13} className="animate-spin" style={{ color: 'var(--color-accent)' }} />}
             </div>

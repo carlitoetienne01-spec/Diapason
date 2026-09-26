@@ -70,7 +70,7 @@ def relay_post(base_url: str, path: str, payload: dict[str, Any]) -> dict[str, A
     from diapason.core.local_mode import LocalOnlyError, assert_may_leave
 
     try:
-        assert_may_leave("les données Succès", destination=url)
+        assert_may_leave("les tâches, notes et finances de Diapason", destination=url)
     except LocalOnlyError as exc:
         raise VieError(
             "Le mode local-only est actif : rien ne quitte ce Mac, donc la "

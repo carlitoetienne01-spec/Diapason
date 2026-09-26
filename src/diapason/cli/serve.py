@@ -317,7 +317,7 @@ def _servir_deux_sockets(
     help=(
         "Adresse d'écoute du MAILLAGE seul, sur un second socket "
         "(ex. 0.0.0.0). Dix routes y sont exposées, pas une de plus : "
-        "le chat, la voix et Succès restent sur --host."
+        "le chat, la voix, les tâches et les notes restent sur --host."
     ),
 )
 @click.option(

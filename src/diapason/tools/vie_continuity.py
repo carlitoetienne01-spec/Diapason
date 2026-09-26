@@ -166,7 +166,7 @@ class VieContinuityTool(MagasinParesseux, BaseTool):
                 "message": f"Bilan {year} calculé.",
                 "review": self._store.year_review(year, month=month),
             }
-        raise VieError(f"Action Succès inconnue : {action}")
+        raise VieError(f"Action inconnue : {action}")
 
     @staticmethod
     def _template_payload(

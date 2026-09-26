@@ -1,3 +1,6 @@
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
 import { DEFAULT_LOCALE, LOCALES, detectLocale, isLocale } from './locale';
@@ -179,5 +182,55 @@ describe('plurals', () => {
     expect(translate('en', 'test.plural' as never, { count: 0 })).toBe('0 files');
     delete catalogue.en['test.plural'];
     delete catalogue.fr['test.plural'];
+  });
+});
+
+/**
+ * 25/09/2026, étape 11 du plan de la phase 1b : « Succès » devient « Diapason »
+ * à l'écran. La clé du titre de groupe (`nav.succes`, « Succès ») était
+ * traduite en deux langues et lue nulle part (§5) ; elle devient `nav.vie`,
+ * et la barre latérale la dessine au-dessus des onglets.
+ */
+describe('le domaine vie s’affiche sous le nom Diapason', () => {
+  it('aucune chaîne du catalogue ne nomme encore Succès', () => {
+    for (const locale of LOCALES) {
+      const fautives = Object.entries(MESSAGES[locale])
+        .filter(([, valeur]) => /Succès/.test(String(valeur)))
+        .map(([cle]) => cle);
+      expect(fautives, `${locale} : ces clés disent encore « Succès »`).toEqual([]);
+    }
+  });
+
+  it('le titre du groupe dit Diapason, et la barre latérale le lit', () => {
+    for (const locale of LOCALES) {
+      expect(MESSAGES[locale]['nav.vie'], `nav.vie en ${locale}`).toBe('Diapason');
+    }
+    const barre = readFileSync(
+      join(process.cwd(), 'src/components/Sidebar/Sidebar.tsx'),
+      'utf-8',
+    );
+    expect(barre, 'une clé que rien ne lit est une promesse morte').toContain("t('nav.vie')");
+  });
+
+  it('aucun écran n’écrit « Succès » en dur', () => {
+    // Les neuf surtitres des pages étaient écrits en dur dans le JSX, hors du
+    // catalogue : le test précédent ne les voyait pas. Les commentaires sont
+    // retirés d'abord (le nom y raconte l'histoire, à bon droit), et seule la
+    // majuscule compte : « un succès », au sens de réussite, reste permis.
+    const fichiers = (dossier: string): string[] =>
+      readdirSync(dossier).flatMap((nom) => {
+        const chemin = join(dossier, nom);
+        if (statSync(chemin).isDirectory()) return fichiers(chemin);
+        return /\.tsx?$/.test(nom) && !/\.test\.tsx?$/.test(nom) ? [chemin] : [];
+      });
+    const racine = join(process.cwd(), 'src');
+    const fautifs = fichiers(racine).filter((chemin) =>
+      /\bSuccès\b/.test(
+        readFileSync(chemin, 'utf-8')
+          .replace(/\/\*[\s\S]*?\*\//g, '')
+          .replace(/^[ \t]*\/\/.*$/gm, ''),
+      ),
+    );
+    expect(fautifs.map((chemin) => chemin.replace(racine, '')), 'ces fichiers affichent « Succès »').toEqual([]);
   });
 });

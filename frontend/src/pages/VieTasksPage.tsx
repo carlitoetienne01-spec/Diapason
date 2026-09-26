@@ -936,7 +936,7 @@ export function VieTasksPage() {
           <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-2">
             <div className="shrink-0">
               <div className="hidden sm:flex items-center gap-2 mb-1 h-4">
-                <span className="text-xs font-medium tracking-[0.16em] uppercase leading-4" style={{ color: 'var(--color-accent)' }}>Succès</span>
+                <span className="text-xs font-medium tracking-[0.16em] uppercase leading-4" style={{ color: 'var(--color-accent)' }}>Diapason</span>
                 {iconeSynchro}
                 {voyantActivite}
               </div>

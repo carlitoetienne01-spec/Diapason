@@ -1269,7 +1269,7 @@ export function VieProjectsPage() {
             </div>
             <div className="order-1 sm:order-none">
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-xs font-medium tracking-[0.16em] uppercase" style={{ color: 'var(--color-accent)' }}>Succès</span>
+                <span className="text-xs font-medium tracking-[0.16em] uppercase" style={{ color: 'var(--color-accent)' }}>Diapason</span>
                 {saving && <Loader2 size={13} className="animate-spin" style={{ color: 'var(--color-accent)' }} />}
               </div>
               <div className="flex flex-wrap items-start gap-3">
@@ -1800,7 +1800,7 @@ export function VieProjectsPage() {
         <header className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between mb-7">
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <span className="text-xs font-medium tracking-[0.16em] uppercase" style={{ color: 'var(--color-accent)' }}>Succès</span>
+              <span className="text-xs font-medium tracking-[0.16em] uppercase" style={{ color: 'var(--color-accent)' }}>Diapason</span>
               {saving && <Loader2 size={13} className="animate-spin" style={{ color: 'var(--color-accent)' }} />}
             </div>
             <h1 className="text-2xl font-semibold" style={{ color: 'var(--color-text)' }}>Projets</h1>

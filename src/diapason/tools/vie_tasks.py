@@ -214,7 +214,7 @@ class VieTasksTool(MagasinParesseux, BaseTool):
                     f"Sous-tâche mise à jour dans {task['title']}.",
                     {"task": task, "persistence": "local"},
                 )
-            return self._fail(f"Action Succès inconnue : {action}")
+            return self._fail(f"Action inconnue : {action}")
         except (VieError, ValueError) as exc:
             return self._fail(str(exc))
 
@@ -223,7 +223,7 @@ class VieTasksTool(MagasinParesseux, BaseTool):
     def _workspace(self) -> VieWorkspaceStore:
         if not isinstance(self._store, VieWorkspaceStore):
             raise VieError(
-                "Le module Succès complet n'est pas initialisé : le réseau est "
+                "Le module complet des tâches n'est pas initialisé : le réseau est "
                 "hors de portée."
             )
         return self._store

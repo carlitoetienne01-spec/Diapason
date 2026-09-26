@@ -429,7 +429,7 @@ def _sync_store() -> VieSyncStore:
     if not isinstance(store, VieSyncStore):
         raise HTTPException(
             status_code=503,
-            detail="Le moteur de synchronisation Succès n'est pas disponible.",
+            detail="Le moteur de synchronisation de Diapason n'est pas disponible.",
         )
     return store
 
@@ -637,7 +637,7 @@ def planner_pastilles(start: str, end: str) -> dict[str, Any]:
     store = get_store()
     if not isinstance(store, VieContinuityStore):
         raise HTTPException(
-            status_code=503, detail="Le module Succès complet n'est pas initialisé."
+            status_code=503, detail="Le module complet des tâches n'est pas initialisé."
         )
     return store.pastilles_planner(
         _resolved_date(start, allow_empty=False),
@@ -650,7 +650,7 @@ def _workspace_store() -> VieWorkspaceStore:
     if not isinstance(store, VieWorkspaceStore):
         # Test stores created before phase two remain valid for task-only routes.
         raise HTTPException(
-            status_code=503, detail="Le module Succès complet n'est pas initialisé."
+            status_code=503, detail="Le module complet des tâches n'est pas initialisé."
         )
     return store
 
@@ -660,7 +660,7 @@ def _continuity_store() -> VieContinuityStore:
     if not isinstance(store, VieContinuityStore):
         raise HTTPException(
             status_code=503,
-            detail="Les récurrences et le bilan Succès ne sont pas initialisés.",
+            detail="Les récurrences et le bilan ne sont pas initialisés.",
         )
     return store
 

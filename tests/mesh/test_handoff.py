@@ -50,7 +50,7 @@ class TestAvecUneRessource:
             envois.append(kw)
             return {
                 "status": "SUCCESS",
-                "userSafeMessage": "Le projet est affiché sur Succès.",
+                "userSafeMessage": "Le projet est affiché sur Diapason.",
                 "commandId": "c1",
             }
 
@@ -85,7 +85,7 @@ class TestAvecUneRessource:
                 "diapason.mesh.dispatch.dispatch_command",
                 lambda **kw: {
                     "status": "SUCCESS",
-                    "userSafeMessage": "L'écran est ouvert sur Succès.",
+                    "userSafeMessage": "L'écran est ouvert sur Diapason.",
                 },
             ),
             patch.object(
@@ -93,7 +93,7 @@ class TestAvecUneRessource:
             ),
         ):
             resultat = _outil().execute(device_phrase="iPad")
-        assert resultat.content == "L'écran est ouvert sur Succès."
+        assert resultat.content == "L'écran est ouvert sur Diapason."
 
     def test_un_echec_du_recepteur_reste_un_echec(self):
         ca.poser_contexte(
@@ -220,7 +220,7 @@ class TestUnTelephoneVaCHERCHERSaCommande:
                 "_await_ack",
                 lambda self, issue: {
                     "status": "SUCCESS",
-                    "userSafeMessage": "Le projet est affiché sur Succès.",
+                    "userSafeMessage": "Le projet est affiché sur Diapason.",
                 },
             ),
         ):
@@ -229,7 +229,7 @@ class TestUnTelephoneVaCHERCHERSaCommande:
             "un échec accompagné d'une phrase de réussite fait réessayer "
             "un agent, ou lui fait annoncer une panne qui n'a pas eu lieu"
         )
-        assert resultat.content == "Le projet est affiché sur Succès."
+        assert resultat.content == "Le projet est affiché sur Diapason."
 
     def test_une_attente_qui_depasse_reste_une_attente(self):
         """Le délai écoulé ne transforme pas « pas encore » en « refusé »."""

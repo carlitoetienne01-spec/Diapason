@@ -62,7 +62,7 @@ export function VieDashboardPage() {
         timestamp: Date.now(),
         level: 'error',
         category: 'vie',
-        message: `Dashboard Succès : ${message}`,
+        message: `Tableau de bord : ${message}`,
       });
       toast.error('Le tableau de bord ne peut pas être chargé.', { description: message });
     } finally {
@@ -111,7 +111,7 @@ export function VieDashboardPage() {
           <div className="min-w-0">
             <div className="flex items-center gap-2 mb-1 sm:mb-2">
               <span className="text-xs font-medium tracking-[0.16em] uppercase" style={{ color: 'var(--color-accent)' }}>
-                Succès
+                Diapason
               </span>
               {(loading || rafraichit || saving) && (
                 <Loader2 size={13} className="animate-spin" style={{ color: 'var(--color-accent)' }} />

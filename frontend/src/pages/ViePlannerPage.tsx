@@ -391,7 +391,7 @@ export function ViePlannerPage() {
         <header className="mb-4 sm:mb-7">
           <div className="flex items-center gap-2 mb-2">
             <span className="text-xs font-medium tracking-[0.16em] uppercase" style={{ color: 'var(--color-accent)' }}>
-              Succès
+              Diapason
             </span>
             {saving && <Loader2 size={13} className="animate-spin" style={{ color: 'var(--color-accent)' }} />}
           </div>

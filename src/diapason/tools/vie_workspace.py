@@ -128,7 +128,7 @@ class VieWorkspaceTool(MagasinParesseux, BaseTool):
         if action == "overview":
             target = _resolve_date(params.get("date")) or date.today().isoformat()
             return {
-                "message": f"Vue Succès du {target} chargée.",
+                "message": f"Vue du {target} chargée.",
                 "overview": self._store.dashboard(on_date=target),
             }
         if action == "list_projects":
@@ -218,7 +218,7 @@ class VieWorkspaceTool(MagasinParesseux, BaseTool):
             }
             note = self._store.update_note(item_id, patch)
             return {"message": f"Note mise à jour : {note['title']}", "note": note}
-        raise VieError(f"Action Succès inconnue : {action}")
+        raise VieError(f"Action inconnue : {action}")
 
     @staticmethod
     def _required_id(params: dict[str, Any]) -> str:

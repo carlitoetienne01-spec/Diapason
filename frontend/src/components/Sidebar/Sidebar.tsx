@@ -132,7 +132,7 @@ export function Sidebar() {
   // Only the opening half used to be enforced, which was invisible as long as
   // every way in and out went through openSettings/closeSettings. A remote
   // command from another appareil navigates without touching either, and left
-  // the Réglages drawer standing over a Succès page.
+  // the Réglages drawer standing over a Diapason page.
   useEffect(() => {
     setSettingsOpen(onSettingsRoute);
   }, [onSettingsRoute]);
@@ -369,10 +369,21 @@ export function Sidebar() {
                 {t('sidebar.newChat')}
               </button>
 
-              {/* Succès tabs. Nav and conversations scroll together so a long
-                  history does not squeeze the tabs. */}
+              {/* Les onglets du domaine « vie ». Nav and conversations scroll
+                  together so a long history does not squeeze the tabs.
+                  25/09/2026 : le groupe n'avait aucun titre, et `nav.succes`
+                  (« Succès ») n'était lu nulle part — une clé traduite en
+                  deux langues pour un texte que personne ne voyait. Le titre
+                  est dessiné comme ceux des groupes de Réglages, et nomme
+                  aussi la liste pour un lecteur d'écran. */}
               <div className="flex-1 min-h-0 overflow-y-auto">
-                <GlassNav items={vieNavItems} />
+                <div
+                  className="px-5 pt-2 pb-1 text-[11px] font-medium uppercase tracking-wider"
+                  style={{ color: 'var(--color-text-tertiary)' }}
+                >
+                  {t('nav.vie')}
+                </div>
+                <GlassNav items={vieNavItems} groupLabel={t('nav.vie')} />
                 {/* Conversation list — everything below the fold scrolls */}
                 <div
                   className="px-2 pt-1"

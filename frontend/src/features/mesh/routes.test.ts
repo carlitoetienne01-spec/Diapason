@@ -9,7 +9,7 @@ describe('resolveSuccessRoute', () => {
     expect(MESH_ROUTE_TODAY).toBe('/vie/planner');
   });
 
-  it('opens each Succès screen the mesh vocabulary names', () => {
+  it('opens each Diapason screen the mesh vocabulary names', () => {
     expect(resolveSuccessRoute('success://tasks')).toEqual({ path: '/vie/tasks' });
     expect(resolveSuccessRoute('success://projects')).toEqual({ path: '/vie/projects' });
     expect(resolveSuccessRoute('success://notes')).toEqual({ path: '/vie/notes' });

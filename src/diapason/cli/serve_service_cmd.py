@@ -44,7 +44,7 @@ def _label():
     is_flag=True,
     help="Ouvrir un SECOND socket pour que vos autres appareils atteignent "
     "ce Mac. Dix routes du maillage y sont exposées, créance d'appareil "
-    "exigée ; le chat, la voix et Succès restent sur la loopback.",
+    "exigée ; le chat, la voix, les tâches et les notes restent sur la loopback.",
 )
 @click.option(
     "--lan-port",

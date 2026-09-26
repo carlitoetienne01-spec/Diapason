@@ -143,7 +143,7 @@ async function executerRequete<T>(path: string, init: RequestInit = {}): Promise
     }
 
     if (!response.ok) {
-      let message = `Erreur Succès (${response.status})`;
+      let message = `Erreur Diapason (${response.status})`;
       let detail: unknown = null;
       try {
         const payload = await response.json();
@@ -799,7 +799,7 @@ export async function downloadVieExport(): Promise<void> {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = `succes_${new Date().getFullYear()}.json`;
+  anchor.download = `diapason_${new Date().getFullYear()}.json`;
   anchor.click();
   URL.revokeObjectURL(url);
 }

@@ -289,7 +289,7 @@ def _open(command: RemoteCommand) -> dict[str, Any]:
     )
     if not place:
         return _queue_full()
-    return {"ok": True, "userSafeMessage": "Succès est au premier plan."}
+    return {"ok": True, "userSafeMessage": "Diapason est au premier plan."}
 
 
 def _notify(command: RemoteCommand) -> dict[str, Any]:

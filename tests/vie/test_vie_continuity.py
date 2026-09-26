@@ -132,7 +132,9 @@ def test_quotes_are_stable_per_day_and_exported(tmp_path):
 
     assert db.quote_for_date("2026-08-15") == db.quote_for_date("2026-08-15")
     exported = db.export_state()
-    assert exported["format"] == "diapason-succes-v3"
+    assert exported["format"] == "diapason-vie-v1", (
+        "le format d'export suit le nom du domaine"
+    )
     assert {quote["id"] for quote in exported["state"]["quotes"]} == {"a", "b"}
     db.delete_quote(first["id"])
     assert [quote["id"] for quote in db.list_quotes()] == ["b"]
@@ -219,7 +221,7 @@ def test_api_lifecycle_and_planner_materialization(tmp_path):
             == 1
         )
         assert client.get("/v1/vie/year-review?year=2026").status_code == 200
-        assert client.get("/v1/vie/export").json()["format"] == "diapason-succes-v3"
+        assert client.get("/v1/vie/export").json()["format"] == "diapason-vie-v1"
         assert (
             client.request(
                 "DELETE",

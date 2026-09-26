@@ -145,13 +145,13 @@ class TestRepondreALaQuestionDejaPosee:
             "diapason.mesh.dispatch.dispatch_command",
             return_value={
                 "status": "SUCCESS",
-                "userSafeMessage": "Le projet est affiché sur Succès.",
+                "userSafeMessage": "Le projet est affiché sur Diapason.",
             },
         ) as envoi:
             resultat = _outil().execute(device_phrase="iPad")
         assert resultat.success is True
         assert envoi.call_args.kwargs["target_device_id"] == "dev_iPad"
-        assert resultat.content == "Le projet est affiché sur Succès."
+        assert resultat.content == "Le projet est affiché sur Diapason."
 
     def test_le_jeton_de_la_question_sert_de_cle_d_idempotence(self):
         """Un clic ET une phrase ne doivent envoyer qu'une fois."""

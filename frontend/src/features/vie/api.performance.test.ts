@@ -6,7 +6,7 @@ let api:typeof import('./api');
 const response=(value:unknown,status=200)=>({ok:status<400,status,headers:new Headers(),json:async()=>value});
 beforeEach(async()=>{vi.resetModules();reseau.mockReset();base='http://local';cle='test';api=await import('./api');});
 afterEach(()=>vi.useRealTimers());
-describe('client Succès et réessais',()=>{
+describe('client vie et réessais',()=>{
   it('ne charge qu’une fois les mêmes tâches simultanées',async()=>{
     reseau.mockResolvedValue(response({tasks:[{id:'a'}]}));const [a,b]=await Promise.all([api.listVieTasks(),api.listVieTasks()]);
     expect(reseau).toHaveBeenCalledTimes(1);expect(a).toEqual(b);expect(a[0]).not.toBe(b[0]);

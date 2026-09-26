@@ -899,7 +899,10 @@ class VieContinuityStore(VieWorkspaceStore):
                 "SELECT habit_id,log_date,done,updated_at_ms FROM vie_habit_logs"
             ).fetchall()
         return {
-            "format": "diapason-succes-v3",
+            # 25/09/2026 : « diapason-succes-v3 » jusque-là. Aucun lecteur ne
+            # vérifie ce champ ; il nomme le fichier que l'utilisateur garde
+            # (diapason_AAAA.json), et « succes » y aurait survécu au nom.
+            "format": "diapason-vie-v1",
             "exportedAtMs": now_ms(),
             "state": {
                 "todos": self.list_tasks(include_done=True),

@@ -639,7 +639,7 @@ class TestAttraperEtDeposer:
                 "diapason.mesh.dispatch.dispatch_command",
                 return_value={
                     "status": "SUCCESS",
-                    "userSafeMessage": "Le projet est affiché sur Succès.",
+                    "userSafeMessage": "Le projet est affiché sur Diapason.",
                 },
             ) as envoi,
         ):
@@ -647,7 +647,7 @@ class TestAttraperEtDeposer:
         assert resultat["done"] is True
         assert resultat["target"] == "iPad"
         # La phrase vient du RÉCEPTEUR, jamais de ce qu'on a envoyé.
-        assert resultat["message"] == "Le projet est affiché sur Succès."
+        assert resultat["message"] == "Le projet est affiché sur Diapason."
         assert envoi.call_args.kwargs["arguments"] == {
             "resourceType": "project",
             "resourceId": "p1",
@@ -736,7 +736,7 @@ class TestTrancherEntreDeuxAppareils:
             "diapason.mesh.dispatch.dispatch_command",
             return_value={
                 "status": "SUCCESS",
-                "userSafeMessage": "Le projet est affiché sur Succès.",
+                "userSafeMessage": "Le projet est affiché sur Diapason.",
             },
         ) as envoi:
             reponse = client.post(
@@ -748,7 +748,7 @@ class TestTrancherEntreDeuxAppareils:
         assert corps["done"] is True
         assert corps["target"] == "iPad"
         # La phrase vient du RÉCEPTEUR, jamais de ce qu'on a envoyé.
-        assert corps["message"] == "Le projet est affiché sur Succès."
+        assert corps["message"] == "Le projet est affiché sur Diapason."
         assert envoi.call_args.kwargs["target_device_id"] == "dev_iPad"
         assert envoi.call_args.kwargs["arguments"] == {
             "resourceType": "project",
