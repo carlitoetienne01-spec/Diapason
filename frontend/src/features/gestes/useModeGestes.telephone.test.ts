@@ -66,4 +66,18 @@ describe('Le mode gestes dans le téléphone', () => {
     expect(monture.valeur().actif).toBe(false);
     expect(monture.valeur().erreur, 'le refus doit se dire, pas se taire').toBeTruthy();
   });
+
+  it('n’ouvre aucune caméra sur un double clap capté par le Mac', async () => {
+    // Échec évité (26/09/2026) : la garde était justifiée par le sondage
+    // `dejaArme` (un double-clap ouvre la session côté serveur), mais seul
+    // le bouton était éprouvé — `if (estMobile && !dejaArme)` restait vert.
+    api.lireDiagnostic.mockResolvedValue({ armed: true, clapListening: true });
+    api.ecouterLesClaps.mockResolvedValue(true);
+    monture = monterCrochet(() => useModeGestes());
+    monture.valeur().basculerLesClaps();
+    await vider();
+    await env.horloge.avancer(2000);
+    expect(env.camerasOuvertes()).toBe(0);
+    expect(monture.valeur().actif).toBe(false);
+  });
 });

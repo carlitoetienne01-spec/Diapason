@@ -2,12 +2,15 @@ import { describe, expect, it } from 'vitest';
 
 import {
   REQUETE_BARRE_EN_COLONNE,
+  appliquerNavigation,
   barreApresNavigation,
   barreOuverteAuDemarrage,
   barreSuperposee,
   estCheminDesReglages,
+  inscrireRetourBarre,
   retourFermeLaBarre,
 } from './barre';
+import { PontNatif } from './natif';
 
 /** Une fenêtre dont la largeur est dite par la seule requête média. */
 function largeur(px: number) {
@@ -118,5 +121,53 @@ describe('Le retour d’Android ferme d’abord le tiroir', () => {
 
   it('ne ferme pas une colonne (téléphone à l’horizontale)', () => {
     expect(retourFermeLaBarre(true, false)).toBe(false);
+  });
+});
+
+describe('Le câblage de la barre au store et au retour d’Android', () => {
+  // Échec évité (26/09/2026) : l'effet de Sidebar.tsx qui applique
+  // `barreApresNavigation`, et l'inscription au retour, pouvaient
+  // disparaître sans un rouge — les fonctions pures, elles, restaient vertes.
+  function etat(ouverte: boolean) {
+    const e = {
+      sidebarOpen: ouverte,
+      setSidebarOpen: (o: boolean) => {
+        e.sidebarOpen = o;
+      },
+    };
+    return e;
+  }
+
+  it('une navigation dans le tiroir le referme', () => {
+    const e = etat(true);
+    appliquerNavigation(e, { superposee: true, avant: '/', apres: '/vie/tasks' });
+    expect(e.sidebarOpen).toBe(false);
+  });
+
+  it('le retour d’Android ferme le tiroir, par le vrai pont', () => {
+    const envoyes: Array<Record<string, unknown>> = [];
+    const pont = new PontNatif({ postMessage: (t: string) => envoyes.push(JSON.parse(t)) });
+    const e = etat(true);
+    const desinscrire = inscrireRetourBarre(pont, () => e, () => true);
+    pont.recevoir({ type: 'demande', id: 'c1', verbe: 'retour' });
+    expect(e.sidebarOpen).toBe(false);
+    expect(envoyes[0]).toMatchObject({ ok: true, donnees: { traite: true } });
+    pont.recevoir({ type: 'demande', id: 'c2', verbe: 'retour' });
+    expect(envoyes[1], 'tiroir fermé : la coquille fait son propre retour').toMatchObject({
+      donnees: { traite: false },
+    });
+    desinscrire();
+  });
+
+  it('une colonne ne consomme pas le retour', () => {
+    const pont = new PontNatif({ postMessage: () => {} });
+    const e = etat(true);
+    inscrireRetourBarre(pont, () => e, () => false);
+    pont.recevoir({ type: 'demande', id: 'c1', verbe: 'retour' });
+    expect(e.sidebarOpen).toBe(true);
+  });
+
+  it('hors du téléphone, rien ne s’inscrit', () => {
+    expect(() => inscrireRetourBarre(null, () => etat(true), () => true)()).not.toThrow();
   });
 });

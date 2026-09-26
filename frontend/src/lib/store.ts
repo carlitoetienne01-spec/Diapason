@@ -180,7 +180,11 @@ function loadSettings(): Settings {
   };
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
-    if (!raw) return defaults;
+    // 26/09/2026 : sans réglages enregistrés, la clé de session était
+    // ignorée ; le premier `updateSettings` (un clic sur un thème) la
+    // réécrivait vide et `saveSettings` l'effaçait — tout répondait 401
+    // ensuite, toasts « Missing Authorization header » à l'appui.
+    if (!raw) return { ...defaults, apiKey: sessionStorage.getItem('diapason-api-key') || '' };
     const parsed = JSON.parse(raw);
     if (parsed.apiKey) {
       try {

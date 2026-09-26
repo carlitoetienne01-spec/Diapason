@@ -35,10 +35,10 @@ import { useAppStore, type ThemeMode, type TerminalSkin } from '../../lib/store'
 import { useTranslation } from '../../i18n/useTranslation';
 import { demanderLeFocusDuCompositeur } from '../../lib/panneau';
 import {
-  barreApresNavigation,
+  appliquerNavigation,
   barreSuperposee,
   estCheminDesReglages,
-  retourFermeLaBarre,
+  inscrireRetourBarre,
 } from '../../lib/barre';
 import { pontNatif } from '../../lib/natif';
 
@@ -87,28 +87,17 @@ export function Sidebar() {
     const precedente = derniereNavigation.current;
     if (precedente.cle === location.key) return;
     derniereNavigation.current = { cle: location.key, chemin: location.pathname };
-    const etat = useAppStore.getState();
-    const suivante = barreApresNavigation({
-      ouverte: etat.sidebarOpen,
+    appliquerNavigation(useAppStore.getState(), {
       superposee: lireSuperposee(),
       avant: precedente.chemin,
       apres: location.pathname,
     });
-    if (suivante !== etat.sidebarOpen) etat.setSidebarOpen(suivante);
   }, [location.key, location.pathname]);
 
   // Le bouton retour d'Android ferme d'abord le tiroir (verbe `retour` de la
   // coquille) ; sans quoi il quittait la page sous le voile, tiroir resté
   // ouvert. Hors du téléphone, `pontNatif` est nul et rien ne s'inscrit.
-  useEffect(() => {
-    if (!pontNatif) return;
-    return pontNatif.surRetour(() => {
-      const etat = useAppStore.getState();
-      if (!retourFermeLaBarre(etat.sidebarOpen, lireSuperposee())) return false;
-      etat.setSidebarOpen(false);
-      return true;
-    });
-  }, []);
+  useEffect(() => inscrireRetourBarre(pontNatif, useAppStore.getState, lireSuperposee), []);
 
   // Each terminal screen is its own stop, so the shortcut walks all seven
   // looks rather than treating Terminal as a single destination.

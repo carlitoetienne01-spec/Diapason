@@ -91,3 +91,38 @@ export function barreApresNavigation(entree: {
 export function retourFermeLaBarre(ouverte: boolean, superposee: boolean): boolean {
   return ouverte && superposee;
 }
+
+/** Ce que la barre lit et écrit du store — rien d'autre. */
+export type EtatBarre = { sidebarOpen: boolean; setSidebarOpen: (ouverte: boolean) => void };
+
+/**
+ * Appliquer `barreApresNavigation` au store. Le composant ne fait plus que
+ * l'appeler (26/09/2026 : retirer l'appel de l'effet de Sidebar.tsx, ou
+ * l'inscription au retour, laissait toute la suite verte).
+ */
+export function appliquerNavigation(
+  etat: EtatBarre,
+  entree: { superposee: boolean; avant: string; apres: string },
+): void {
+  const suivante = barreApresNavigation({ ouverte: etat.sidebarOpen, ...entree });
+  if (suivante !== etat.sidebarOpen) etat.setSidebarOpen(suivante);
+}
+
+/**
+ * Inscrire la barre au bouton retour d'Android : un tiroir ouvert se ferme
+ * et le retour est consommé. Rend la désinscription ; hors du téléphone
+ * (`pont` nul), rien ne s'inscrit.
+ */
+export function inscrireRetourBarre(
+  pont: { surRetour(gestionnaire: () => boolean): () => void } | null,
+  lireEtat: () => EtatBarre,
+  superposee: () => boolean,
+): () => void {
+  if (!pont) return () => {};
+  return pont.surRetour(() => {
+    const etat = lireEtat();
+    if (!retourFermeLaBarre(etat.sidebarOpen, superposee())) return false;
+    etat.setSidebarOpen(false);
+    return true;
+  });
+}
