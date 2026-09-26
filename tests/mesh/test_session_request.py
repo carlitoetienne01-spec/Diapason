@@ -268,6 +268,14 @@ class TestUnOrdreNEstPasUneOuverture:
         )
         assert recue.tool == "app.navigate"
 
+    def test_une_cle_en_trop_est_refusee_meme_signee(self, monde):
+        """La forme est EXACTE, pas un minimum : une demande valide à laquelle
+        on ajoute un champ de commande est refusée avant toute signature."""
+        brut = {**_demande(monde), "commandId": "cmd_x"}
+        refus = _refus(brut, monde)
+        assert refus.code == "DENIED"
+        assert "forme attendue" in refus.message
+
     def test_une_ouverture_de_session_n_est_pas_un_ordre(self, monde):
         """L'inverse : présentée au bus des commandes, elle n'y entre pas."""
         registry, nonces, _ = monde

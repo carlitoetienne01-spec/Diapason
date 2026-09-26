@@ -139,6 +139,20 @@ class TestLaRevocationCoupeAussitot:
         registry.revoke(PHONE)
         assert sessions.redeem_ticket(ticket) is None
 
+    def test_un_ticket_ne_s_echange_plus_quand_la_confiance_tombe_sans_revoke(
+        self, monde, tmp_path
+    ):
+        """Le contrôle TRUSTED de redeem_ticket lui-même, sans revoke() — qui
+        efface déjà les tickets et masquait son absence (contre-épreuve du
+        26/09/2026 : la sous-requête retirée, 225 tests restaient verts)."""
+        _, sessions = monde
+        ticket = sessions.issue_ticket(PHONE)["ticket"]
+        with closing(sqlite3.connect(tmp_path / "mesh.db")) as conn, conn:
+            conn.execute("UPDATE mesh_devices SET trust_level='REVOKED'")
+        assert sessions.redeem_ticket(ticket) is None, (
+            "un ticket a ouvert une session pour un appareil qui n'est plus sûr"
+        )
+
     def test_revoke_efface_les_lignes_de_session(self, monde, tmp_path):
         registry, sessions = monde
         _ouvrir(sessions)
@@ -231,6 +245,9 @@ class TestLeJetonNEstJamaisEnClair:
             "lastUsedAtMs",
             "expiresAtMs",
         }, "champs sur le fil en camelCase, et rien d'autre"
+        assert len(listees[0]["sessionId"]) == 16, (
+            "le sessionId est un préfixe court du hachage, pas le hachage entier"
+        )
 
 
 class TestDeuxEchangesConcurrents:
@@ -266,6 +283,17 @@ class TestFermerSansRevoquer:
         assert registry.get(PHONE)["trustLevel"] == "TRUSTED"
         assert sessions.verify_session(_ouvrir(sessions)) is not None, (
             "l'appareil doit pouvoir rouvrir une session avec sa clé"
+        )
+
+    def test_fermer_emporte_aussi_les_tickets(self, monde):
+        """« Fermer ses sessions » depuis le Mac : un ticket émis dans la
+        minute d'avant ne doit pas en rouvrir une (la docstring promet
+        « every session and ticket »)."""
+        _, sessions = monde
+        ticket = sessions.issue_ticket(PHONE)["ticket"]
+        sessions.close_device_sessions(PHONE)
+        assert sessions.redeem_ticket(ticket) is None, (
+            "un ticket a survécu à la fermeture et rouvert une session"
         )
 
     def test_fermer_une_session_n_en_ferme_qu_une(self, monde):
