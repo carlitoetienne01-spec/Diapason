@@ -48,11 +48,14 @@
 .roue-bouton:focus-visible { outline: 2px solid var(--color-text); outline-offset: 3px; }
 
 /* La bande du bord : un glissé qui y commence ouvre la roue. Invisible,
- * sans rien couvrir d'autre que les 16 px du bord (BORD_PX). */
+ * sans rien couvrir d'autre que les 16 px du bord (BORD_PX), sur les 200 px
+ * du bas — sous le pouce, et là seulement où la coquille retire le bord aux
+ * gestes d'Android (verbe `bordRoue` : 200 dp, le plafond qu'Android accorde
+ * par bord). Plus haut, le glissé reste le « retour » du système. */
 .roue-bord {
   position: fixed;
-  top: 25%;
   bottom: 0;
+  height: 200px;
   width: 16px;
   z-index: 55;
   touch-action: none;

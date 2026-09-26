@@ -256,3 +256,12 @@ export function glisseOuvreLaRoue(dx: number, dy: number, cote: Cote): boolean {
 export function issueDuRelache(entree: { continu: boolean; deplacementPx: number }): 'ouvrir' | 'garder' {
   return entree.continu && entree.deplacementPx >= TOUCHER_PX ? 'ouvrir' : 'garder';
 }
+
+/**
+ * Ce que la coquille reçoit pour retirer un bord aux gestes d'Android (verbe
+ * `bordRoue`, lib/natif.ts). Un seul champ, le côté de la roue ; la coquille
+ * refuse toute autre valeur.
+ */
+export function chargeBordRoue(cote: Cote): { cote: Cote } {
+  return { cote };
+}

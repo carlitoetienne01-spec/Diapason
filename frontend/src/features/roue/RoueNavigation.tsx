@@ -35,10 +35,11 @@ import {
 } from 'lucide-react';
 
 import { useTranslation } from '../../i18n/useTranslation';
-import { pontNatif } from '../../lib/natif';
+import { demanderAuTelephone, pontNatif } from '../../lib/natif';
 import { useAppStore } from '../../lib/store';
 import { openTalkToDiapason } from '../../components/TalkToDiapasonHost';
 import {
+  chargeBordRoue,
   cibleAimantation,
   commenceAuBord,
   dureeAimantation,
@@ -299,6 +300,15 @@ export function RoueNavigation() {
     // déplacent le focus elles-mêmes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ouverte, mode]);
+
+  // La coquille retire le bas de ce bord aux gestes d'Android (verbe
+  // `bordRoue`) : sans quoi, en navigation par gestes, le glissé depuis le
+  // bord est un « retour » du système et n'arrive jamais ici. Une coquille
+  // ancienne répond `verbeInconnu` : le bouton reste, rien ne casse.
+  useEffect(() => {
+    if (!pontNatif) return;
+    void demanderAuTelephone('bordRoue', chargeBordRoue(cote)).catch(() => {});
+  }, [cote]);
 
   // Le bouton retour d'Android ferme d'abord la roue (verbe `retour`).
   useEffect(() => {

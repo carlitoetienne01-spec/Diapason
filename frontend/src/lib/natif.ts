@@ -25,8 +25,17 @@
 
 import { traduire } from '../i18n/translate';
 
-/** Ce que le bundle demande à la coquille. */
-export const VERBES_SORTANTS = ['theme', 'enregistrer', 'ouvrirExterne'] as const;
+/**
+ * Ce que le bundle demande à la coquille.
+ *
+ * `bordRoue` (26/09/2026, lot 3 de la fluidité) : le côté de la roue de
+ * navigation, `{ cote: 'droite' | 'gauche' }`, pour que la coquille retire
+ * le bas de ce bord aux gestes d'Android. Sans lui, sur un téléphone en
+ * navigation par gestes, le glissé depuis le bord droit était pris par le
+ * système pour un « retour » et n'atteignait jamais la page. Il ne rend
+ * rien — aucun secret.
+ */
+export const VERBES_SORTANTS = ['theme', 'enregistrer', 'ouvrirExterne', 'bordRoue'] as const;
 /**
  * Ce que la coquille demande au bundle.
  *
@@ -56,7 +65,7 @@ export type VerbeEntrant = (typeof VERBES_ENTRANTS)[number];
  * documents, où l'on choisit un dossier à son rythme. Deux minutes, parce
  * qu'au-delà le bouton « Export… » tournerait sans fin sur un sélecteur
  * oublié ; le fichier, lui, ne sera pas annoncé tant que la coquille ne l'a
- * pas écrit. Les deux autres ne font que traverser le canal (quelques
+ * pas écrit. Les trois autres ne font que traverser le canal (quelques
  * millisecondes) : dix secondes couvrent une coquille occupée à démarrer,
  * pas davantage.
  */
@@ -64,6 +73,7 @@ export const DELAIS_MS: Record<VerbeSortant, number> = {
   enregistrer: 120_000,
   theme: 10_000,
   ouvrirExterne: 10_000,
+  bordRoue: 10_000,
 };
 
 export interface CanalNatif {

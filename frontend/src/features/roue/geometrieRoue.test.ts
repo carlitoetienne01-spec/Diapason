@@ -9,6 +9,7 @@ import {
   RAYON_MAX_PX,
   RAYON_MIN_PX,
   RESSORT_MAX,
+  chargeBordRoue,
   cibleAimantation,
   commenceAuBord,
   dureeAimantation,
@@ -187,5 +188,15 @@ describe('Le glissé depuis le bord, en un seul geste', () => {
     expect(issueDuRelache({ continu: true, deplacementPx: 40 })).toBe('ouvrir');
     expect(issueDuRelache({ continu: true, deplacementPx: 2 }), 'ouverte pour regarder').toBe('garder');
     expect(issueDuRelache({ continu: false, deplacementPx: 200 }), 'dans la roue ouverte, le toucher ouvre').toBe('garder');
+  });
+});
+
+describe('La coquille apprend le bord de la roue', () => {
+  it('le verbe bordRoue ne porte que le côté', () => {
+    // Échec évité (26/09/2026) : en navigation par gestes, Android prenait
+    // le glissé depuis le bord pour un « retour » ; la coquille doit savoir
+    // QUEL bord retirer à ses gestes, et rien d'autre ne doit voyager.
+    expect(chargeBordRoue('droite')).toEqual({ cote: 'droite' });
+    expect(Object.keys(chargeBordRoue('gauche')), 'aucun autre champ').toEqual(['cote']);
   });
 });
