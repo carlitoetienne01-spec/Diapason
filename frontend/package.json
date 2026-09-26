@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build && node scripts/precomprimer.mjs",
+    "build": "tsc --noEmit && vite build && node scripts/verifierGraphe.mjs && node scripts/precomprimer.mjs",
     "build:tauri": "tsc --noEmit && vite build --outDir dist",
     "preview": "vite preview",
     "tauri": "tauri",

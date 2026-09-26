@@ -82,7 +82,12 @@ export default defineConfig({
         manualChunks: {
           react: ['react', 'react-dom'],
           markdown: ['react-markdown', 'rehype-highlight', 'remark-gfm'],
-          charts: ['recharts'],
+          // Plus de `charts: ['recharts']` (26/09/2026, contre-épreuve de la
+          // fluidité) : ce morceau manuel emportait React lui-même (le morceau
+          // `react` pesait 1 octet), si bien que l'index préchargeait les
+          // 432 Ko de recharts pour ouvrir une Discussion qui n'en montre
+          // aucun. Sans lui, recharts suit les pages qui l'importent, et
+          // scripts/verifierGraphe.mjs refuse le build s'il revient à l'ouverture.
           router: ['react-router'],
           // Three is only ever needed once the voice panel opens; keeping it
           // out of the entry chunk means the app still starts on one request.
