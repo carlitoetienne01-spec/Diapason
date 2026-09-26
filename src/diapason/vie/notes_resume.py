@@ -21,8 +21,11 @@ _CAPACITES = {
     "full": 3000,
     "reading": 2400,
 }
+# 25/09/2026 : l'éditeur écrit désormais ``vie-page-break``, mais les notes
+# enregistrées avant gardent ``succes-page-break`` dans leur HTML. Ne lire que
+# l'un des deux aurait compté une page de moins par saut, sans rien dire.
 _SAUT = re.compile(
-    r"""<hr[^>]*class=["'][^"']*succes-page-break[^"']*["'][^>]*>""", re.I
+    r"""<hr[^>]*class=["'][^"']*(?:vie|succes)-page-break[^"']*["'][^>]*>""", re.I
 )
 # 19/09/2026 : reparcourir 1,1 Mo de HTML coûtait 23 ms par lecture, même
 # sans frappe. Une empreinte du CONTENU évite un cache périmé si deux écritures

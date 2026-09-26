@@ -1,6 +1,6 @@
 """Le raisonnement du réseau côté serveur — statuts, voisinage, impact.
 
-Miroir de ``frontend/src/features/succes/reseau.ts`` (chantier réseau,
+Miroir de ``frontend/src/features/vie/reseau.ts`` (chantier réseau,
 18 septembre 2026). Jusque-là, aucun outil vocal ne connaissait les arêtes :
 « qu'est-ce que je peux faire dans AgriCulture ? » n'avait pas de réponse,
 et relier deux tâches passait par la souris seule — ce que le §82 refuse.

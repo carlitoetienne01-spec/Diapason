@@ -42,7 +42,7 @@ const SETTINGS_PATHS = [
   '/data-sources',
   '/agents',
   '/logs',
-  '/succes/sync',
+  '/vie/sync',
   '/devices',
   '/dashboard',
 ];
@@ -165,15 +165,15 @@ export function Sidebar() {
 
   // Discussion is not a nav tab: "Nouvelle discussion" and the conversation
   // list already cover opening and switching chats.
-  const succesNavItems = [
-    { path: '/succes/dashboard', icon: LayoutDashboard, label: t('nav.succesDashboard') },
-    { path: '/succes/planner', icon: CalendarRange, label: t('nav.succesPlanner') },
-    { path: '/succes/tasks', icon: ListTodo, label: t('nav.succesTasks') },
-    { path: '/succes/projects', icon: BriefcaseBusiness, label: t('nav.succesProjects') },
-    { path: '/succes/finances', icon: Wallet, label: t('nav.succesFinances') },
-    { path: '/succes/habits', icon: Repeat2, label: t('nav.succesHabits') },
-    { path: '/succes/notes', icon: NotebookPen, label: t('nav.succesNotes') },
-    { path: '/succes/year-review', icon: Trophy, label: t('nav.succesYearReview') },
+  const vieNavItems = [
+    { path: '/vie/dashboard', icon: LayoutDashboard, label: t('nav.vieDashboard') },
+    { path: '/vie/planner', icon: CalendarRange, label: t('nav.viePlanner') },
+    { path: '/vie/tasks', icon: ListTodo, label: t('nav.vieTasks') },
+    { path: '/vie/projects', icon: BriefcaseBusiness, label: t('nav.vieProjects') },
+    { path: '/vie/finances', icon: Wallet, label: t('nav.vieFinances') },
+    { path: '/vie/habits', icon: Repeat2, label: t('nav.vieHabits') },
+    { path: '/vie/notes', icon: NotebookPen, label: t('nav.vieNotes') },
+    { path: '/vie/year-review', icon: Trophy, label: t('nav.vieYearReview') },
   ];
 
   // Réglages is administration, not a workspace: its tabs are grouped by what
@@ -191,7 +191,7 @@ export function Sidebar() {
       items: [
         { path: '/data-sources', icon: Database, label: t('nav.dataSources') },
         { path: '/agents', icon: Bot, label: t('nav.agents') },
-        { path: '/succes/sync', icon: RefreshCw, label: t('nav.succesSync') },
+        { path: '/vie/sync', icon: RefreshCw, label: t('nav.vieSync') },
         { path: '/devices', icon: MonitorSmartphone, label: t('nav.devices') },
       ],
     },
@@ -372,7 +372,7 @@ export function Sidebar() {
               {/* Succès tabs. Nav and conversations scroll together so a long
                   history does not squeeze the tabs. */}
               <div className="flex-1 min-h-0 overflow-y-auto">
-                <GlassNav items={succesNavItems} />
+                <GlassNav items={vieNavItems} />
                 {/* Conversation list — everything below the fold scrolls */}
                 <div
                   className="px-2 pt-1"

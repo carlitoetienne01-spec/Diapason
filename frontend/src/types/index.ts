@@ -285,6 +285,6 @@ export interface ServerInfo {
 export interface LogEntry {
   timestamp: number;
   level: 'info' | 'warn' | 'error';
-  category: 'server' | 'model' | 'chat' | 'tool' | 'succes' | 'mesh';
+  category: 'server' | 'model' | 'chat' | 'tool' | 'vie' | 'mesh';
   message: string;
 }

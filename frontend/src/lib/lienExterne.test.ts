@@ -5,7 +5,7 @@ import { estLienOuvrable } from './lienExterne';
 describe('Un lien de note n’est pas ouvrable parce qu’il ressemble à un lien', () => {
   it('accepte http et https', () => {
     expect(estLienOuvrable('https://openclassrooms.com/fr/courses/4312781')).toBe(true);
-    expect(estLienOuvrable('http://127.0.0.1:8000/succes/notes')).toBe(true);
+    expect(estLienOuvrable('http://127.0.0.1:8000/vie/notes')).toBe(true);
   });
 
   it('refuse javascript:, qui exécuterait du code dans la page', () => {

@@ -14,7 +14,7 @@
  */
 
 /** `success://today` is the day view — the planner, not the stats dashboard. */
-export const MESH_ROUTE_TODAY = '/succes/planner';
+export const MESH_ROUTE_TODAY = '/vie/planner';
 
 export type MeshSelectionKind = 'project' | 'note';
 
@@ -48,10 +48,10 @@ const SELECTABLE: Record<string, MeshSelectionKind> = {
 
 const PATHS: Record<string, string> = {
   today: MESH_ROUTE_TODAY,
-  tasks: '/succes/tasks',
-  projects: '/succes/projects',
-  habits: '/succes/habits',
-  notes: '/succes/notes',
+  tasks: '/vie/tasks',
+  projects: '/vie/projects',
+  habits: '/vie/habits',
+  notes: '/vie/notes',
 };
 
 /**

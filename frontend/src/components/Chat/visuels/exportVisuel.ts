@@ -1,6 +1,6 @@
 import { apiFetch, isTauri } from '../../../lib/api';
-import { exporterSuccesFichier, updateSuccesNote } from '../../../features/succes/api';
-import { octetsEnBase64 } from '../../../features/succes/pdfPhotos';
+import { exporterVieFichier, updateVieNote } from '../../../features/vie/api';
+import { octetsEnBase64 } from '../../../features/vie/pdfPhotos';
 import { urlSvg, type PaletteVisuel, type SvgPret } from './svgSur';
 
 /** Copier les styles calculés de Recharts/Mermaid en attributs SVG : le
@@ -80,7 +80,7 @@ export async function enregistrerVisuel(rendu: SvgPret, format: 'svg' | 'png' | 
     const { save } = await import('@tauri-apps/plugin-dialog');
     const path = await save({ defaultPath: nom, filters: [{ name: format.toUpperCase(), extensions: [format] }] });
     if (!path) return false;
-    await exporterSuccesFichier(path, octetsEnBase64(new Uint8Array(await blob.arrayBuffer())));
+    await exporterVieFichier(path, octetsEnBase64(new Uint8Array(await blob.arrayBuffer())));
   } else {
     const url = URL.createObjectURL(blob); const a = document.createElement('a');
     a.href = url; a.download = nom; document.body.appendChild(a); a.click(); a.remove();
@@ -95,7 +95,7 @@ export async function ajouterVisuelDansNote(id: string, rendu: SvgPret, fond: st
   const alt = titre.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
   const content = `<p><img src="data:image/png;base64,${base64}" alt="${alt}"></p>`;
   if (new TextEncoder().encode(content).length > 1_000_000) throw new Error('noteFull');
-  await updateSuccesNote(id, { appendContent: content, opId: crypto.randomUUID() });
+  await updateVieNote(id, { appendContent: content, opId: crypto.randomUUID() });
 }
 
 export async function ouvrirDansInkscape(rendu: SvgPret): Promise<boolean> {

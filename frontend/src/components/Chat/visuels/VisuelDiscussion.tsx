@@ -4,8 +4,8 @@ import { motion, useReducedMotion } from 'motion/react';
 import { Maximize2, X, MoreHorizontal, RotateCcw, ZoomIn, ZoomOut, ScanLine, Image as ImageIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { useTranslation } from '../../../i18n/useTranslation';
-import { listSuccesNoteResumes } from '../../../features/succes/api';
-import type { SuccesNoteResume } from '../../../features/succes/types';
+import { listVieNoteResumes } from '../../../features/vie/api';
+import type { VieNoteResume } from '../../../features/vie/types';
 import { lireGraphique, type GenreVisuel, type Graphique } from './formatVisuel';
 import { nettoyerSvg, urlSvg, type PaletteVisuel, type SvgPret } from './svgSur';
 import { dessinerMermaid } from './moteurMermaid';
@@ -57,7 +57,7 @@ export default function VisuelDiscussion({ genre, source, complet, enDirect }: {
   const [code, setCode] = useState(false); const [donnees, setDonnees] = useState(false);
   const [rejeu, setRejeu] = useState(0); const [occupe, setOccupe] = useState(false);
   const [tentative, setTentative] = useState(0);
-  const [notes, setNotes] = useState<SuccesNoteResume[] | null>(null);
+  const [notes, setNotes] = useState<VieNoteResume[] | null>(null);
   const erreurPlotly = useCallback(() => {
     if (estEnsembles) { setVueEnRelief(false); toast.info(l.threeUnavailable); }
     else { setErreur(true); setFigure(null); }
@@ -153,7 +153,7 @@ export default function VisuelDiscussion({ genre, source, complet, enDirect }: {
   const exporter = (format: 'svg' | 'png' | 'pdf') => action(async () => {
     if (await enregistrerVisuel(await obtenir(), format, titre, paletteDessin.fond, paletteDessin.police === 'monospace')) toast.success(l.saved);
   }, l.exportError);
-  const choisirNote = () => action(async () => { setNotes(await listSuccesNoteResumes()); setMenu(false); });
+  const choisirNote = () => action(async () => { setNotes(await listVieNoteResumes()); setMenu(false); });
   const ajouter = (id: string) => action(async () => {
     await ajouterVisuelDansNote(id, await obtenir(), paletteDessin.fond, titre); setNotes(null); toast.success(l.noteDone);
   });

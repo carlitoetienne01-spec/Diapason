@@ -118,6 +118,16 @@ class TestResumesNotes:
         )
         assert resumer_note({"content": ""})["pageCountEstimate"] == 1
 
+    def test_le_saut_de_page_se_compte_sous_ses_deux_noms(self):
+        """25/09/2026 : l'éditeur écrit ``vie-page-break``, les notes d'avant
+        gardent ``succes-page-break``. Ne compter que l'un des deux aurait
+        retiré une page par saut au cartable, sans rien dire."""
+        for classe in ("vie-page-break", "succes-page-break"):
+            contenu = f'<p>a</p><hr class="{classe}"><p>b</p><hr class="{classe}">'
+            assert resumer_note({"content": contenu})["pageCountEstimate"] == 3, (
+                f"deux sauts {classe} font trois pages"
+            )
+
     def test_routes_resume_detail_et_compatibilite(self, db, monkeypatch):
         monkeypatch.setattr(routes, "_store", db)
         note = db.create_note({"title": "A", "content": "Texte caché recherché"})

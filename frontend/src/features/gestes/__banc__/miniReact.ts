@@ -2,7 +2,7 @@
  * Un mini-React pour le banc d'essai — et rien d'autre.
  *
  * Ce dépôt teste sous node, avec des doublures maison plutôt que jsdom
- * (voir src/features/succes/useRefreshOnFocus.test.ts, qui le dit et le
+ * (voir src/features/vie/useRefreshOnFocus.test.ts, qui le dit et le
  * fait). Or le mode gestes vit ENTIÈREMENT dans des crochets React et deux
  * composants : sans de quoi les exécuter, la moitié qui capture, encode et
  * envoie ne peut être vérifiée par rien.

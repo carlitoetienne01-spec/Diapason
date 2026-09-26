@@ -1457,7 +1457,7 @@ html[data-diapason-compact='1'] [data-sonner-toaster] [data-sonner-toast] {
 }
 
 /* Succès notes — Mise en page Word : une feuille = un format papier, pas un bandeau. */
-.succes-note-desk {
+.vie-note-desk {
   --note-desk: var(--color-bg-secondary);
   --note-gutter: 28px;
   background: var(--note-desk);
@@ -1465,9 +1465,9 @@ html[data-diapason-compact='1'] [data-sonner-toaster] [data-sonner-toast] {
 /* Le cadre réserve la place RÉELLEMENT occupée par la feuille mise à
    l'échelle. `transform: scale()` ne change pas la boîte de layout : sans ce
    cadre, le bureau ne défilerait pas quand la page dépasse. */
-.succes-note-frame {
+.vie-note-frame {
   /* Les six variables de géométrie se déclarent ICI, et non sur la feuille.
-     Une variable CSS DESCEND : déclarée sur `.succes-note-page`, elle était
+     Une variable CSS DESCEND : déclarée sur `.vie-note-page`, elle était
      invisible pour son propre parent — le `calc()` ci-dessous devenait
      invalide, la largeur du cadre retombait sur `auto`, et `margin: 0 auto`
      ne centrait plus rien. La feuille restait collée à gauche avec un vide à
@@ -1485,12 +1485,12 @@ html[data-diapason-compact='1'] [data-sonner-toaster] [data-sonner-toast] {
   width: calc(var(--note-page-width) * var(--note-zoom, 1));
   margin: 0 auto;
 }
-.succes-note-scale {
+.vie-note-scale {
   transform: scale(var(--note-zoom, 1));
   transform-origin: top left;
   width: var(--note-page-width);
 }
-.succes-note-page {
+.vie-note-page {
   --note-desk: var(--color-bg-secondary);
   --note-paper: #fff;
   position: relative;
@@ -1515,19 +1515,19 @@ html[data-diapason-compact='1'] [data-sonner-toaster] [data-sonner-toast] {
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.16), 0 0 0 1px rgba(0, 0, 0, 0.04);
 }
 /* Axe 1 — la taille du papier (menu « Taille » de Word). */
-.succes-note-frame[data-size="a4"] { --note-paper-w: 210mm; --note-paper-h: 297mm; }
-.succes-note-frame[data-size="letter"] { --note-paper-w: 8.5in; --note-paper-h: 11in; }
-.succes-note-frame[data-size="legal"] { --note-paper-w: 8.5in; --note-paper-h: 14in; }
-.succes-note-frame[data-size="a5"] { --note-paper-w: 148mm; --note-paper-h: 210mm; }
-.succes-note-frame[data-size="executive"] { --note-paper-w: 7.25in; --note-paper-h: 10.5in; }
+.vie-note-frame[data-size="a4"] { --note-paper-w: 210mm; --note-paper-h: 297mm; }
+.vie-note-frame[data-size="letter"] { --note-paper-w: 8.5in; --note-paper-h: 11in; }
+.vie-note-frame[data-size="legal"] { --note-paper-w: 8.5in; --note-paper-h: 14in; }
+.vie-note-frame[data-size="a5"] { --note-paper-w: 148mm; --note-paper-h: 210mm; }
+.vie-note-frame[data-size="executive"] { --note-paper-w: 7.25in; --note-paper-h: 10.5in; }
 
 /* Axe 2 — l'orientation. Elle échange les DEUX dimensions ; ne changer que la
    largeur donnerait une feuille qui n'est plus un format de papier. */
-.succes-note-frame[data-orientation="portrait"] {
+.vie-note-frame[data-orientation="portrait"] {
   --note-page-width: var(--note-paper-w);
   --note-page-height: var(--note-paper-h);
 }
-.succes-note-frame[data-orientation="paysage"] {
+.vie-note-frame[data-orientation="paysage"] {
   --note-page-width: var(--note-paper-h);
   --note-page-height: var(--note-paper-w);
 }
@@ -1537,10 +1537,10 @@ html[data-diapason-compact='1'] [data-sonner-toaster] [data-sonner-toast] {
    72 / 192 px entiers à 96 dpi. En centimètres, « Modérées » dériverait de
    0,19 px. Et il en faut QUATRE : l'ancienne variable unique rendait un
    préréglage asymétrique inexprimable. */
-.succes-note-frame[data-margins="normales"] { --note-m-t: 1in; --note-m-r: 1in; --note-m-b: 1in; --note-m-l: 1in; }
-.succes-note-frame[data-margins="etroites"] { --note-m-t: .5in; --note-m-r: .5in; --note-m-b: .5in; --note-m-l: .5in; }
-.succes-note-frame[data-margins="moderees"] { --note-m-t: 1in; --note-m-r: .75in; --note-m-b: 1in; --note-m-l: .75in; }
-.succes-note-frame[data-margins="larges"] { --note-m-t: 1in; --note-m-r: 2in; --note-m-b: 1in; --note-m-l: 2in; }
+.vie-note-frame[data-margins="normales"] { --note-m-t: 1in; --note-m-r: 1in; --note-m-b: 1in; --note-m-l: 1in; }
+.vie-note-frame[data-margins="etroites"] { --note-m-t: .5in; --note-m-r: .5in; --note-m-b: .5in; --note-m-l: .5in; }
+.vie-note-frame[data-margins="moderees"] { --note-m-t: 1in; --note-m-r: .75in; --note-m-b: 1in; --note-m-l: .75in; }
+.vie-note-frame[data-margins="larges"] { --note-m-t: 1in; --note-m-r: 2in; --note-m-b: 1in; --note-m-l: 2in; }
 /* Les lignes du papier suivent celles du TEXTE.
    Elles étaient tracées tous les 28 px pour un texte à 24,75 px d'interligne
    (15 px × 1,65) : 3,25 px d'écart par ligne. Au bout de quatre lignes le
@@ -1550,7 +1550,7 @@ html[data-diapason-compact='1'] [data-sonner-toaster] [data-sonner-toast] {
    `background-origin: content-box` fait partir la première ligne du haut de
    la zone de texte, et non du bord de la feuille : sans elle, le décalage
    serait constant au lieu d'être croissant, ce qui n'est pas mieux. */
-.succes-note-bg-lined {
+.vie-note-bg-lined {
   background-image: repeating-linear-gradient(
     transparent,
     transparent calc(var(--note-ligne) - 1px),
@@ -1560,7 +1560,7 @@ html[data-diapason-compact='1'] [data-sonner-toaster] [data-sonner-toast] {
   background-origin: content-box;
   background-clip: content-box;
 }
-.succes-note-bg-grid {
+.vie-note-bg-grid {
   background-image:
     linear-gradient(rgba(100, 116, 139, 0.12) 1px, transparent 1px),
     linear-gradient(90deg, rgba(100, 116, 139, 0.12) 1px, transparent 1px);
@@ -1573,7 +1573,7 @@ html[data-diapason-compact='1'] [data-sonner-toaster] [data-sonner-toast] {
    fond répété, et il n'y a donc rien où l'écrire. `left: 0; right: 0` couvre
    la boîte de remplissage — la feuille entière, marges comprises — ce qui
    centre le numéro sur le papier et non sur la colonne de texte. */
-.succes-note-numero {
+.vie-note-numero {
   position: absolute;
   left: 0;
   right: 0;
@@ -1594,7 +1594,7 @@ html[data-diapason-compact='1'] [data-sonner-toaster] [data-sonner-toast] {
    l'on attend un signet, et l'éditeur s'arrête au bord du texte. `left: 0` sur
    un enfant absolu de la feuille désigne le bord du papier, marge comprise —
    c'est la boîte de remplissage qui sert de référence. */
-.succes-note-signet {
+.vie-note-signet {
   position: absolute;
   left: 0;
   width: 5px;
@@ -1605,7 +1605,7 @@ html[data-diapason-compact='1'] [data-sonner-toaster] [data-sonner-toast] {
   border-radius: 0 3px 3px 0;
   opacity: 0.85;
 }
-.succes-note-signet::before {
+.vie-note-signet::before {
   content: '';
   position: absolute;
   left: 0;
@@ -1617,9 +1617,9 @@ html[data-diapason-compact='1'] [data-sonner-toaster] [data-sonner-toast] {
      bas. Un simple rectangle se lirait comme un défaut d'affichage. */
   clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 78%, 0 100%);
 }
-.succes-note-bg-sepia { --note-paper: #f4ecd8; color: #3c3028; }
-.succes-note-bg-dark { --note-paper: #1a2232; color: #e8eef8; }
-.succes-note-editor {
+.vie-note-bg-sepia { --note-paper: #f4ecd8; color: #3c3028; }
+.vie-note-bg-dark { --note-paper: #1a2232; color: #e8eef8; }
+.vie-note-editor {
   position: relative;
   z-index: 1;
   min-height: calc(var(--note-page-height) - var(--note-m-t) - var(--note-m-b));
@@ -1637,10 +1637,10 @@ html[data-diapason-compact='1'] [data-sonner-toaster] [data-sonner-toast] {
 /* Pixel fonts carry a tall em box, so they need their own metrics to stay
    legible. L'interligne se pose sur la FEUILLE, pas sur l'éditeur : c'est
    elle qui porte le papier ligné, et les deux doivent lire la même valeur. */
-.succes-note-frame[data-font="Press Start 2P"] { --note-ligne: 25.2px; }
-.succes-note-frame[data-font="VT323"] { --note-ligne: 27px; }
-.succes-note-editor[data-font="Press Start 2P"] { font-size: 12px; }
-.succes-note-editor[data-font="VT323"] { font-size: 20px; }
+.vie-note-frame[data-font="Press Start 2P"] { --note-ligne: 25.2px; }
+.vie-note-frame[data-font="VT323"] { --note-ligne: 27px; }
+.vie-note-editor[data-font="Press Start 2P"] { font-size: 12px; }
+.vie-note-editor[data-font="VT323"] { font-size: 20px; }
 /* Le papier qui reste sous le dernier mot. Sans lui, la dernière feuille
    s'arrête sur le texte et se voit aussitôt : elle est plus courte que
    toutes les autres, ce qui n'arrive jamais dans Word. */
@@ -1648,37 +1648,37 @@ html[data-diapason-compact='1'] [data-sonner-toaster] [data-sonner-toast] {
    Une vignette est une FENÊTRE sur les blocs d'une page, réduits par
    `transform`. Le rapport 1:1,414 est celui d'une A4 ; il n'a pas besoin
    d'être exact pour choisir une page d'un coup d'œil. */
-.succes-note-miniature {
+.vie-note-miniature {
   overflow: hidden;
   border-radius: 3px;
   position: relative;
 }
-.succes-note-mini {
+.vie-note-mini {
   transform-origin: top left;
   pointer-events: none;
   box-sizing: border-box;
 }
-.succes-note-mini * {
+.vie-note-mini * {
   max-width: 100%;
 }
-.succes-note-editor::after {
+.vie-note-editor::after {
   content: '';
   display: block;
   height: var(--note-tail, 0px);
 }
-.succes-note-editor:empty::before {
+.vie-note-editor:empty::before {
   content: attr(data-placeholder);
   color: #64748b;
   opacity: 0.85;
   pointer-events: none;
 }
-.succes-note-editor h1 { font-size: 1.75em; font-weight: 700; margin: 0.6em 0 0.35em; }
-.succes-note-editor h2 { font-size: 1.4em; font-weight: 650; margin: 0.55em 0 0.3em; }
-.succes-note-editor h3 { font-size: 1.2em; font-weight: 600; margin: 0.5em 0 0.25em; }
-.succes-note-editor ul { list-style: disc; padding-left: 1.4em; margin: 0.4em 0; }
-.succes-note-editor ol { list-style: decimal; padding-left: 1.4em; margin: 0.4em 0; }
-.succes-note-editor hr { border: none; border-top: 1px solid rgba(0,0,0,0.15); margin: 1em 0; }
-.succes-note-editor table {
+.vie-note-editor h1 { font-size: 1.75em; font-weight: 700; margin: 0.6em 0 0.35em; }
+.vie-note-editor h2 { font-size: 1.4em; font-weight: 650; margin: 0.55em 0 0.3em; }
+.vie-note-editor h3 { font-size: 1.2em; font-weight: 600; margin: 0.5em 0 0.25em; }
+.vie-note-editor ul { list-style: disc; padding-left: 1.4em; margin: 0.4em 0; }
+.vie-note-editor ol { list-style: decimal; padding-left: 1.4em; margin: 0.4em 0; }
+.vie-note-editor hr { border: none; border-top: 1px solid rgba(0,0,0,0.15); margin: 1em 0; }
+.vie-note-editor table {
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
@@ -1695,18 +1695,18 @@ html[data-diapason-compact='1'] [data-sonner-toaster] [data-sonner-toast] {
      Puisque nous décidons déjà de la largeur, nous décidons de la marge. */
   margin-inline: 0 !important;
 }
-.succes-note-editor th,
-.succes-note-editor td {
+.vie-note-editor th,
+.vie-note-editor td {
   border: 1px solid rgba(26, 34, 50, 0.18);
   padding: 0.35em 0.55em;
   vertical-align: top;
 }
-.succes-note-editor tr { break-inside: avoid; }
-.succes-note-editor h1,
-.succes-note-editor h2,
-.succes-note-editor h3,
-.succes-note-editor p,
-.succes-note-editor li {
+.vie-note-editor tr { break-inside: avoid; }
+.vie-note-editor h1,
+.vie-note-editor h2,
+.vie-note-editor h3,
+.vie-note-editor p,
+.vie-note-editor li {
   break-inside: avoid;
 }
 /* L'IMPRESSION DOIT RENDRE LES MÊMES PAGES QUE L'ÉCRAN.
@@ -1724,19 +1724,19 @@ html[data-diapason-compact='1'] [data-sonner-toaster] [data-sonner-toast] {
    servi par le serveur Python à un navigateur ordinaire : sous Firefox,
    l'impression coupera un peu autrement. */
 @media print {
-  .succes-note-desk {
+  .vie-note-desk {
     overflow: visible;
     background: none;
     padding: 0;
   }
-  .succes-note-frame,
-  .succes-note-scale {
+  .vie-note-frame,
+  .vie-note-scale {
     width: auto;
     height: auto;
     margin: 0;
     transform: none;
   }
-  .succes-note-page {
+  .vie-note-page {
     width: auto;
     min-height: 0;
     padding: 0;
@@ -1745,53 +1745,57 @@ html[data-diapason-compact='1'] [data-sonner-toaster] [data-sonner-toast] {
   /* Les cales ET les bandes. Une bande de ligne fractionnée vit sur la
      FEUILLE, pas dans l'éditeur : la règle qui ne visait que l'éditeur la
      laissait s'imprimer, une barre grise en travers du papier. */
-  .succes-note-editor .succes-overflow-gap,
-  .succes-note-page > .succes-overflow-gap,
+  .vie-note-editor .vie-overflow-gap,
+  .vie-note-page > .vie-overflow-gap,
   /* Les numéros et le signet sont posés aux hauteurs de l'ÉCRAN. À
      l'impression, c'est le navigateur qui pagine : ils tomberaient n'importe
      où sur le papier. Mieux vaut ne rien imprimer qu'un numéro faux. */
-  .succes-note-page > .succes-note-numero,
-  .succes-note-page > .succes-note-signet {
+  .vie-note-page > .vie-note-numero,
+  .vie-note-page > .vie-note-signet {
     display: none;
   }
-  .succes-note-editor {
+  .vie-note-editor {
     min-height: 0;
     orphans: 2;
     widows: 2;
   }
-  .succes-note-editor h1,
-  .succes-note-editor h2,
-  .succes-note-editor h3,
-  .succes-note-editor h4,
-  .succes-note-editor h5,
-  .succes-note-editor h6 {
+  .vie-note-editor h1,
+  .vie-note-editor h2,
+  .vie-note-editor h3,
+  .vie-note-editor h4,
+  .vie-note-editor h5,
+  .vie-note-editor h6 {
     break-after: avoid;
     break-inside: avoid;
   }
-  .succes-note-editor tr {
+  .vie-note-editor tr {
     break-inside: avoid;
   }
-  .succes-note-editor p,
-  .succes-note-editor li {
+  .vie-note-editor p,
+  .vie-note-editor li {
     break-inside: auto;
   }
-  .succes-note-editor hr.succes-page-break {
+  .vie-note-editor hr.vie-page-break,
+  .vie-note-editor hr.succes-page-break {
     break-after: page;
     height: 0;
     margin: 0;
     background: none;
     visibility: hidden;
   }
-  .succes-note-bg-lined,
-  .succes-note-bg-grid,
-  .succes-note-bg-sepia,
-  .succes-note-bg-dark {
+  .vie-note-bg-lined,
+  .vie-note-bg-grid,
+  .vie-note-bg-sepia,
+  .vie-note-bg-dark {
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;
   }
 }
-/* Saut de page : le reste de la feuille reste du papier, pas un vide noir. */
-.succes-note-editor hr.succes-page-break {
+/* Saut de page : le reste de la feuille reste du papier, pas un vide noir.
+   `succes-page-break` est le nom qu'il portait jusqu'au 25/09/2026, et qui
+   reste écrit dans le HTML des notes enregistrées avant. */
+.vie-note-editor hr.vie-page-break,
+.vie-note-editor hr.succes-page-break {
   border: none;
   height: var(--note-gutter, 28px);
   margin: 0 calc(-1 * var(--note-m-r)) var(--note-m-b) calc(-1 * var(--note-m-l));
@@ -1801,11 +1805,12 @@ html[data-diapason-compact='1'] [data-sonner-toaster] [data-sonner-toast] {
   position: relative;
   overflow: visible;
 }
-.succes-note-editor hr.succes-page-break::after {
+.vie-note-editor hr.vie-page-break::after,
+.vie-note-editor hr.succes-page-break::after {
   content: none;
 }
-.succes-note-editor .succes-overflow-gap,
-.succes-note-editor .succes-overflow-gap-inner {
+.vie-note-editor .vie-overflow-gap,
+.vie-note-editor .vie-overflow-gap-inner {
   pointer-events: none;
   user-select: none;
   background: transparent;
@@ -1827,24 +1832,24 @@ html[data-diapason-compact='1'] [data-sonner-toaster] [data-sonner-toast] {
    « 1.1 Budget d'heures par langage » : la cale mesurait 100 px quand la ligne
    voisine en mesurait 623, et les deux pages paraissaient collées, avec un
    petit rectangle sombre pour toute séparation.
-   La marge de la bande reste contenue par `.succes-overflow-gap-inner`, qui
+   La marge de la bande reste contenue par `.vie-overflow-gap-inner`, qui
    est un vrai bloc à l'intérieur de la cellule. */
-.succes-note-editor tr.succes-overflow-gap {
+.vie-note-editor tr.vie-overflow-gap {
   display: table-row;
 }
-.succes-note-editor .succes-overflow-gap td {
+.vie-note-editor .vie-overflow-gap td {
   border: none;
   padding: 0;
 }
 /* La bande d'une ligne de tableau fractionnée : posée en absolu SUR la
    feuille, au-dessus des bordures des cellules. Dans une cellule,
    `width: 100%` désignerait la cellule et non la page. */
-.succes-note-page > .succes-overflow-gutter-flottant {
+.vie-note-page > .vie-overflow-gutter-flottant {
   height: var(--note-gutter, 28px);
   background: var(--note-desk, var(--color-bg-secondary));
   z-index: 2;
 }
-.succes-note-editor .succes-overflow-gutter {
+.vie-note-editor .vie-overflow-gutter {
   height: var(--note-gutter, 28px);
   margin-left: calc(-1 * var(--note-m-l));
   width: calc(100% + var(--note-m-l) + var(--note-m-r));

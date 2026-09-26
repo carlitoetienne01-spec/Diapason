@@ -1,27 +1,28 @@
 import { describe, expect, it } from 'vitest';
 
+import { ROUTES_VIE } from '../vie/routesVie';
 import { MESH_ROUTE_TODAY, resolveSuccessRoute } from './routes';
 
 describe('resolveSuccessRoute', () => {
   it('sends today to the day view, not the statistics screen', () => {
     expect(resolveSuccessRoute('success://today')).toEqual({ path: MESH_ROUTE_TODAY });
-    expect(MESH_ROUTE_TODAY).toBe('/succes/planner');
+    expect(MESH_ROUTE_TODAY).toBe('/vie/planner');
   });
 
   it('opens each Succès screen the mesh vocabulary names', () => {
-    expect(resolveSuccessRoute('success://tasks')).toEqual({ path: '/succes/tasks' });
-    expect(resolveSuccessRoute('success://projects')).toEqual({ path: '/succes/projects' });
-    expect(resolveSuccessRoute('success://notes')).toEqual({ path: '/succes/notes' });
-    expect(resolveSuccessRoute('success://habits')).toEqual({ path: '/succes/habits' });
+    expect(resolveSuccessRoute('success://tasks')).toEqual({ path: '/vie/tasks' });
+    expect(resolveSuccessRoute('success://projects')).toEqual({ path: '/vie/projects' });
+    expect(resolveSuccessRoute('success://notes')).toEqual({ path: '/vie/notes' });
+    expect(resolveSuccessRoute('success://habits')).toEqual({ path: '/vie/habits' });
   });
 
   it('carries an id only to the screens that can highlight one', () => {
     expect(resolveSuccessRoute('success://projects/p-1')).toEqual({
-      path: '/succes/projects',
+      path: '/vie/projects',
       selection: { kind: 'project', id: 'p-1' },
     });
     expect(resolveSuccessRoute('success://notes/n-9')).toEqual({
-      path: '/succes/notes',
+      path: '/vie/notes',
       selection: { kind: 'note', id: 'n-9' },
     });
   });
@@ -29,8 +30,8 @@ describe('resolveSuccessRoute', () => {
   it('drops an id no screen could act on rather than pretending', () => {
     // Neither page has per-item selection today. Dropping it here is visible;
     // passing it on would make the command look honoured when nothing happened.
-    expect(resolveSuccessRoute('success://tasks/t-42')).toEqual({ path: '/succes/tasks' });
-    expect(resolveSuccessRoute('success://habits/h-7')).toEqual({ path: '/succes/habits' });
+    expect(resolveSuccessRoute('success://tasks/t-42')).toEqual({ path: '/vie/tasks' });
+    expect(resolveSuccessRoute('success://habits/h-7')).toEqual({ path: '/vie/habits' });
   });
 
   it('treats an unreadable id as an unknown route rather than throwing', () => {
@@ -57,7 +58,7 @@ describe('resolveSuccessRoute', () => {
     expect(resolveSuccessRoute('success://today/')).toEqual({ path: MESH_ROUTE_TODAY });
     expect(resolveSuccessRoute('SUCCESS://TODAY')).toEqual({ path: MESH_ROUTE_TODAY });
     expect(resolveSuccessRoute('success://notes/n%20espace')).toEqual({
-      path: '/succes/notes',
+      path: '/vie/notes',
       selection: { kind: 'note', id: 'n espace' },
     });
   });
@@ -71,7 +72,10 @@ describe('resolveSuccessRoute', () => {
       'success://today',
     ]) {
       const target = resolveSuccessRoute(route);
-      expect(target?.path.startsWith('/succes/')).toBe(true);
+      expect(target?.path.startsWith('/vie/')).toBe(true);
+      // 25/09/2026 : une page que l'application ne sert pas rendait un module
+      // vide sur ce bureau, alors que l'émetteur avait lu un SUCCESS.
+      expect(ROUTES_VIE, `${route} doit ouvrir une page servie`).toContain(target?.path);
     }
   });
 });

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState, useCallback, useRef } from 'react';
+import { lazy, Suspense, useEffect, useState, useCallback, useRef, type ReactElement } from 'react';
 import { estDansUneZoneDeSaisie, laissePasserLeRaccourci } from './lib/saisie';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router';
 import { Layout } from './components/Layout';
@@ -17,7 +17,8 @@ import { MeshHost } from './components/MeshHost';
 import { TalkToDiapasonHost } from './components/TalkToDiapasonHost';
 import { track, hashId } from './lib/analytics';
 import { demarrerSyncConversations } from './lib/convSync';
-import { startHabitReminderScheduler } from './features/succes/habitReminders';
+import { startHabitReminderScheduler } from './features/vie/habitReminders';
+import { cheminHerite, PAGES_VIE, type PageVie } from './features/vie/routesVie';
 import { normaliserZoom, raccourciZoom, zoomSuivant } from './lib/zoom';
 import {
   annoncerLeGlissement,
@@ -68,36 +69,60 @@ const DataSourcesPage = lazy(() =>
 const LogsPage = lazy(() =>
   import('./pages/LogsPage').then((module) => ({ default: module.LogsPage })),
 );
-const SuccesPlannerPage = lazy(() =>
-  import('./pages/SuccesPlannerPage').then((module) => ({ default: module.SuccesPlannerPage })),
+const ViePlannerPage = lazy(() =>
+  import('./pages/ViePlannerPage').then((module) => ({ default: module.ViePlannerPage })),
 );
-const SuccesDashboardPage = lazy(() =>
-  import('./pages/SuccesDashboardPage').then((module) => ({ default: module.SuccesDashboardPage })),
+const VieDashboardPage = lazy(() =>
+  import('./pages/VieDashboardPage').then((module) => ({ default: module.VieDashboardPage })),
 );
-const SuccesTasksPage = lazy(() =>
-  import('./pages/SuccesTasksPage').then((module) => ({ default: module.SuccesTasksPage })),
+const VieTasksPage = lazy(() =>
+  import('./pages/VieTasksPage').then((module) => ({ default: module.VieTasksPage })),
 );
-const SuccesProjectsPage = lazy(() =>
-  import('./pages/SuccesProjectsPage').then((module) => ({ default: module.SuccesProjectsPage })),
+const VieProjectsPage = lazy(() =>
+  import('./pages/VieProjectsPage').then((module) => ({ default: module.VieProjectsPage })),
 );
-const SuccesHabitsPage = lazy(() =>
-  import('./pages/SuccesHabitsPage').then((module) => ({ default: module.SuccesHabitsPage })),
+const VieHabitsPage = lazy(() =>
+  import('./pages/VieHabitsPage').then((module) => ({ default: module.VieHabitsPage })),
 );
-const SuccesFinancesPage = lazy(() =>
-  import('./pages/SuccesFinancesPage').then((module) => ({ default: module.SuccesFinancesPage })),
+const VieFinancesPage = lazy(() =>
+  import('./pages/VieFinancesPage').then((module) => ({ default: module.VieFinancesPage })),
 );
-const SuccesNotesPage = lazy(() =>
-  import('./pages/SuccesNotesPage').then((module) => ({ default: module.SuccesNotesPage })),
+const VieNotesPage = lazy(() =>
+  import('./pages/VieNotesPage').then((module) => ({ default: module.VieNotesPage })),
 );
-const SuccesYearReviewPage = lazy(() =>
-  import('./pages/SuccesYearReviewPage').then((module) => ({ default: module.SuccesYearReviewPage })),
+const VieYearReviewPage = lazy(() =>
+  import('./pages/VieYearReviewPage').then((module) => ({ default: module.VieYearReviewPage })),
 );
-const SuccesSyncPage = lazy(() =>
-  import('./pages/SuccesSyncPage').then((module) => ({ default: module.SuccesSyncPage })),
+const VieSyncPage = lazy(() =>
+  import('./pages/VieSyncPage').then((module) => ({ default: module.VieSyncPage })),
 );
 const DevicesPage = lazy(() =>
   import('./pages/DevicesPage').then((module) => ({ default: module.DevicesPage })),
 );
+
+/**
+ * Une page par entrée de `PAGES_VIE` : le `Record` refuse une page oubliée
+ * comme une page en trop, et c'est cette même liste que la réglette et
+ * `__diapNoms` (lib.rs) sont tenus de suivre (features/vie/routesVie.test.ts).
+ */
+const PAGES_VIE_ELEMENTS: Record<PageVie, ReactElement> = {
+  planner: <ViePlannerPage />,
+  dashboard: <VieDashboardPage />,
+  tasks: <VieTasksPage />,
+  projects: <VieProjectsPage />,
+  finances: <VieFinancesPage />,
+  habits: <VieHabitsPage />,
+  notes: <VieNotesPage />,
+  'year-review': <VieYearReviewPage />,
+  sync: <VieSyncPage />,
+};
+
+/** `/succes/*` → `/vie/*`, requête et ancre comprises (voir `cheminHerite`). */
+function RedirectionHeritee() {
+  const { pathname, search, hash } = useLocation();
+  const cible = cheminHerite(`${pathname}${search}${hash}`) ?? '/';
+  return <Navigate to={cible} replace />;
+}
 
 export default function App() {
   const [setupDone, setSetupDone] = useState(!isTauri());
@@ -271,7 +296,7 @@ export default function App() {
     return () => clearTimeout(t);
   }, []);
 
-  // Succès habit OS reminders (desktop only; in-process timers + Tauri notify).
+  // Habit OS reminders (desktop only; in-process timers + Tauri notify).
   useEffect(() => {
     if (!setupDone || !isTauri()) return;
     startHabitReminderScheduler();
@@ -419,16 +444,12 @@ export default function App() {
             <Route path="data-sources" element={<DataSourcesPage />} />
             <Route path="agents" element={<AgentsPage />} />
             <Route path="logs" element={<LogsPage />} />
-            <Route path="succes/planner" element={<SuccesPlannerPage />} />
-            <Route path="succes/dashboard" element={<SuccesDashboardPage />} />
-            <Route path="succes/tasks" element={<SuccesTasksPage />} />
-            <Route path="succes/projects" element={<SuccesProjectsPage />} />
-            <Route path="succes/finances" element={<SuccesFinancesPage />} />
-            <Route path="succes/habits" element={<SuccesHabitsPage />} />
-            <Route path="succes/notes" element={<SuccesNotesPage />} />
-            <Route path="succes/templates" element={<Navigate to="/succes/tasks" replace />} />
-            <Route path="succes/year-review" element={<SuccesYearReviewPage />} />
-            <Route path="succes/sync" element={<SuccesSyncPage />} />
+            {PAGES_VIE.map((page) => (
+              <Route key={page} path={`vie/${page}`} element={PAGES_VIE_ELEMENTS[page]} />
+            ))}
+            <Route path="vie/templates" element={<Navigate to="/vie/tasks" replace />} />
+            <Route path="succes" element={<RedirectionHeritee />} />
+            <Route path="succes/*" element={<RedirectionHeritee />} />
             <Route path="devices" element={<DevicesPage />} />
           </Route>
         </Routes>

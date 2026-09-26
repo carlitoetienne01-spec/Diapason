@@ -6,7 +6,7 @@ import { BrowserRouter } from 'react-router';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import App from './App';
 import { initApiBase } from './lib/api';
-import { migrerStockage, stockageDeLOrigine } from './features/succes/migrerStockage';
+import { migrerStockage, stockageDeLOrigine } from './features/vie/migrerStockage';
 import { initAnalytics } from './lib/analytics';
 // Les treize polices du menu des notes, embarquées EN LOCAL.
 //

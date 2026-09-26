@@ -1,6 +1,6 @@
 import { jsPDF } from 'jspdf';
 import 'svg2pdf.js';
-import { octetsEnBase64 } from '../../../features/succes/pdfPhotos';
+import { octetsEnBase64 } from '../../../features/vie/pdfPhotos';
 import type { SvgPret } from './svgSur';
 
 const polices = new Map<string, Promise<string>>();

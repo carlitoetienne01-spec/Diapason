@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  * douze n'a rien économisé du tout.
  *
  * Doublures maison plutôt que jsdom : c'est la convention de ce dépôt
- * (voir src/features/succes/useRefreshOnFocus.test.ts). React lui-même est
+ * (voir src/features/vie/useRefreshOnFocus.test.ts). React lui-même est
  * remplacé par __banc__/miniReact, l'horloge par __banc__/environnement.
  */
 

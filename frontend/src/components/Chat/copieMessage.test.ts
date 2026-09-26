@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { copierMessage, htmlDeLaReponse } from './copieMessage';
-import { sanitizeNoteHtml } from '../../features/succes/noteSanitize';
+import { sanitizeNoteHtml } from '../../features/vie/noteSanitize';
 
 function element(html: string) {
   const el = document.createElement('div');
