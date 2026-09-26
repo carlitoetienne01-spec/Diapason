@@ -674,9 +674,14 @@ export function VieHabitsPage() {
               </div>
             </CarteVitree>
 
-            <section className="flex items-center justify-between gap-3 mb-4">
-              <h2 className="text-sm font-medium capitalize min-w-0 truncate" style={{ color: 'var(--color-text)' }}>
-                Grille de {monthLabels[viewMonth]} {viewYear}
+            <section className="flex items-center justify-between gap-3 mb-4 max-sm:flex-wrap">
+              {/* 26/09/2026 : `capitalize` écrivait « Grille De Septembre », et
+                  à 375 px l'année tombait sous les boutons. Sous `sm`, le mois
+                  et l'année suffisent, sur leur propre ligne (la police
+                  d'affichage de l'Ardéchine les coupait encore). */}
+              <h2 className="text-sm font-medium first-letter:uppercase min-w-0 truncate max-sm:basis-full" style={{ color: 'var(--color-text)' }}>
+                <span className="max-sm:hidden">Grille de </span>
+                {monthLabels[viewMonth]} {viewYear}
               </h2>
               <div className="flex items-center gap-2 shrink-0">
                 <button
