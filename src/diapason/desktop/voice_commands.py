@@ -286,6 +286,23 @@ def is_explicit_voice_command(text: str) -> bool:
 
 
 def execute_voice_action(action: VoiceAction) -> dict[str, Any]:
+    # La dernière barrière (26/09/2026) : ces actions ouvrent, cherchent et
+    # composent sur le Mac sans passer par ToolExecutor. Tout appelant servi
+    # par la passerelle du tailnet — la dictée, la voix, une route future —
+    # reçoit le refus au lieu de l'acte (core/origine_telephone.py).
+    from diapason.core.origine_telephone import depuis_le_telephone
+
+    if depuis_le_telephone():
+        return {
+            "handled": True,
+            "kind": action.kind,
+            "target": action.target,
+            "success": False,
+            "detail": (
+                "Les actions sur le Mac ne se commandent pas encore depuis le "
+                "téléphone (phase 6 du plan mobile)."
+            ),
+        }
     import diapason.tools  # noqa: F401
     from diapason.tools.desktop_tools import (
         OpenAnythingTool,
@@ -483,6 +500,14 @@ def finalize_dictation(
         if cleaned_for_cmd and cleaned_for_cmd != (raw or "").strip():
             action = parse_voice_command(cleaned_for_cmd)
 
+    # 26/09/2026 : /v1/dictation/finalize est ouverte au téléphone (sous
+    # session) ; sa dictée qui disait « ouvre Safari » OUVRAIT Safari sur le
+    # Mac, par execute_voice_action — hors de ToolExecutor, donc hors du
+    # plafond du téléphone. Depuis le téléphone, une dictée reste du texte.
+    from diapason.core.origine_telephone import depuis_le_telephone
+
+    if action.kind != "none" and depuis_le_telephone():
+        action = VoiceAction(kind="none", target="", raw=action.raw)
     if action.kind != "none":
         exec_result = execute_voice_action(action)
         return {

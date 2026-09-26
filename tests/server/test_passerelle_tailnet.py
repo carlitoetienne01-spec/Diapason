@@ -601,6 +601,52 @@ class TestLeTelephoneNePilotePasLeMac:
         telephone.engine.generate.assert_called_once()
 
 
+class TestLaDicteeDuTelephone:
+    """/v1/dictation/finalize est ouverte au téléphone sous session. Elle
+    reconnaît les ordres dictés et les EXÉCUTAIT sur le Mac, par
+    execute_voice_action, hors de ToolExecutor (26/09/2026)."""
+
+    def test_ouvre_safari_dicte_au_telephone_reste_du_texte(
+        self, telephone, monkeypatch
+    ):
+        from diapason.desktop import voice_commands
+
+        actes: list = []
+        monkeypatch.setattr(
+            voice_commands,
+            "execute_voice_action",
+            lambda action: actes.append(action) or {"handled": True, "success": True},
+        )
+        reponse = telephone.post(
+            "/v1/dictation/finalize",
+            json={"text": "ouvre Safari", "polish": False},
+            headers={"Origin": ICI},
+        )
+        assert reponse.status_code == 200, reponse.text
+        assert actes == [], "la dictée du téléphone a ouvert une app sur le Mac"
+        assert reponse.json()["mode"] != "command", reponse.json()
+        assert "Safari" in reponse.json()["text"], "la dictée a perdu son texte"
+
+    def test_temoin_sur_la_boucle_locale_la_dictee_commande(self, monde, monkeypatch):
+        from diapason.desktop import voice_commands
+
+        actes: list = []
+        monkeypatch.setattr(
+            voice_commands,
+            "execute_voice_action",
+            lambda action: actes.append(action) or {"handled": True, "success": True},
+        )
+        app, _ = _vraie_app()
+        reponse = TestClient(app).post(
+            "/v1/dictation/finalize",
+            json={"text": "ouvre Safari", "polish": False},
+            headers={"Authorization": f"Bearer {KEY}"},
+        )
+        assert reponse.status_code == 200, reponse.text
+        assert reponse.json()["mode"] == "command"
+        assert actes and actes[0].kind == "focus_app"
+
+
 def _espion_d_outil(nom: str):
     """Une classe d'outil enregistrable sous *nom*, qui note ses exécutions."""
     from diapason.core.types import ToolResult

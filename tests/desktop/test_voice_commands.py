@@ -27,3 +27,23 @@ class TestEnchainementParle:
 
         assert parse_voice_command("fais la vaisselle").kind == "none"
         assert parse_voice_command("fais-moi un café").kind == "none"
+
+
+class TestLeTelephoneNeCommandePasLeMac:
+    """execute_voice_action ouvre, cherche et compose sur le Mac sans passer
+    par ToolExecutor : sa dernière barrière est la sienne (26/09/2026)."""
+
+    def test_sous_la_marque_du_telephone_rien_ne_s_ouvre(self, monkeypatch):
+        from diapason.core.origine_telephone import marquer_le_telephone
+        from diapason.desktop.voice_commands import VoiceAction, execute_voice_action
+        from diapason.tools import desktop_tools
+
+        ouvertures: list = []
+        monkeypatch.setattr(
+            desktop_tools, "open_application", lambda nom, **_k: ouvertures.append(nom)
+        )
+        with marquer_le_telephone():
+            rendu = execute_voice_action(VoiceAction(kind="focus_app", target="Safari"))
+        assert ouvertures == [], "Safari s'est ouvert sur le Mac depuis le téléphone"
+        assert rendu["success"] is False
+        assert "téléphone" in rendu["detail"], "le refus doit dire pourquoi"
