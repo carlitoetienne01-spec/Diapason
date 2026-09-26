@@ -243,7 +243,7 @@ Ne changent pas dans ce commit : `succes.db`, `succes-photos`, les tables, `/v1/
 - **Routes.** Le routeur perd son préfixe figé (`vie/routes.py:37`) et `api_routes.py:1085` le monte deux fois : sous `/v1/vie` (dans le schéma OpenAPI) et sous `/v1/succes` (`include_in_schema=False`). Un compteur journalise les accès à l'ancien préfixe, parce que c'est lui qui dira quand retirer l'alias.
 - **Middleware.** `auth_middleware.py:87` exempte de clé `/v1/vie/sync/pair` et `/exchange`. `:317` exempte du limiteur `/v1/vie/`, **avec la barre finale**, `/sync/` excepté.
 - **Contexte.** `desktop/contexte_app.py:37-45` accepte `/succes/*` et `/vie/*`.
-- **Synchro.** Côté invité, `sync.py:565` et `:626` continuent d'émettre `/v1/succes/sync/*`, que les hôtes anciens comme les nouveaux acceptent.
+- **Synchro.** ~~Côté invité, `sync.py:565` et `:626` continuent d'émettre `/v1/succes/sync/*`, que les hôtes anciens comme les nouveaux acceptent.~~ Fait autrement : l'invité appelle `/v1/vie/sync/*` dès `fea8c4e` (voir 14b).
 - **Instantanés.** On garde `succes_api_surface.json`, dont le cliquet reste vert grâce à l'alias, et on ajoute `scripts/gen_vie_surface.py` → `tests/contract/vie_api_surface.json`. La table du §4 de CLAUDE.md et AGENTS.md changent dans ce même commit.
 
 *Risque silencieux :*
@@ -283,7 +283,7 @@ Ne changent pas dans ce commit : `succes.db`, `succes-photos`, les tables, `/v1/
 - Trois photos à chemins absolus : `photo_content` réussit après migration.
 - `migrer=False` avec seulement `succes.db` rend `succes.db` et ne crée rien.
 - Deux processus (`multiprocessing`) donnent une seule migration.
-- Sur le Mac, après coup : 1 679 tâches, 57 notes, 62 photos dont chaque fichier existe, et `ls ~/.diapason | grep succes` ne montre que les sauvegardes.
+- Sur le Mac, après coup : 1 679 tâches, 57 notes, 62 lignes de photos — **45 actives**, chacune lisible par `/v1/vie/photos/{id}/contenu`, et **17 supprimées** (`deleted_at_ms`) dont les fichiers manquaient déjà avant la migration (contre-épreuve du 25/09/2026 sur une copie : 17 manquants avant, les mêmes après, 90 fichiers déplacés, aucun perdu) — et `ls ~/.diapason | grep succes` ne montre que les sauvegardes. Attendre « 62 photos avec leur fichier » ferait conclure à un défaut qui n'en est pas un.
 
 ~~**6. « Les tables portaient encore le préfixe succes_ ».**~~ *Commité le 25/09/2026 (`38a587d`).* Décidé : on renomme (« absolument tout »). 26 tables renommées par `ALTER TABLE … RENAME` dans une transaction, `user_version` 3 → 4, environ 340 références SQL dans `src/` et 107 dans `tests/`. Ce serait la première migration de schéma du projet.
 *Risque silencieux :* une requête oubliée sur un chemin rare (pierres tombales, imports) ne lève « no such table » que des semaines plus tard.
@@ -357,7 +357,7 @@ La classe `succes-page-break` reste lue (`notePages.ts:29`, `notes_resume.py:25`
 *Preuve :* `tests/test_agents_md.py`, et un `grep -rn` de l'ancien nom du fichier, vide.
 
 **14. Retraits, un commit chacun, chacun à sa condition.**
-- (a) Les émetteurs passent au nouveau schéma quand l'APK et Diapason.app reconstruites l'acceptent.
+- (a) Les émetteurs passent au nouveau schéma quand l'APK et Diapason.app reconstruites l'acceptent. *Condition vérifiée à la main, pas déduite du code* : une commande signée `vie://tasks` envoyée au bureau installé (après `install-desktop.sh`) et au téléphone (après `tool/flutter_avec_secrets.sh`), et l'écran des tâches effectivement ouvert sur chacun. Contre-épreuve du 25/09/2026 : entre le kickstart et la reconstruction, le récepteur Python accepte déjà `vie://` et répond « Écran ouvert », alors que la fenêtre installée ne connaît que `success://` — le faux SUCCESS que l'étape 1 avait supprimé.
 - ~~(b) L'invité de synchro passe à `/v1/vie/sync/*` une fois pc-bureau à jour.~~ *Fait dès l'étape 4 (`fea8c4e`) : pc-bureau ne sert plus que de CI, aucun hôte ancien n'était à ménager. Le 25/09/2026, un cliquet (`TestLInviteNAppellePlusLAlias`, `tests/vie/test_vie_sync.py`) exige que l'appairage et l'échange passent par `/v1/vie/sync/*` sans toucher le compteur de l'alias.*
 - (c) L'alias `/v1/succes` est retiré quand trois conditions sont réunies : `synchroniser.py` corrigé, app reconstruite et service worker renouvelé ; pc-bureau à jour ; et le compteur de l'étape 4 à zéro depuis N jours. Le cliquet `succes_api_surface.json` est alors retiré volontairement.
 - (d) Les redirections `succes/*` et les clés `/succes` de `__diapNoms` sont retirées.
@@ -553,6 +553,16 @@ Les approbations poussées, le partage et le verrou restent en phase 5.
 **Pendant la phase 1b**
 - Après le commit de la migration du fichier (1b, étape 5) : `launchctl kickstart -k gui/$(id -u)/com.diapason.serve`, puis ouvrir une pile de photos dans Projets et vérifier que les images s'affichent.
 - Après les commits du bundle et de la réglette (étapes 9 et 10), **dans cet ordre** : serveur relancé d'abord, puis `./scripts/install-desktop.sh`. Dans l'ordre inverse, la fenêtre neuve appellerait `/v1/vie` sur l'ancien serveur.
+- Puis, une fois : ouvrir le mini-panneau par une icône de la réglette, et si la page est vide, **recharger** (ou cliquer une seconde fois). PLAUSIBLE, non vérifié (25/09/2026) : l'origine `127.0.0.1:8000` a un service worker (`VitePWA`, `registerType: 'autoUpdate'`) dont la `NavigationRoute` sert l'`index.html` précaché. Le premier `/vie/tasks` après la mise à jour peut donc charger l'ANCIEN bundle, qui ne connaît que `/succes/*` et n'a pas de route « * » : un module vide, une seule fois, le temps que le nouveau service worker prenne la main. La preuve attendue : une icône montre sa page au second essai au plus tard.
+
+**Marche arrière, si le renommage doit être défait** (contre-épreuve du 25/09/2026). Restaurer la sauvegarde ne suffit pas : ses chemins de photos sont ABSOLUS vers `…/succes-photos/`, que la migration a renommé ; et l'ancien code, ne trouvant plus `succes.db`, en créerait une vide (ouverture `rwc`). Dans cet ordre :
+1. `launchctl bootout gui/$(id -u)/com.diapason.serve` (le serveur ne doit plus rien écrire).
+2. Mettre `~/.diapason/vie.db`, `vie.db-wal` et `vie.db-shm` de côté (dans `backups/`, jamais à la corbeille).
+3. Copier `backups/succes.db.avant-vie-AAAAMMJJ` sous le nom `~/.diapason/succes.db`.
+4. Renommer `~/.diapason/vie-photos` en `succes-photos`.
+5. Seulement alors, remettre l'ancien code, puis `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.diapason.serve.plist` (voir `docs/deployment/launchd.md`).
+
+Toute écriture faite après la migration (tâche, note, photo) est perdue par cette voie : elle n'existe que dans la `vie.db` mise de côté. Le nouveau code, lui, n'a pas besoin de cette procédure : il relit une `succes.db` restaurée et la re-migre.
 - Page Appareils : oublier l'ancien « Mon téléphone » (Android, vu le 18 août) et l'appareil dont le nom contient « Succès ». Oublier aussi le PC Windows (déclaré en 1.0.0, vu le 29 août) : il ne sert plus que de CI (décidé le 25/09/2026).
 
 **Avant la phase 2, dans cet ordre**

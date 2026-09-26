@@ -1578,8 +1578,8 @@ extérieure, puis une seconde campagne avec concurrence volontaire.
 - [Envoi et réception du chat](../../frontend/src/components/Chat/InputArea.tsx).
 - [État et sauvegarde des conversations](../../frontend/src/lib/store.ts).
 - [Rendu des messages](../../frontend/src/components/Chat/MessageBubble.tsx).
-- [Cache Succès existant](../../frontend/src/features/succes/cacheSucces.ts).
-- [Client des requêtes Succès](../../frontend/src/features/succes/api.ts).
+- Cache Succès existant : `frontend/src/features/succes/cacheSucces.ts`, devenu [`features/vie/cacheVie.ts`](../../frontend/src/features/vie/cacheVie.ts) le 25/09/2026.
+- Client des requêtes Succès : `frontend/src/features/succes/api.ts`, devenu [`features/vie/api.ts`](../../frontend/src/features/vie/api.ts) le 25/09/2026.
 - [Géométries du verre](../../frontend/src/components/Chat/verreTexture.ts).
 - [Convention de synchronisation des discussions](conversations-sync.md).
 - [Convention du mini-panneau](mini-panneau-responsive.md).
