@@ -131,6 +131,68 @@ class TestLEncodageCanoniqueNeDerivePas:
         assert rendu == '{"v":"été"}', rendu
 
 
+class TestLEnveloppeDeSessionEstUnVecteurCommun:
+    """L'enveloppe ``webview-session`` que le téléphone signe.
+
+    26/09/2026, phase 2 étape 2 (docs/development/diapason-mobile.md). Elle
+    n'avait aucun vecteur : ``verify_session_request`` refuse une clé en trop
+    ou en moins avant toute cryptographie, et un changement de
+    ``build_session_request`` ici aurait fait refuser chaque ouverture de
+    session du téléphone — « n'a pas la forme attendue » — sans qu'aucun
+    test de ce dépôt ne bouge. Le Dart relit le même vecteur et vérifie que
+    SON constructeur produit ces clés et ces octets.
+    """
+
+    def _vecteur(self) -> dict:
+        livres = json.loads(_vecteurs().read_text(encoding="utf-8"))
+        nommes = [v for v in livres if v.get("nom") == "enveloppe-de-session"]
+        assert len(nommes) == 1, (
+            "le vecteur « enveloppe-de-session » manque ou est en double : "
+            "relance scripts/gen_canonical_vectors.py"
+        )
+        return nommes[0]
+
+    def test_ses_cles_sont_exactement_celles_que_l_hote_fait_signer(self):
+        from diapason.mesh.sessions import SESSION_REQUEST_FIELDS
+
+        payload = self._vecteur()["payload"]
+        assert list(payload) == list(SESSION_REQUEST_FIELDS), (
+            "le vecteur de session ne porte plus les champs que "
+            "verify_session_request fait signer : régénère-le, et adapte "
+            "MeshApi.sessionRequestFields côté Dart dans le même thème"
+        )
+
+    def test_il_ne_porte_que_des_entiers_et_des_chaines(self):
+        """CLAUDE.md §4 : Python écrit ``1e-07``, Dart ``1e-7``. Un booléen
+        passe ``isinstance(int)`` : il est refusé explicitement."""
+        for cle, valeur in self._vecteur()["payload"].items():
+            assert type(valeur) in (int, str), (
+                f"{cle} vaut {valeur!r} : seulement des entiers et des chaînes"
+            )
+
+    def test_il_est_ce_que_build_session_request_construit(self):
+        from diapason.mesh.sessions import (
+            SESSION_REQUEST_PURPOSE,
+            SESSION_REQUEST_VERSION,
+            build_session_request,
+        )
+
+        payload = self._vecteur()["payload"]
+        construite = build_session_request(
+            owner_id=payload["ownerId"],
+            device_id=payload["deviceId"],
+            audience=payload["audience"],
+            now=payload["issuedAtMs"],
+        )
+        construite["nonce"] = payload["nonce"]
+        assert construite == payload, (
+            "build_session_request ne construit plus l'enveloppe du vecteur "
+            "(validité, version ou but) : régénère les vecteurs"
+        )
+        assert payload["purpose"] == SESSION_REQUEST_PURPOSE
+        assert payload["version"] == SESSION_REQUEST_VERSION
+
+
 SURFACE = pathlib.Path(__file__).with_name("succes_api_surface.json")
 
 
