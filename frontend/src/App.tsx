@@ -291,11 +291,16 @@ export default function App() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Poll local savings for the on-device dashboard. Nothing is uploaded.
+  // Au téléphone, pas écran éteint ou app en arrière-plan : chaque relève
+  // réveille la radio 4G pour un compteur que personne ne regarde
+  // (26/09/2026, chantier de la fluidité).
   useEffect(() => {
-    const refresh = () =>
+    const refresh = () => {
+      if (estMobile && document.visibilityState === 'hidden') return;
       fetchSavings()
         .then(setSavings)
         .catch(() => {});
+    };
     refresh();
     const interval = setInterval(refresh, 30000);
     return () => clearInterval(interval);

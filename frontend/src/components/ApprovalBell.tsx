@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Bell, CheckCircle, ChevronDown, ChevronUp, Clock, XCircle } from 'lucide-react';
 import { approveAction, denyAction, fetchPendingApprovals } from '../lib/api';
 import type { PendingApproval } from '../lib/api';
-import { pontNatif } from '../lib/natif';
+import { estMobile, pontNatif } from '../lib/natif';
+import { intervalleCloche } from '../lib/cadenceCloche';
 import { ouvrirLaCloche } from '../lib/ouvrirLaCloche';
 import { useTranslation } from '../i18n/useTranslation';
 import type { MessageKey } from '../i18n/translate';
@@ -104,10 +105,20 @@ export function ApprovalBell() {
     // normally visible immediately. Poll fast only while a decision is
     // pending; use a light safety poll otherwise.
     window.addEventListener('diapason-approval-possible', load);
-    const id = setInterval(load, approvals.length > 0 ? 1000 : 5000);
+    // Au téléphone, la relève de repos s'espace (lib/cadenceCloche.ts) et
+    // se rattrape au retour de l'écran : une demande née pendant que l'app
+    // était en arrière-plan s'affiche sans attendre 30 s.
+    const relireAuRetour = () => {
+      if (document.visibilityState === 'visible') void load();
+    };
+    if (estMobile) document.addEventListener('visibilitychange', relireAuRetour);
+    const id = setInterval(() => {
+      if (!estMobile || document.visibilityState !== 'hidden') void load();
+    }, intervalleCloche(approvals.length, estMobile));
     return () => {
       clearInterval(id);
       window.removeEventListener('diapason-approval-possible', load);
+      if (estMobile) document.removeEventListener('visibilitychange', relireAuRetour);
     };
   }, [load, approvals.length]);
 
