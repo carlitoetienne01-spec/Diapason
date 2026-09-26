@@ -38,8 +38,7 @@ import { modeleDeLaReponse, type RoutageServeur } from './modeleDeLaReponse';
 import { EVENEMENT_VERIFIER_EN_LIGNE, lireVerification, type DemandeDeVerification } from './notesDeVerification';
 import './ComposerGlass.css';
 import { useSurfaceVitree } from './useSurfaceVitree';
-import { boiteDuPartage, fichiersDuPartage } from '../../lib/partageEntrant';
-import { traduire } from '../../i18n/translate';
+import { boiteDuPartage, deposerDansLeCompositeur } from '../../lib/partageEntrant';
 import {
   EVENEMENT_DEPOSER_TEXTE,
   EVENEMENT_FOCUS_COMPOSITEUR,
@@ -133,44 +132,51 @@ export function InputArea() {
 
   // Un seul chemin pour les trois gestes — le bouton, le collage, le dépôt :
   // ce qui est refusé doit l'être avec la même phrase et pour la même raison.
+  //
+  // Rend, tout de suite, combien de fichiers le tri a ACCEPTÉS — la lecture
+  // suit en tâche de fond. 26/09/2026 : l'accusé du partage comptait les
+  // fichiers remis ici, pas ceux qui passaient le tri (lib/partageEntrant.ts).
   const joindre = useCallback(
-    async (fichiers: File[]) => {
-      if (fichiers.length === 0) return;
+    (fichiers: File[]): number => {
+      if (fichiers.length === 0) return 0;
       // Un lot peut mêler une capture d'écran et un PDF : chacun suit sa
       // voie, et chacun dit pourquoi il est refusé le cas échéant.
       const { images: entrantes, documents: entrants } = separer(fichiers);
 
       const tri = trierPieces(entrantes, pieces.length);
       for (const r of tri.refus) toast.error(`${r.fichier} — ${r.raison}`);
-      if (tri.acceptees.length > 0) {
-        try {
-          const lues = await Promise.all(tri.acceptees.map(lirePieceJointe));
-          setPieces((avant) => [...avant, ...lues].slice(0, IMAGES_MAX));
-        } catch (e) {
-          toast.error(e instanceof Error ? e.message : 'Lecture impossible.');
-        }
-      }
-
       const triDocs = trierDocuments(entrants, documents.length);
       for (const r of triDocs.refus) toast.error(`${r.fichier} — ${r.raison}`);
-      for (const fichier of triDocs.acceptees) {
-        // Un PDF de cent pages prend une seconde à lire : le compteur dit
-        // que ça travaille, plutôt que de laisser le composeur muet.
-        setLectureEnCours((n) => n + 1);
-        try {
-          const lu = await lireDocument(fichier, apiFetch);
-          setDocuments((avant) => [...avant, lu].slice(0, DOCUMENTS_MAX));
-          if (lu.tronque) {
-            toast(`${lu.nom} — seul le début sera lu par le modèle.`, { icon: '✂️' });
+
+      void (async () => {
+        if (tri.acceptees.length > 0) {
+          try {
+            const lues = await Promise.all(tri.acceptees.map(lirePieceJointe));
+            setPieces((avant) => [...avant, ...lues].slice(0, IMAGES_MAX));
+          } catch (e) {
+            toast.error(e instanceof Error ? e.message : 'Lecture impossible.');
           }
-        } catch (e) {
-          toast.error(
-            e instanceof Error ? e.message : `${fichier.name} : lecture impossible.`,
-          );
-        } finally {
-          setLectureEnCours((n) => n - 1);
         }
-      }
+        for (const fichier of triDocs.acceptees) {
+          // Un PDF de cent pages prend une seconde à lire : le compteur dit
+          // que ça travaille, plutôt que de laisser le composeur muet.
+          setLectureEnCours((n) => n + 1);
+          try {
+            const lu = await lireDocument(fichier, apiFetch);
+            setDocuments((avant) => [...avant, lu].slice(0, DOCUMENTS_MAX));
+            if (lu.tronque) {
+              toast(`${lu.nom} — seul le début sera lu par le modèle.`, { icon: '✂️' });
+            }
+          } catch (e) {
+            toast.error(
+              e instanceof Error ? e.message : `${fichier.name} : lecture impossible.`,
+            );
+          } finally {
+            setLectureEnCours((n) => n - 1);
+          }
+        }
+      })();
+      return tri.acceptees.length + triDocs.acceptees.length;
     },
     [pieces.length, documents.length],
   );
@@ -528,32 +534,39 @@ export function InputArea() {
   }, []);
 
   // 26/09/2026, phase 5 du plan mobile : « Partager vers Diapason » depuis
-  // une autre app du téléphone. Le partage atterrit ICI — texte à la suite
-  // du brouillon, fichiers par le même `joindre` que le trombone, avec ses
-  // refus dits un par un — et n'est JAMAIS envoyé : la personne relit et
-  // envoie. L'accusé rendu à la coquille dit ce qui a été déposé
-  // (lib/partageEntrant.ts), pas ce qui a été partagé.
+  // une autre app du téléphone. Le partage atterrit ICI et n'est JAMAIS
+  // envoyé : la personne relit et envoie. Toute la décision — où va le
+  // texte, ce que dit l'accusé — vit dans `deposerDansLeCompositeur`
+  // (lib/partageEntrant.ts), qui ne reçoit aucun moyen d'envoyer ; un test
+  // lit ce bloc pour qu'aucun envoi n'y revienne.
   const joindreCourant = useRef(joindre);
+  const brouillonCourant = useRef(input);
   useEffect(() => {
     joindreCourant.current = joindre;
-  }, [joindre]);
+    brouillonCourant.current = input;
+  });
   useEffect(
     () =>
-      boiteDuPartage.ecouter((partage) => {
-        const fichiers = fichiersDuPartage(partage);
-        if (partage.texte) {
-          setInput((prev) => (prev ? prev + '\n' + partage.texte : partage.texte));
-        }
-        if (fichiers.length > 0) void joindreCourant.current(fichiers);
-        toast(traduire('natif.partage.depose'));
-        window.requestAnimationFrame(() => {
-          const el = textareaRef.current;
-          if (!el || el.disabled) return;
-          el.focus();
-          el.setSelectionRange(el.value.length, el.value.length);
-        });
-        return { texte: partage.texte.length > 0, fichiers: fichiers.length };
-      }),
+      boiteDuPartage.ecouter((partage) =>
+        deposerDansLeCompositeur(partage, {
+          brouillon: () => brouillonCourant.current,
+          poserBrouillon: (texte) => {
+            brouillonCourant.current = texte;
+            setInput(texte);
+          },
+          joindre: (fichiers) => joindreCourant.current(fichiers),
+          montrer: (debut, fin) =>
+            window.requestAnimationFrame(() => {
+              const el = textareaRef.current;
+              if (!el || el.disabled) return;
+              el.focus();
+              el.setSelectionRange(debut, fin);
+              // Le partage est au bout du brouillon : le faire voir.
+              el.scrollTop = el.scrollHeight;
+            }),
+          dire: (phrase) => toast(phrase),
+        }),
+      ),
     [],
   );
 

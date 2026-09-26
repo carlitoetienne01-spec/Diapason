@@ -122,6 +122,57 @@ export function fichiersDuPartage(partage: PartageLu): File[] {
   });
 }
 
+/**
+ * Ce que le compositeur de la Discussion offre au partage — et rien d'autre.
+ * Aucun envoi n'y figure : un partage ne peut pas partir seul.
+ */
+export interface CompositeurDuPartage {
+  /** Le brouillon tel qu'il est à l'écran. */
+  brouillon: () => string;
+  poserBrouillon: (texte: string) => void;
+  /**
+   * Le `joindre` du trombone ; rend combien de fichiers il a ACCEPTÉS (il
+   * dit lui-même ses refus, un par un).
+   */
+  joindre: (fichiers: File[]) => number;
+  /** Sélectionne `[debut, fin)` du brouillon et le fait voir. */
+  montrer: (debut: number, fin: number) => void;
+  dire: (phrase: string) => void;
+}
+
+/**
+ * Pose le partage dans le compositeur ; rend l'accusé de ce qui y est
+ * vraiment entré.
+ *
+ * 26/09/2026, contre-épreuve. Trois défauts, tenus ici parce que la logique
+ * vivait dans InputArea, qu'aucun test ne monte :
+ * - le texte partagé s'ajoutait EN SILENCE au bout d'un brouillon en
+ *   cours. Une app qui forge un partage (MainActivity est exportée) glissait
+ *   ainsi jusqu'à 20 000 signes à la fin d'un long message qu'on relisait
+ *   déjà. Sur un brouillon non vide, le partage vient après une ligne vide,
+ *   SÉLECTIONNÉ, et la phrase dit « à la suite de votre brouillon » ;
+ * - l'accusé comptait les fichiers remis à `joindre`, pas ceux qu'il
+ *   acceptait : une image de plus de 4 Mo passait le pont, se faisait
+ *   refuser, et la coquille entendait « 1 fichier déposé » ;
+ * - rien ne tenait « rien n'est envoyé » ni « les fichiers passent par
+ *   `joindre` » : envoyer le texte dès le dépôt, ou oublier `joindre`,
+ *   laissait vitest vert.
+ */
+export function deposerDansLeCompositeur(partage: PartageLu, c: CompositeurDuPartage): AccuseDePartage {
+  const fichiers = fichiersDuPartage(partage);
+  const avant = c.brouillon();
+  const aLaSuite = partage.texte.length > 0 && avant.trim().length > 0;
+  if (partage.texte) {
+    const debut = aLaSuite ? avant.length + 2 : 0;
+    c.poserBrouillon(aLaSuite ? `${avant}\n\n${partage.texte}` : partage.texte);
+    const fin = debut + partage.texte.length;
+    c.montrer(aLaSuite ? debut : fin, fin);
+  }
+  const acceptes = fichiers.length > 0 ? c.joindre(fichiers) : 0;
+  c.dire(traduire(aLaSuite ? 'natif.partage.deposeALaSuite' : 'natif.partage.depose'));
+  return { texte: partage.texte.length > 0, fichiers: acceptes };
+}
+
 type Minuteur = Pick<typeof globalThis, 'setTimeout' | 'clearTimeout'>;
 
 /** Le compositeur prend le partage et dit ce qu'il a pris. */

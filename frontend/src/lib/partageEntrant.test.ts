@@ -1,8 +1,12 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
   BoiteDuPartage,
   CHEMIN_DE_LA_DISCUSSION,
+  deposerDansLeCompositeur,
+  type CompositeurDuPartage,
   FICHIERS_MAX,
   OCTETS_MAX_PAR_FICHIER,
   TEXTE_MAX,
@@ -136,6 +140,24 @@ describe('La boîte remet le partage au compositeur, et à lui seul', () => {
     expect(pris, 'jamais deux partages mêlés dans le brouillon').toEqual(['deux']);
   });
 
+  it('le second partage dit AUSSITÔT le premier non déposé, sans attendre son délai', async () => {
+    // 26/09/2026, contre-épreuve : `this.enAttente?.resoudre(null)` retiré,
+    // le test précédent restait vert — il attendait l'expiration réelle
+    // d'une seconde. Ici le minuteur ne sonne jamais.
+    const figé = { setTimeout: () => 0, clearTimeout: () => undefined } as unknown as Pick<
+      typeof globalThis,
+      'setTimeout' | 'clearTimeout'
+    >;
+    const boite = new BoiteDuPartage();
+    const premier = boite.deposer({ texte: 'un', fichiers: [] }, 1000, figé);
+    void boite.deposer({ texte: 'deux', fichiers: [] }, 1000, figé);
+    const issue = await Promise.race([
+      premier,
+      new Promise((resoudre) => setTimeout(() => resoudre('en suspens'), 0)),
+    ]);
+    expect(issue, 'le premier partage doit être dit non déposé tout de suite').toBeNull();
+  });
+
   it('un compositeur qui lève ne fait pas passer le dépôt pour fait', async () => {
     const boite = new BoiteDuPartage();
     boite.ecouter(() => {
@@ -182,5 +204,117 @@ describe('Recevoir un partage : déposer, puis naviguer vers la Discussion', () 
       recevoirUnPartage({ texte: 3 }, { boite: new BoiteDuPartage(), delaiMs: 10, naviguer }),
     ).rejects.toThrow();
     expect(naviguer, 'rien ne doit bouger pour un partage refusé').not.toHaveBeenCalled();
+  });
+});
+
+
+/** Un compositeur de papier : il note tout, et n'a aucun moyen d'envoyer. */
+function compositeur(brouillon: string, acceptes?: number) {
+  const journal = {
+    brouillon,
+    joints: [] as File[][],
+    montre: null as [number, number] | null,
+    dit: [] as string[],
+  };
+  const c: CompositeurDuPartage = {
+    brouillon: () => journal.brouillon,
+    poserBrouillon: (texte) => {
+      journal.brouillon = texte;
+    },
+    joindre: (fichiers) => {
+      journal.joints.push(fichiers);
+      return acceptes ?? fichiers.length;
+    },
+    montrer: (debut, fin) => {
+      journal.montre = [debut, fin];
+    },
+    dire: (phrase) => journal.dit.push(phrase),
+  };
+  return { c, journal };
+}
+
+describe('Le compositeur prend le partage (deposerDansLeCompositeur)', () => {
+  it('pose le texte dans un brouillon vide, curseur à la fin', () => {
+    const { c, journal } = compositeur('');
+    const accuse = deposerDansLeCompositeur({ texte: 'https://exemple.org', fichiers: [] }, c);
+    expect(journal.brouillon).toBe('https://exemple.org');
+    expect(journal.montre).toEqual([19, 19]);
+    expect(journal.dit).toHaveLength(1);
+    expect(accuse).toEqual({ texte: true, fichiers: 0 });
+  });
+
+  it('ne glisse pas en silence un partage au bout d’un brouillon en cours', () => {
+    // 26/09/2026, contre-épreuve : MainActivity est exportée ; une app qui
+    // forge un partage ajoutait son texte à la fin d'un long message qu'on
+    // relisait déjà, sans le distinguer.
+    const brouillon = 'Mon long message à Diapason';
+    const { c, journal } = compositeur(brouillon);
+    const seul = compositeur('');
+    deposerDansLeCompositeur({ texte: 'texte partagé', fichiers: [] }, seul.c);
+    deposerDansLeCompositeur({ texte: 'texte partagé', fichiers: [] }, c);
+    expect(journal.brouillon, 'le brouillon reste intact, le partage vient après une ligne vide').toBe(
+      `${brouillon}\n\ntexte partagé`,
+    );
+    const [debut, fin] = journal.montre ?? [0, 0];
+    expect(journal.brouillon.slice(debut, fin), 'le partage ajouté est SÉLECTIONNÉ, donc visible').toBe(
+      'texte partagé',
+    );
+    expect(journal.dit[0], 'la phrase dit « à la suite », pas « déposé » tout court').not.toBe(seul.journal.dit[0]);
+  });
+
+  it('passe les fichiers par « joindre », avec leur nom et leur type, et n’envoie rien', () => {
+    const { c, journal } = compositeur('');
+    deposerDansLeCompositeur(
+      {
+        texte: '',
+        fichiers: [
+          { nom: 'photo.jpg', mime: 'image/jpeg', base64: base64('JPEG') },
+          { nom: 'note.pdf', mime: 'application/pdf', base64: base64('%PDF') },
+        ],
+      },
+      c,
+    );
+    expect(journal.joints, 'un seul passage par joindre, comme le trombone').toHaveLength(1);
+    expect(journal.joints[0].map((f) => [f.name, f.type])).toEqual([
+      ['photo.jpg', 'image/jpeg'],
+      ['note.pdf', 'application/pdf'],
+    ]);
+    expect(journal.brouillon, 'aucun texte inventé pour des fichiers seuls').toBe('');
+  });
+
+  it('l’accusé compte les fichiers ACCEPTÉS par joindre, pas ceux qu’on lui a remis', () => {
+    // Une image de plus de 4 Mo passe le pont (10 Mo) et se fait refuser
+    // par le compositeur : la coquille ne doit pas entendre « déposée ».
+    const { c } = compositeur('', 1);
+    const accuse = deposerDansLeCompositeur(
+      {
+        texte: '',
+        fichiers: [
+          { nom: 'a.jpg', mime: 'image/jpeg', base64: base64('A') },
+          { nom: 'b.jpg', mime: 'image/jpeg', base64: base64('B') },
+        ],
+      },
+      c,
+    );
+    expect(accuse).toEqual({ texte: false, fichiers: 1 });
+  });
+});
+
+describe('Le compositeur de la Discussion branche le partage sans jamais l’envoyer', () => {
+  // Aucun test ne monte InputArea : ce bloc est lu dans la source. Mutant de
+  // la contre-épreuve du 26/09/2026 : le texte partagé envoyé par
+  // `sendMessage` dès le dépôt — tsc propre, vitest vert.
+  const source = readFileSync(join(process.cwd(), 'src', 'components', 'Chat', 'InputArea.tsx'), 'utf-8');
+  const debut = source.indexOf('boiteDuPartage.ecouter(');
+  const bloc = source.slice(debut, source.indexOf('[],', debut));
+
+  it('passe par deposerDansLeCompositeur et par le joindre du trombone', () => {
+    expect(debut, 'le compositeur n’écoute plus la boîte du partage').toBeGreaterThan(0);
+    expect(bloc).toContain('deposerDansLeCompositeur(');
+    expect(bloc).toContain('joindreCourant.current(fichiers)');
+  });
+
+  it('n’envoie rien', () => {
+    expect(bloc, 'un partage ne part jamais seul').not.toMatch(/sendMessage|envoyer|submit|apiFetch/);
   });
 });
