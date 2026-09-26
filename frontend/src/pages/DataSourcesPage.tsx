@@ -476,7 +476,7 @@ function SyncStatusDisplay({
           onClick={handleSync}
           disabled={syncing}
           style={{
-            fontSize: 10, padding: '2px 10px',
+            fontSize: 10, padding: '2px 10px', flexShrink: 0,
             background: 'var(--color-accent-purple)', color: 'var(--color-on-accent)',
             border: 'none', borderRadius: 3,
             cursor: 'pointer', fontWeight: 600,
@@ -533,7 +533,7 @@ function SyncStatusDisplay({
       : backlogRange;
     return (
       <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 12, color: 'var(--color-success)' }}>
             {t('sources.sync.indexed')} {totalIndexed.toLocaleString()} {unitLabel}
             {rangeLabel && (
@@ -551,7 +551,7 @@ function SyncStatusDisplay({
             onClick={handleSync}
             disabled={syncing}
             style={{
-              fontSize: 9, padding: '1px 6px',
+              fontSize: 9, padding: '1px 6px', flexShrink: 0,
               background: 'transparent',
               color: 'var(--color-text-tertiary)',
               border: '1px solid var(--color-border)',
@@ -572,7 +572,7 @@ function SyncStatusDisplay({
   const hasSynced = sync?.last_sync != null;
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
         <span style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>
           {hasSynced
             ? t('sources.sync.syncedNothingFound', { unit: unitLabel })
@@ -582,7 +582,7 @@ function SyncStatusDisplay({
           onClick={handleSync}
           disabled={syncing}
           style={{
-            fontSize: 10, padding: '2px 10px',
+            fontSize: 10, padding: '2px 10px', flexShrink: 0,
             background: 'var(--color-accent-purple)', color: 'var(--color-on-accent)',
             border: 'none', borderRadius: 3,
             cursor: 'pointer', fontWeight: 600,
@@ -882,7 +882,11 @@ function DataSourcesSection() {
             <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: 999, background: 'var(--color-text-tertiary)' }} />
             {t('sources.availableCount', { count: notConnected.length })}
           </div>
-          <div className="grid grid-cols-2 gap-2">
+          {/* 26/09/2026 : deux colonnes dès 340 px laissaient 150 px par
+              carte — « GitHub Notifications » passait sous « + Ajouter » et
+              chaque nom se coupait mot à mot. Une colonne sous sm (règle 1
+              du mini-panneau : la base est l'écran étroit). */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {notConnected.map((c) => {
             const meta = metaFor(c.connector_id);
             const isExpanded = expandedId === c.connector_id;
@@ -1505,7 +1509,7 @@ function MessagingSection({ agentId }: { agentId: string }) {
                 </div>
               </div>
               {binding ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
                   <span style={{
                     background: 'color-mix(in srgb, var(--color-success) 22%, transparent)', color: 'var(--color-success)',
                     padding: '2px 8px', borderRadius: 10,
