@@ -27,6 +27,8 @@ import type { ConnectRequest } from '../types/connectors';
 import { listConnectors, connectSource, disconnectSource, getSyncStatus, triggerSync, startServerOAuth } from '../lib/connectors-api';
 import type { SyncStatus } from '../types/connectors';
 import { useTranslation } from '../i18n/useTranslation';
+import { toast } from 'sonner';
+import { copierTexte } from '../lib/copier';
 
 /** The `t` returned by useTranslation, so module-level helpers can be handed
  *  one instead of illegally calling the hook outside a component. */
@@ -1578,7 +1580,11 @@ function MessagingSection({ agentId }: { agentId: string }) {
                           }}>
                             {text}
                             <button
-                              onClick={() => { navigator.clipboard.writeText(text); }}
+                              onClick={() => {
+                                void copierTexte(text).then((ok) => {
+                                  if (!ok) toast.error(t('chat.message.copyFailed'));
+                                });
+                              }}
                               style={{
                                 position: 'sticky', float: 'right', top: 0,
                                 fontSize: 10, padding: '2px 8px',

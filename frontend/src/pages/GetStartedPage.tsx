@@ -19,6 +19,8 @@ import {
 } from 'lucide-react';
 import { isTauri, checkHealth } from '../lib/api';
 import { useTranslation } from '../i18n/useTranslation';
+import { toast } from 'sonner';
+import { copierTexte } from '../lib/copier';
 
 const GITHUB_BASE =
   'https://github.com/carlitoetienne01-spec/Diapason/releases/latest/download';
@@ -108,8 +110,11 @@ function CodeBlock({ code }: { code: string }) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(code);
+  const handleCopy = async () => {
+    if (!(await copierTexte(code))) {
+      toast.error(t('chat.message.copyFailed'));
+      return;
+    }
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

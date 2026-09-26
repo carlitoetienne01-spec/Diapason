@@ -11,6 +11,7 @@ import { SOURCE_CATALOG } from '../../types/connectors';
 import { connectSource, getConnector } from '../../lib/connectors-api';
 import { getBase } from '../../lib/api';
 import { useTranslation } from '../../i18n/useTranslation';
+import { estMobile } from '../../lib/natif';
 import type { ConnectRequest, ConnectorMeta } from '../../types/connectors';
 
 // ---------------------------------------------------------------------------
@@ -156,7 +157,14 @@ function OAuthPanel({
   const { t } = useTranslation();
   const [waiting, setWaiting] = useState(false);
 
+  const [refus, setRefus] = useState('');
   const startOAuth = () => {
+    // 26/09/2026 : dans le téléphone, window.open ne fait rien et le rappel
+    // vise le Mac — une attente de trois minutes sans issue. On le dit.
+    if (estMobile) {
+      setRefus(t('sources.oauth.surLeMac'));
+      return;
+    }
     // Open the server's OAuth start endpoint which redirects to the provider
     const oauthUrl = `${getBase()}/v1/connectors/${encodeURIComponent(connectorId)}/oauth/start`;
     window.open(oauthUrl, '_blank', 'width=600,height=700');
@@ -190,6 +198,11 @@ function OAuthPanel({
           ? t('sources.oauth.waiting', { name: displayName })
           : t('sources.oauth.prompt', { name: displayName })}
       </p>
+      {refus && (
+        <p className="text-sm" role="alert" style={{ color: 'var(--color-error)' }}>
+          {refus}
+        </p>
+      )}
       {waiting ? (
         <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-accent)' }}>
           <Loader2 size={16} className="animate-spin" />

@@ -43,6 +43,7 @@ import {
   saveToolCredentials,
   deleteToolCredential,
   isTauri,
+  fetchModels,
   fetchServerConfig,
   setServerConfigKey,
   type InferenceSource,
@@ -53,6 +54,14 @@ import { ZOOM_MAX, ZOOM_MIN, normaliserZoom, zoomEnPourcent, zoomSuivant } from 
 import { loadDictationStats, type DictationStats } from '../lib/dictationStats';
 import { fetchVoiceLiveHealth } from '../lib/voiceLive';
 import { annonceDEnregistrement, enregistrerHorsBureau } from '../lib/enregistrerFichier';
+import { estMobile } from '../lib/natif';
+import {
+  choixDeSourceAffiche,
+  etatDeLaCle,
+  indicationCle,
+  sourceEnregistrable,
+  type LectureSource,
+} from '../lib/reglagesHorsBureau';
 import { toast } from 'sonner';
 import { useTranslation } from '../i18n/useTranslation';
 import { LOCALES, LOCALE_NAMES, type Locale } from '../i18n/locale';
@@ -62,13 +71,25 @@ const CLOUD_KEY_STATUS_CHANGED = 'diapason-cloud-key-status-changed';
 
 function OllamaModelList() {
   const { t } = useTranslation();
-  const [models, setModels] = useState<Array<{ name: string; size: number }>>([]);
+  const [models, setModels] = useState<Array<{ name: string; size?: number }>>([]);
+  const [illisibles, setIllisibles] = useState(false);
   useEffect(() => {
+    // 26/09/2026 : `localhost:11434` était lu DEPUIS LA PAGE. Dans le
+    // téléphone, localhost est le téléphone : « Aucun modèle chargé » pour un
+    // Mac qui en a plusieurs. Hors de l'app de bureau, la liste vient du
+    // serveur du Mac (/v1/models), et un échec se dit.
+    if (!isTauri()) {
+      fetchModels()
+        .then((liste) => setModels(liste.map((m) => ({ name: m.id }))))
+        .catch(() => setIllisibles(true));
+      return;
+    }
     fetch('http://localhost:11434/api/tags')
       .then(r => r.json())
       .then(data => setModels((data.models || []).map((m: any) => ({ name: m.name, size: m.size }))))
       .catch(() => setModels([]));
   }, []);
+  if (illisibles) return <span className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>{t('settings.models.illisibles')}</span>;
   if (models.length === 0) return <span className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>{t('settings.models.none')}</span>;
   return (
     <div className="flex flex-wrap gap-1">
@@ -76,7 +97,7 @@ function OllamaModelList() {
         <span key={m.name} className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px]"
           style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }}>
           <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--color-success)', display: 'inline-block' }} />
-          {m.name} ({(m.size / 1e9).toFixed(1)} GB)
+          {m.name}{m.size ? ` (${(m.size / 1e9).toFixed(1)} GB)` : ''}
         </span>
       ))}
     </div>
@@ -95,26 +116,29 @@ function ApiKeyInput({
   const { t } = useTranslation();
   const [value, setValue] = useState('');
   const [saved, setSaved] = useState(false);
-  const [hasKey, setHasKey] = useState(false);
+  const [lecture, setLecture] = useState<Parameters<typeof etatDeLaCle>[0]>(null);
   const [error, setError] = useState('');
   const desktopKeyStorage = isTauri();
   const serverToolStorage = !desktopKeyStorage && !!toolName;
   const canManage = desktopKeyStorage || serverToolStorage;
+  const etat = etatDeLaCle(lecture, keyName);
+  const hasKey = etat === 'presente';
+  const indication = indicationCle({ bureau: desktopKeyStorage, outilServeur: serverToolStorage, etat });
 
+  // 26/09/2026 : hors de l'app de bureau, `canManage` faux donnait
+  // « absente » sans rien lire, et un champ désactivé sans explication. L'état
+  // se lit partout (le serveur le dit hors de Tauri) ; seule l'écriture
+  // reste à l'app de bureau.
   const refresh = useCallback(async () => {
-    if (!canManage) {
-      setHasKey(false);
-      return;
-    }
     try {
-      const status = desktopKeyStorage
-        ? await getCloudKeyStatus()
-        : await fetchToolCredentialStatus(toolName!);
-      setHasKey(!!status[keyName]);
+      const status = serverToolStorage
+        ? await fetchToolCredentialStatus(toolName!)
+        : await getCloudKeyStatus();
+      setLecture({ statut: status });
     } catch {
-      setHasKey(false);
+      setLecture({ echec: true });
     }
-  }, [canManage, desktopKeyStorage, keyName, toolName]);
+  }, [serverToolStorage, toolName]);
 
   useEffect(() => {
     void refresh();
@@ -135,7 +159,7 @@ function ApiKeyInput({
         return;
       }
       setValue('');
-      setHasKey(true);
+      await refresh();
       setSaved(true);
       window.dispatchEvent(new Event(CLOUD_KEY_STATUS_CHANGED));
       setTimeout(() => setSaved(false), 2000);
@@ -155,7 +179,7 @@ function ApiKeyInput({
         return;
       }
       setValue('');
-      setHasKey(false);
+      await refresh();
       setSaved(true);
       window.dispatchEvent(new Event(CLOUD_KEY_STATUS_CHANGED));
       setTimeout(() => setSaved(false), 2000);
@@ -171,17 +195,12 @@ function ApiKeyInput({
         value={value}
         onChange={e => setValue(e.target.value)}
         onBlur={() => { if (value.trim()) void save(value); }}
-        placeholder={
-          hasKey
-            ? desktopKeyStorage
-              ? t('settings.apiKeys.savedSecure')
-              : t('settings.apiKeys.savedServer')
-            : placeholder
-        }
+        placeholder={indication ? t(`settings.apiKeys.${indication}`) : placeholder}
+        title={indication && !canManage ? t(`settings.apiKeys.${indication}`) : undefined}
         disabled={!canManage}
         className="w-48 px-2 py-1 rounded text-xs"
         style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border)', color: 'var(--color-text)' }} />
-      {hasKey && (
+      {hasKey && canManage && (
         <button
           onClick={() => void remove()}
           className="px-2 py-1 rounded text-[10px] cursor-pointer"
@@ -197,21 +216,19 @@ function ApiKeyInput({
 }
 
 function CloudProviderStatus({ label, keyName }: { label: string; keyName: string }) {
-  const [hasKey, setHasKey] = useState(false);
-  const desktopKeyStorage = isTauri();
+  const { t } = useTranslation();
+  const [lecture, setLecture] = useState<Parameters<typeof etatDeLaCle>[0]>(null);
+  const etat = etatDeLaCle(lecture, keyName);
 
+  // 26/09/2026 : hors de l'app de bureau, la pastille restait grise sans
+  // rien lire, pendant que la palette disait la clé présente.
   const refresh = useCallback(async () => {
-    if (!desktopKeyStorage) {
-      setHasKey(false);
-      return;
-    }
     try {
-      const status = await getCloudKeyStatus();
-      setHasKey(!!status[keyName]);
+      setLecture({ statut: await getCloudKeyStatus() });
     } catch {
-      setHasKey(false);
+      setLecture({ echec: true });
     }
-  }, [desktopKeyStorage, keyName]);
+  }, []);
 
   useEffect(() => {
     void refresh();
@@ -220,10 +237,15 @@ function CloudProviderStatus({ label, keyName }: { label: string; keyName: strin
   }, [refresh]);
 
   return (
-    <span className="flex items-center gap-1 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+    <span
+      className="flex items-center gap-1 text-xs"
+      style={{ color: 'var(--color-text-secondary)' }}
+      title={etat === 'illisible' ? t('settings.apiKeys.illisible') : undefined}
+    >
       <span style={{
-        width: 6, height: 6, borderRadius: '50%', display: 'inline-block',
-        background: hasKey ? 'var(--color-success)' : 'var(--color-text-tertiary)',
+        width: 6, height: 6, borderRadius: '50%', display: 'inline-block', boxSizing: 'border-box',
+        background: etat === 'presente' ? 'var(--color-success)' : etat === 'illisible' ? 'transparent' : 'var(--color-text-tertiary)',
+        border: etat === 'illisible' ? '1px solid var(--color-text-tertiary)' : 'none',
       }} />
       {label}
     </span>
@@ -374,6 +396,9 @@ export function SettingsPage() {
   const [customEngine, setCustomEngine] = useState('lmstudio');
   const [customKey, setCustomKey] = useState('');
   const [srcMsg, setSrcMsg] = useState('');
+  const [lectureSource, setLectureSource] = useState<LectureSource>({ etat: 'attente' });
+  const choixSource = choixDeSourceAffiche(lectureSource, srcKind);
+  const sourceModifiable = sourceEnregistrable(lectureSource);
 
   useEffect(() => {
     getInferenceSource().then((s) => {
@@ -381,9 +406,17 @@ export function SettingsPage() {
       if (s.host) setCustomHost(s.host);
       if (s.model) setCustomModel(s.model);
       if (s.engine) setCustomEngine(s.engine);
+      setLectureSource({ etat: 'lue', source: s });
+      if (s.hostIllisible) setSrcMsg(t('settings.inference.hostIllisible'));
       // 26/09/2026 : un échec de lecture était avalé, et le sélecteur restait
-      // sur « Ollama » — sa valeur initiale, pas celle du Mac. On le dit.
-    }).catch((e: any) => setSrcMsg(e?.message ?? t('common.error')));
+      // sur « Ollama » — sa valeur initiale, pas celle du Mac. Le message
+      // seul (f8ea8bf) laissait encore « Ollama intégré » affiché au-dessus,
+      // et « Enregistrer » actif : le sélecteur dit désormais « inconnue ».
+    }).catch((e: any) => {
+      const message = e?.message ?? t('common.error');
+      setLectureSource({ etat: 'echec', message });
+      setSrcMsg(message);
+    });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const saveSource = useCallback(async () => {
@@ -712,6 +745,10 @@ export function SettingsPage() {
                 </span>
               </div>
             </SettingRow>
+            {/* 26/09/2026 : au téléphone, une URL saisie ici détournait tous
+                les appels (getBase lit diapason-settings.apiUrl), et la
+                session est un cookie que ce champ ne remplace pas. */}
+            {!estMobile && (<>
             <SettingRow label={t('settings.connection.apiUrl')} description={t('settings.connection.apiUrlDescription')}>
               <input
                 type="text"
@@ -741,6 +778,7 @@ export function SettingsPage() {
                 }}
               />
             </SettingRow>
+            </>)}
           </Section>
 
           {/* Compte et chiffrement — après Connexion (compte-chiffre.md §3.11). */}
@@ -750,16 +788,20 @@ export function SettingsPage() {
           <Section title={t('settings.inference.title')}>
             <SettingRow label={t('settings.inference.sourceLabel')} description={t('settings.inference.sourceDescription')}>
               <select
-                value={srcKind}
+                value={choixSource}
+                disabled={!sourceModifiable}
                 onChange={(e) => { setSrcKind(e.target.value as InferenceSource['kind']); setSrcMsg(''); }}
                 className="text-sm px-3 py-1.5 rounded-lg outline-none w-56"
                 style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}
               >
+                {choixSource === 'inconnue' && (
+                  <option value="inconnue" disabled>{t('settings.inference.inconnue')}</option>
+                )}
                 <option value="ollama">{t('settings.inference.ollama')}</option>
                 <option value="custom">{t('settings.inference.custom')}</option>
               </select>
             </SettingRow>
-            {srcKind === 'custom' && (
+            {choixSource === 'custom' && (
               <>
                 <SettingRow label={t('settings.inference.serverUrl')} description={t('settings.inference.serverUrlDescription')}>
                   <input type="text" value={customHost} onChange={(e) => { setCustomHost(e.target.value); setSrcMsg(''); }} placeholder="http://localhost:1234/v1"
@@ -790,9 +832,14 @@ export function SettingsPage() {
               </>
             )}
             <SettingRow label="" description={srcMsg}>
+              {/* 26/09/2026 : `--color-text` sur `--color-accent` — en Ardéchine,
+                  les deux valent rgb(20,18,14) : un pavé noir, contraste 1,00.
+                  Le couple des boutons pleins (« Nouvel agent ») est lisible
+                  dans chaque thème. */}
               <button onClick={saveSource}
-                className="text-sm px-3 py-1.5 rounded-lg outline-none cursor-pointer"
-                style={{ background: 'var(--color-accent, var(--color-bg-tertiary))', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}>
+                disabled={!sourceModifiable}
+                className="text-sm px-3 py-1.5 rounded-lg outline-none cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+                style={{ background: 'var(--color-accent)', color: 'var(--color-on-accent)', border: '1px solid transparent' }}>
                 {t('settings.inference.save')}
               </button>
             </SettingRow>
@@ -1340,7 +1387,10 @@ export function SettingsPage() {
             </SettingRow>
           </Section>
 
-          {/* Updates */}
+          {/* Updates — 26/09/2026 : hors de l'app de bureau, l'interrupteur
+              écrivait un réglage que rien ne lit et « Vérifier maintenant »
+              ne faisait rien, sans un mot. La mise à jour est celle de l'app. */}
+          {isTauri() && (
           <Section title={t('settings.updates.title')}>
             <SettingRow label={t('settings.updates.autoLabel')} description={t('settings.updates.autoDescription')}>
               <button
@@ -1373,6 +1423,7 @@ export function SettingsPage() {
               </button>
             </SettingRow>
           </Section>
+          )}
 
           {/* About */}
           <Section title={t('settings.about.title')}>

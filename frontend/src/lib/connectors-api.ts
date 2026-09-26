@@ -1,4 +1,6 @@
 import { apiFetch, getBase, isTauri } from './api';
+import { estMobile } from './natif';
+import { traduire } from '../i18n/translate';
 import type { ConnectorInfo, SyncStatus, ConnectRequest, ConnectResponse } from '../types/connectors';
 
 // ---------------------------------------------------------------------------
@@ -37,6 +39,10 @@ export async function connectSource(id: string, req: ConnectRequest): Promise<Co
  *  connector reports connected (or reject on timeout). Reused for any OAuth
  *  connector whose /connect returned `oauth_required` (issue #512). */
 export function startServerOAuth(id: string, oauthStartPath?: string): Promise<void> {
+  // 26/09/2026 : dans le téléphone, `window.open` est muet, et le rappel
+  // OAuth vise 127.0.0.1:8789 — le Mac. La roue « en attente » tournait
+  // trois minutes puis s'éteignait sans un mot. On le dit tout de suite.
+  if (estMobile) return Promise.reject(new Error(traduire('sources.oauth.surLeMac')));
   const path = oauthStartPath || `/v1/connectors/${encodeURIComponent(id)}/oauth/start`;
   const url = `${getBase()}${path}`;
   // Le WebView bloque window.open : dans l'app, la danse OAuth part dans le

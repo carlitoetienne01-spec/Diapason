@@ -69,6 +69,7 @@ import { listConnectors, connectSource } from '../lib/connectors-api';
 import type { ToolCallInfo } from '../types';
 import { ToolCallCard } from '../components/Chat/ToolCallCard';
 import { useTranslation } from '../i18n/useTranslation';
+import { copierTexte } from '../lib/copier';
 
 /** The translation function, threaded into the module-level formatters. */
 type TFn = ReturnType<typeof useTranslation>['t'];
@@ -3172,7 +3173,11 @@ function MessagingTab({ agentId }: { agentId: string }) {
                           }}>
                             {text}
                             <button
-                              onClick={() => { navigator.clipboard.writeText(text); }}
+                              onClick={() => {
+                                void copierTexte(text).then((ok) => {
+                                  if (!ok) toast.error(t('chat.message.copyFailed'));
+                                });
+                              }}
                               style={{
                                 position: 'sticky', float: 'right', top: 0,
                                 fontSize: 10, padding: '2px 8px',
