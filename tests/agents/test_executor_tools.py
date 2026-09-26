@@ -102,3 +102,86 @@ def test_executor_handles_string_tools(tmp_path):
     result_agent = mgr.get_agent(agent["id"])
     assert result_agent["status"] == "idle"
     mgr.close()
+
+
+class TestLesAnciensNomsDOutils:
+    """Étape 7 du plan de la phase 1b (25/09/2026) : les outils succes_*
+    s'appellent vie_*, et agents.db garde les listes d'avant."""
+
+    def test_un_agent_qui_cite_succes_tasks_garde_ses_quatre_outils(
+        self, tmp_path, monkeypatch, caplog
+    ):
+        import logging
+
+        from diapason.core.registry import ToolRegistry
+        from diapason.tools.vie_continuity import VieContinuityTool
+        from diapason.tools.vie_finances import VieFinancesTool
+        from diapason.tools.vie_tasks import VieTasksTool
+        from diapason.tools.vie_workspace import VieWorkspaceTool
+
+        monkeypatch.setenv("DIAPASON_HOME", str(tmp_path))
+        _register_agent()
+        for nom, classe in (
+            ("vie_tasks", VieTasksTool),
+            ("vie_workspace", VieWorkspaceTool),
+            ("vie_continuity", VieContinuityTool),
+            ("vie_finances", VieFinancesTool),
+        ):
+            ToolRegistry.register_value(nom, classe)
+
+        mgr = AgentManager(db_path=str(tmp_path / "agents.db"))
+        agent = mgr.create_agent(
+            "ancien",
+            agent_type="monitor_operative",
+            config={
+                "system_prompt": "Agent d'avant le renommage.",
+                "tools": [
+                    "succes_tasks",
+                    "succes_workspace",
+                    "succes_continuity",
+                    "succes_finances",
+                ],
+                "instruction": "test",
+            },
+        )
+        mgr.send_message(agent["id"], "bonjour", mode="immediate")
+        executor = AgentExecutor(manager=mgr, event_bus=EventBus())
+        executor.set_system(FakeSystem(engine=FakeEngine([{"content": "ok"}])))
+
+        with caplog.at_level(logging.INFO, logger="diapason.agents.executor"):
+            executor.execute_tick(agent["id"])
+        mgr.close()
+
+        resolus = [
+            r.getMessage() for r in caplog.records if "resolved" in r.getMessage()
+        ]
+        assert any("resolved 4/4 tools" in m for m in resolus), (
+            f"les quatre anciens noms doivent donner quatre outils : {resolus}"
+        )
+
+    def test_un_nom_inconnu_se_dit_au_lieu_de_disparaitre(
+        self, tmp_path, monkeypatch, caplog
+    ):
+        import logging
+
+        monkeypatch.setenv("DIAPASON_HOME", str(tmp_path))
+        _register_agent()
+        mgr = AgentManager(db_path=str(tmp_path / "agents.db"))
+        agent = mgr.create_agent(
+            "fantome",
+            agent_type="monitor_operative",
+            config={
+                "system_prompt": "x",
+                "tools": ["outil_disparu_789"],
+                "instruction": "test",
+            },
+        )
+        mgr.send_message(agent["id"], "bonjour", mode="immediate")
+        executor = AgentExecutor(manager=mgr, event_bus=EventBus())
+        executor.set_system(FakeSystem(engine=FakeEngine([{"content": "ok"}])))
+        with caplog.at_level(logging.WARNING, logger="diapason.core.noms_outils"):
+            executor.execute_tick(agent["id"])
+        mgr.close()
+        assert any("outil_disparu_789" in r.getMessage() for r in caplog.records), (
+            "un outil écarté d'un agent doit se dire au niveau WARNING"
+        )

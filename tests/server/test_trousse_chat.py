@@ -57,8 +57,8 @@ def outils():
     return [
         Outil(n)
         for n in (
-            "succes_tasks",
-            "succes_workspace",
+            "vie_tasks",
+            "vie_workspace",
             "current_time",
             "digest_collect",
             "outil_prive",
@@ -247,9 +247,9 @@ class TestCatalogue:
     @pytest.mark.parametrize(
         "question,attendus",
         [
-            ("Quelles sont mes tâches aujourd’hui ?", {"succes_tasks", "current_time"}),
-            ("Mes notes de projets", {"succes_workspace"}),
-            ("What are my tasks?", {"succes_tasks"}),
+            ("Quelles sont mes tâches aujourd’hui ?", {"vie_tasks", "current_time"}),
+            ("Mes notes de projets", {"vie_workspace"}),
+            ("What are my tasks?", {"vie_tasks"}),
         ],
     )
     def test_precharge_sans_supprimer_le_catalogue(self, question, attendus):
@@ -261,7 +261,7 @@ class TestCatalogue:
         historique = messages("Quelles sont mes tâches ?") + [
             Message(role=Role.USER, content="Et demain ?")
         ]
-        assert "succes_tasks" in noms(
+        assert "vie_tasks" in noms(
             TrousseChat(outils(), historique, adaptative=True).specs
         )
         historique = [
@@ -369,7 +369,7 @@ def outils_du_bureau():
     return [
         Outil(n)
         for n in (
-            "succes_tasks",
+            "vie_tasks",
             "current_time",
             "web_search",
             "open_anything",
@@ -427,7 +427,7 @@ class TestLaRelectureNeViseQueLesDonnees:
             Message(
                 role=Role.ASSISTANT,
                 content="",
-                tool_calls=[ToolCall(id="t", name="succes_tasks", arguments="{}")],
+                tool_calls=[ToolCall(id="t", name="vie_tasks", arguments="{}")],
             ),
             Message(role=Role.TOOL, content="…", tool_call_id="t"),
             Message(role=Role.ASSISTANT, content="Deux tâches."),
@@ -478,7 +478,7 @@ class TestLaRelectureNeViseQueLesDonnees:
             Message(
                 role=Role.ASSISTANT,
                 content="",
-                tool_calls=[ToolCall(id="t", name="succes_tasks", arguments="{}")],
+                tool_calls=[ToolCall(id="t", name="vie_tasks", arguments="{}")],
             ),
             Message(role=Role.TOOL, content="…", tool_call_id="t"),
             Message(role=Role.ASSISTANT, content="Deux tâches."),
@@ -626,7 +626,7 @@ class TestDialogueAvecDecouverte:
                         content="Aucune tâche, j'ai tout vérifié.", finish_reason="stop"
                     )
                 ],
-                [StreamChunk(tool_calls=[appel("succes_tasks", {"value": "a"})])],
+                [StreamChunk(tool_calls=[appel("vie_tasks", {"value": "a"})])],
                 [StreamChunk(content="Voici le résultat réellement lu.")],
             ]
         )
@@ -781,3 +781,36 @@ class TestDialogueAvecDecouverte:
         with pytest.raises(asyncio.CancelledError):
             await tache
         assert ferme.is_set() and all(not o.executions for o in liste)
+
+
+class TestLesAnciensNoms:
+    """Étape 7 du plan de la phase 1b (25/09/2026) : SOUL.md et l'historique
+    des conversations citent encore succes_tasks."""
+
+    def test_le_modele_qui_charge_l_ancien_nom_recoit_le_neuf(self):
+        trousse = TrousseChat(outils(), messages(), adaptative=True)
+        reponse = json.loads(
+            trousse.charger(json.dumps({"toolNames": ["succes_tasks"]}))
+        )
+        assert "vie_tasks" in reponse["loaded"], reponse
+        assert reponse["unavailable"] == [], "l'ancien nom n'est pas « indisponible »"
+        assert "succes_tasks" not in noms(trousse.specs), "jamais montré au modèle"
+
+    def test_un_appel_ancien_dans_l_historique_amorce_l_outil_neuf(self):
+        """« Et demain ? » après un appel succes_tasks d'avant le renommage :
+        une suite de lecture, qui amorce l'outil sous son nom neuf."""
+        from diapason.server.trousse_chat import _amorcer
+
+        fil = [
+            Message(role=Role.USER, content="Fais le point, s'il te plaît."),
+            Message(
+                role=Role.ASSISTANT,
+                content="",
+                tool_calls=[ToolCall(id="t", name="succes_tasks", arguments="{}")],
+            ),
+            Message(role=Role.USER, content="Et demain ?"),
+        ]
+        amorces, connue = _amorcer(fil)
+        assert "vie_tasks" in amorces, amorces
+        assert "succes_tasks" not in amorces, "jamais un schéma sous l'ancien nom"
+        assert connue, "l'appel ancien fait encore de la suite une demande de lecture"

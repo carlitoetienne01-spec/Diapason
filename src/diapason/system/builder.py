@@ -451,6 +451,10 @@ class SystemBuilder:
                     tool_names = [n.strip() for n in raw.split(",") if n.strip()]
             else:
                 tool_names = []
+        # 25/09/2026 : la configuration peut encore citer succes_tasks.
+        from diapason.core.noms_outils import noms_canoniques, signaler_outil_inconnu
+
+        tool_names = noms_canoniques(tool_names)
 
         if tool_names:
             all_tools = {t.spec.name: t for t in internal_server.get_tools()}
@@ -482,6 +486,11 @@ class SystemBuilder:
             except (json.JSONDecodeError, TypeError) as exc:
                 logger.warning("Failed to parse MCP server config: %s", exc)
 
+        # Ni interne ni MCP : écarté sans un mot jusqu'au 25/09/2026.
+        trouves = {t.spec.name for t in tools}
+        for nom in tool_names:
+            if nom not in trouves:
+                signaler_outil_inconnu("configuration du système", nom)
         return tools
 
     @staticmethod

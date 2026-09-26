@@ -60,12 +60,12 @@ router = APIRouter()
 _TROUSSE_ASSISTANT: tuple[str, ...] = (
     "current_time",
     "calendar_query",
-    "succes_tasks",
-    "succes_workspace",
-    "succes_continuity",
-    "succes_finances",
-    "succes_delete_task",
-    "succes_delete_item",
+    "vie_tasks",
+    "vie_workspace",
+    "vie_continuity",
+    "vie_finances",
+    "vie_delete_task",
+    "vie_delete_item",
     # memory_manage écrit dans ~/.diapason/MEMORY.md, que le constructeur de
     # prompt relit à chaque session : c'est le seul circuit de mémoire qui
     # boucle réellement. memory_search, memory_store et retrieval visent un
@@ -172,6 +172,7 @@ def _chat_tooling(app_state: Any, config: Any) -> Optional[tuple[list, Any]]:
     resultat: Optional[tuple[list, Any]] = None
     try:
         import diapason.tools  # noqa: F401  # déclenche les enregistrements
+        from diapason.core.noms_outils import noms_canoniques, signaler_outil_inconnu
         from diapason.core.registry import ToolRegistry
         from diapason.server.approval_bridge import tool_confirm_callback
         from diapason.tools._stubs import BaseTool, ToolExecutor
@@ -181,16 +182,17 @@ def _chat_tooling(app_state: Any, config: Any) -> Optional[tuple[list, Any]]:
             voulus = [t.strip() for t in configures.split(",") if t.strip()]
         else:
             voulus = [str(t).strip() for t in configures if str(t).strip()]
-        noms = voulus or list(_TROUSSE_ASSISTANT)
+        # config.toml peut encore citer succes_tasks (25/09/2026) : traduit
+        # avant la recherche, sinon l'outil manquait au chat sans un mot.
+        noms = noms_canoniques(voulus) or list(_TROUSSE_ASSISTANT)
 
         outils = []
         for nom in noms:
             if not ToolRegistry.contains(nom):
                 # Un outil nommé mais absent (dépendance non installée) ne doit
-                # pas priver le chat des autres.
-                logging.getLogger("diapason.server").debug(
-                    "outil de chat inconnu, ignoré : %s", nom
-                )
+                # pas priver le chat des autres — mais il se dit : au niveau
+                # DEBUG, personne ne le lisait (25/09/2026).
+                signaler_outil_inconnu("trousse du chat", nom)
                 continue
             classe = ToolRegistry.get(nom)
             if isinstance(classe, type) and issubclass(classe, BaseTool):

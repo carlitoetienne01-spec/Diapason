@@ -91,8 +91,8 @@ class RemindersWriteTool(BaseTool):
                 "The Apple Reminders app. Create a reminder — « rappelle-moi "
                 "d'appeler le dentiste demain à 15 h » —, list the pending "
                 "ones, or mark one done by its name. Spoken days work: "
-                "aujourd'hui, demain, lundi… For Succès tasks use "
-                "succes_tasks instead; this is the system Reminders app."
+                "aujourd'hui, demain, lundi… For Diapason's private tasks use "
+                "vie_tasks instead; this is the system Reminders app."
             ),
             parameters={
                 "type": "object",

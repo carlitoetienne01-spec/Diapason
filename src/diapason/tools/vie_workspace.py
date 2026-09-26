@@ -41,11 +41,11 @@ def _resolve_date(value: Any, *, optional: bool = True) -> str:
     return resolution.value
 
 
-@ToolRegistry.register("succes_workspace")
+@ToolRegistry.register("vie_workspace")
 class VieWorkspaceTool(MagasinParesseux, BaseTool):
     """Routine workspace actions. Destructive operations are intentionally absent."""
 
-    tool_id = "succes_workspace"
+    tool_id = "vie_workspace"
     is_local = True
 
     def __init__(self, store: VieWorkspaceStore | None = None) -> None:
@@ -55,9 +55,9 @@ class VieWorkspaceTool(MagasinParesseux, BaseTool):
     @property
     def spec(self) -> ToolSpec:
         return ToolSpec(
-            name="succes_workspace",
+            name="vie_workspace",
             description=(
-                "Manage private local Succès projects, habits and notes. Supports "
+                "Manage private local Diapason projects, habits and notes. Supports "
                 "overview, list/create/update, and habit check-ins. Deletion and bulk "
                 "changes are deliberately unavailable. Use exact IDs returned by lists."
             ),
@@ -102,7 +102,7 @@ class VieWorkspaceTool(MagasinParesseux, BaseTool):
                 },
                 "required": ["action"],
             },
-            category="succes",
+            category="vie",
             metadata={"risk": "routine_write", "reversible": True},
         )
 
@@ -228,11 +228,11 @@ class VieWorkspaceTool(MagasinParesseux, BaseTool):
         return item_id
 
 
-@ToolRegistry.register("succes_delete_item")
+@ToolRegistry.register("vie_delete_item")
 class VieDeleteItemTool(MagasinParesseux, BaseTool):
     """Delete one exact phase-two entity after native user approval."""
 
-    tool_id = "succes_delete_item"
+    tool_id = "vie_delete_item"
     is_local = True
 
     def __init__(self, store: VieWorkspaceStore | None = None) -> None:
@@ -242,9 +242,10 @@ class VieDeleteItemTool(MagasinParesseux, BaseTool):
     @property
     def spec(self) -> ToolSpec:
         return ToolSpec(
-            name="succes_delete_item",
+            name="vie_delete_item",
             description=(
-                "Delete exactly one Succès project, habit or note by exact ID. "
+                "Delete exactly one private Diapason project, habit or note by "
+                "exact ID. "
                 "This sensitive action must wait for native user approval."
             ),
             parameters={
@@ -256,7 +257,7 @@ class VieDeleteItemTool(MagasinParesseux, BaseTool):
                 },
                 "required": ["entity", "item_id"],
             },
-            category="succes",
+            category="vie",
             requires_confirmation=True,
             metadata={"risk": "impactful", "reversible": False},
         )

@@ -167,11 +167,11 @@ def test_dia_tool_has_no_delete_action_and_no_false_success(store: VieStore) -> 
     assert created.metadata["persistence"] == "local"
 
 
-def test_dia_voice_registry_exposes_succes_tasks() -> None:
+def test_dia_voice_registry_exposes_vie_tasks() -> None:
     from diapason.speech.realtime.tools import list_voice_tool_ids
 
-    assert "succes_tasks" in list_voice_tool_ids()
-    assert "succes_delete_task" not in list_voice_tool_ids()
+    assert "vie_tasks" in list_voice_tool_ids()
+    assert "vie_delete_task" not in list_voice_tool_ids()
 
 
 def test_sensitive_dia_delete_requires_native_confirmation(store: VieStore) -> None:
@@ -182,7 +182,7 @@ def test_sensitive_dia_delete_requires_native_confirmation(store: VieStore) -> N
     tool = VieDeleteTaskTool(store)
     call = ToolCall(
         id="delete-1",
-        name="succes_delete_task",
+        name="vie_delete_task",
         arguments=json.dumps({"task_id": task["id"]}),
     )
     denied = ToolExecutor(

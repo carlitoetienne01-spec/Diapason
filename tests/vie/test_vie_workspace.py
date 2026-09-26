@@ -241,7 +241,7 @@ def test_dia_workspace_tool_separates_routine_and_sensitive_actions(tmp_path) ->
     sensitive = VieDeleteItemTool(store)
     call = ToolCall(
         id="delete-note",
-        name="succes_delete_item",
+        name="vie_delete_item",
         arguments=f'{{"entity":"note","item_id":"{note_id}"}}',
     )
     denied = ToolExecutor(
@@ -261,8 +261,8 @@ def test_voice_exposes_routine_workspace_but_not_sensitive_delete() -> None:
     from diapason.speech.realtime.tools import list_voice_tool_ids
 
     tool_ids = list_voice_tool_ids()
-    assert "succes_workspace" in tool_ids
-    assert "succes_delete_item" not in tool_ids
+    assert "vie_workspace" in tool_ids
+    assert "vie_delete_item" not in tool_ids
 
 
 class TestLesTroisAxesDeMiseEnPage:

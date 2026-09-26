@@ -41,9 +41,15 @@ def outils_demandes_par_le_client(csv: str) -> Optional[list[str]]:
     outils hors portée obtient le défaut, pas le vide : refuser toute voix à
     qui a mal demandé serait une punition, pas une garde.
     """
+    from diapason.core.noms_outils import noms_canoniques
     from diapason.speech.realtime.tools import DEFAULT_VOICE_TOOL_IDS
 
-    demandes = _parse_tools_csv(csv) or []
+    # Traduire PUIS confronter au plafond (25/09/2026) : un client pas encore
+    # reconstruit demande succes_tasks. Traduit après, il perdait l'outil ;
+    # et un alias qui passerait le plafond sans traduction rejouerait le
+    # défaut de DEFAULT_VOICE_TOOL_IDS. Le plafond, lui, ne cite que des
+    # noms canoniques : la traduction ne peut rien y ajouter.
+    demandes = noms_canoniques(_parse_tools_csv(csv) or [])
     plafond = set(DEFAULT_VOICE_TOOL_IDS)
     retenus = [t for t in demandes if t in plafond]
     return retenus or None

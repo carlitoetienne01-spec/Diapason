@@ -54,10 +54,10 @@ DEFAULT_VOICE_TOOL_IDS: tuple[str, ...] = (
     "screen_share_start",
     "screen_share_stop",
     "screen_share_status",
-    "succes_tasks",
-    "succes_workspace",
-    "succes_continuity",
-    "succes_finances",
+    "vie_tasks",
+    "vie_workspace",
+    "vie_continuity",
+    "vie_finances",
     # La suppression, demandée le 23 août 2026 — dans Diapason SEULEMENT.
     # Les trois outils déclarent requires_confirmation : l'ordre part à la
     # cloche d'approbation et attend le clic de l'utilisateur (45 s à la
@@ -70,9 +70,9 @@ DEFAULT_VOICE_TOOL_IDS: tuple[str, ...] = (
     "notes_write",
     "reminders_write",
     "calendar_add",
-    "succes_delete_task",
-    "succes_delete_item",
-    "succes_delete_continuity",
+    "vie_delete_task",
+    "vie_delete_item",
+    "vie_delete_continuity",
     # Les gestes d'une seconde (Atlas, 24 août 2026) : « monte le son »,
     # « mets pause », « qu'est-ce que j'ai copié ? » — des réflexes, pas des
     # projets. Tous visibles, réversibles et 100 % locaux.
@@ -181,19 +181,19 @@ _TOOL_MODULES: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
     ),
     (
         "diapason.tools.vie_tasks",
-        (("succes_tasks", "VieTasksTool"),),
+        (("vie_tasks", "VieTasksTool"),),
     ),
     (
         "diapason.tools.vie_workspace",
-        (("succes_workspace", "VieWorkspaceTool"),),
+        (("vie_workspace", "VieWorkspaceTool"),),
     ),
     (
         "diapason.tools.vie_continuity",
-        (("succes_continuity", "VieContinuityTool"),),
+        (("vie_continuity", "VieContinuityTool"),),
     ),
     (
         "diapason.tools.vie_finances",
-        (("succes_finances", "VieFinancesTool"),),
+        (("vie_finances", "VieFinancesTool"),),
     ),
     (
         "diapason.tools.browser_tabs",
@@ -238,11 +238,22 @@ def list_voice_tool_ids(
     allowed: Optional[Sequence[str]] = None,
 ) -> list[str]:
     _ensure_desktop_tools_loaded()
+    from diapason.core.noms_outils import noms_canoniques, signaler_outil_inconnu
     from diapason.core.registry import ToolRegistry
 
-    wanted = tuple(allowed) if allowed else DEFAULT_VOICE_TOOL_IDS
+    # 25/09/2026 : `allowed` vient de la configuration ([speech.realtime]
+    # tools) et peut encore citer succes_tasks ; traduit avant de filtrer.
+    wanted = noms_canoniques(allowed) if allowed else DEFAULT_VOICE_TOOL_IDS
     available = set(ToolRegistry.keys())
-    return [tid for tid in wanted if tid in available]
+    retenus = []
+    for tid in wanted:
+        if tid in available:
+            retenus.append(tid)
+        else:
+            # Écarté en silence jusqu'au 25/09/2026 : la voix perdait un outil
+            # (dépendance absente, nom resté ancien) sans que rien ne le dise.
+            signaler_outil_inconnu("voix", tid)
+    return retenus
 
 
 def gemini_function_declarations(
@@ -355,9 +366,12 @@ def execute_voice_tool(
     seconde, et c'est celle qui demande l'accord.
     """
     _ensure_desktop_tools_loaded()
+    from diapason.core.noms_outils import nom_canonique
     from diapason.core.types import ToolCall
 
-    tid = (name or "").strip()
+    # Le modèle peut appeler l'ancien nom (SOUL.md le lui apprend encore) :
+    # traduit AVANT la liste d'autorisation, qui ne connaît que les noms neufs.
+    tid = nom_canonique((name or "").strip())
     ids = list_voice_tool_ids(allowed)
     if tid not in set(ids):
         return {"ok": False, "error": f"Tool not allowed in voice mode: {tid}"}

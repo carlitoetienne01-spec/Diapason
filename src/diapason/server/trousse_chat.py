@@ -41,6 +41,7 @@ import unicodedata
 from collections.abc import Sequence
 from typing import Any
 
+from diapason.core.noms_outils import nom_canonique, noms_canoniques
 from diapason.core.types import Message, Role
 from diapason.server.reponses_longues import quantite_du_tour
 
@@ -55,13 +56,13 @@ MAX_CHARGEMENTS = 2
 # Ces indices préchargent ; ils n'autorisent ni n'interdisent rien. Une phrase
 # inconnue garde le catalogue et les suites conservent leurs appels antérieurs.
 _GROUPES = (
-    (r"\b(taches?|tasks?|sous.taches?)\b", ("succes_tasks", "current_time")),
+    (r"\b(taches?|tasks?|sous.taches?)\b", ("vie_tasks", "current_time")),
     (
         r"\b(projets?|projects?|habitudes?|habits?|notes?|carnets?)\b",
-        ("succes_workspace",),
+        ("vie_workspace",),
     ),
-    (r"\b(routines?|citations?|bilan)\b", ("succes_continuity",)),
-    (r"\b(finances?|budgets?|depenses?|revenus?|comptes?)\b", ("succes_finances",)),
+    (r"\b(routines?|citations?|bilan)\b", ("vie_continuity",)),
+    (r"\b(finances?|budgets?|depenses?|revenus?|comptes?)\b", ("vie_finances",)),
     (
         r"\b(agenda|calendrier|calendar|rendez.vous)\b",
         ("calendar_query", "current_time"),
@@ -116,10 +117,10 @@ _LECTURE = re.compile(
 # ouvrir) ne fait pas d'un suivi une demande de données.
 _LECTURES = frozenset(
     {
-        "succes_tasks",
-        "succes_workspace",
-        "succes_continuity",
-        "succes_finances",
+        "vie_tasks",
+        "vie_workspace",
+        "vie_continuity",
+        "vie_finances",
         "calendar_query",
         "web_search",
         "web_read",
@@ -200,8 +201,10 @@ def _demande_de_lecture(messages: Sequence[Message]) -> bool:
     precedente = demandes[-2]
     debut = next(i for i, m in enumerate(messages) if m is precedente)
     tour_precedent = messages[debut + 1 : -1]
+    # L'historique peut porter des appels d'avant le renommage (succes_tasks,
+    # 25/09/2026) : lus sous leur nom canonique.
     return any(
-        appel.name in _LECTURES
+        nom_canonique(appel.name) in _LECTURES
         for message in tour_precedent
         for appel in message.tool_calls or []
     )
@@ -247,7 +250,7 @@ def _amorcer(messages: Sequence[Message]) -> tuple[set[str], bool]:
             noms |= _indices(_normaliser(demandes[-2]))
         for message in messages[-8:]:
             for appel in message.tool_calls or []:
-                noms.add(appel.name)
+                noms.add(nom_canonique(appel.name))
     # « Qu'est-ce que j'ai reçu aujourd'hui ? » n'était reconnu que par
     # « aujourd'hui » — trousse réduite à l'horloge, et le modèle affirmait
     # « rien reçu » sans lire. Un mot de temps seul ne fait pas une demande
@@ -392,6 +395,9 @@ class TrousseChat:
                 },
                 ensure_ascii=False,
             )
+        # Le modèle demande parfois l'ancien nom (SOUL.md cite succes_tasks) :
+        # traduit PUIS borné à la trousse, qui ne connaît que les noms neufs.
+        noms = noms_canoniques(noms)
         refuses = sorted(set(noms) - self.noms)
         self._actifs.update(set(noms) & self.noms)
         if self._charges >= MAX_CHARGEMENTS:

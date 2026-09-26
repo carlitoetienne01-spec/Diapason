@@ -89,9 +89,9 @@ class TestTrousseVocale:
         from diapason.tools.vie_workspace import VieDeleteItemTool
 
         classes = {
-            "succes_delete_task": VieDeleteTaskTool,
-            "succes_delete_item": VieDeleteItemTool,
-            "succes_delete_continuity": VieDeleteContinuityTool,
+            "vie_delete_task": VieDeleteTaskTool,
+            "vie_delete_item": VieDeleteItemTool,
+            "vie_delete_continuity": VieDeleteContinuityTool,
         }
         for nom, classe in classes.items():
             assert nom in DEFAULT_VOICE_TOOL_IDS

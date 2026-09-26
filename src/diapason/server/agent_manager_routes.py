@@ -371,6 +371,7 @@ def _resolve_tool_specs(
     if not tool_config:
         return []
 
+    from diapason.core.noms_outils import nom_canonique
     from diapason.core.registry import ChannelRegistry, ToolRegistry
 
     _ensure_registries_populated()
@@ -403,6 +404,9 @@ def _resolve_tool_specs(
             continue
         if not isinstance(entry, str):
             continue
+        # Un agent sauvegardé qui cite succes_tasks (25/09/2026) : son schéma
+        # se construit sous le nom canonique, jamais sous l'ancien.
+        entry = nom_canonique(entry)
 
         # Expand the synthetic "browser" meta-tool into its sub-tools.
         if entry == "browser":

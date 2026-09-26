@@ -10,6 +10,8 @@ import importlib
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, Dict, Generic, Tuple, Type, TypeVar
 
+from diapason.core.noms_outils import ALIAS_OUTILS, nom_canonique
+
 if TYPE_CHECKING:
     from diapason.agents._stubs import BaseAgent
     from diapason.engine._stubs import InferenceEngine
@@ -178,7 +180,47 @@ class AgentRegistry(RegistryBase[Type["BaseAgent"]]):
 
 
 class ToolRegistry(RegistryBase[Any]):
-    """Registry for tool specifications."""
+    """Registry for tool specifications.
+
+    25/09/2026 : les outils ``succes_*`` s'appellent ``vie_*``. Une question
+    posée sous l'ancien nom (``contains``, ``get``, ``create``) reçoit la
+    réponse du nom canonique : une vingtaine d'endroits interrogent ce
+    registre avec un nom lu dans un agent sauvegardé, la configuration ou une
+    ligne de commande, et chacun aurait perdu l'outil en silence. ``keys()``
+    ne montre que les noms canoniques, et un ancien nom ne peut pas être
+    enregistré : le catalogue n'a jamais deux fois le même outil.
+    """
+
+    @classmethod
+    def _refuser_un_alias(cls, key: str) -> None:
+        if key in ALIAS_OUTILS:
+            raise ValueError(
+                f"'{key}' est l'ancien nom de '{ALIAS_OUTILS[key]}' : "
+                "enregistrer l'outil sous son nom canonique"
+            )
+
+    @classmethod
+    def register(cls, key: str) -> Callable[[Any], Any]:
+        cls._refuser_un_alias(key)
+        return super().register(key)
+
+    @classmethod
+    def register_value(cls, key: str, value: Any) -> Any:
+        cls._refuser_un_alias(key)
+        return super().register_value(key, value)
+
+    @classmethod
+    def register_lazy(cls, key: str, module: str) -> None:
+        cls._refuser_un_alias(key)
+        super().register_lazy(key, module)
+
+    @classmethod
+    def get(cls, key: str) -> Any:
+        return super().get(nom_canonique(key))
+
+    @classmethod
+    def contains(cls, key: str) -> bool:
+        return super().contains(nom_canonique(key))
 
 
 class RouterPolicyRegistry(RegistryBase[Any]):

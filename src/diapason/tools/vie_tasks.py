@@ -24,11 +24,11 @@ def _citer(titres: list[str]) -> str:
     return ", ".join(guillemets[:-1]) + " et " + guillemets[-1]
 
 
-@ToolRegistry.register("succes_tasks")
+@ToolRegistry.register("vie_tasks")
 class VieTasksTool(MagasinParesseux, BaseTool):
     """Routine, reversible task operations. Deletion is intentionally absent."""
 
-    tool_id = "succes_tasks"
+    tool_id = "vie_tasks"
     is_local = True
 
     def __init__(self, store: VieStore | None = None) -> None:
@@ -41,12 +41,12 @@ class VieTasksTool(MagasinParesseux, BaseTool):
     @property
     def spec(self) -> ToolSpec:
         return ToolSpec(
-            name="succes_tasks",
+            name="vie_tasks",
             description=(
-                "Manage the user's private Succès tasks on this Mac. Supports listing, "
-                "creating, completing/reopening, rescheduling, and adding or toggling "
-                "subtasks. Never claims remote sync. Deletion and bulk changes "
-                "are not allowed. "
+                "Manage the user's private Diapason tasks on this Mac. Supports "
+                "listing, creating, completing/reopening, rescheduling, and adding "
+                "or toggling subtasks. Never claims remote sync. Deletion and bulk "
+                "changes are not allowed. "
                 # Le réseau (18 sept. 2026) : sans ces quatre actions, la
                 # souris était l'unique chemin pour relier deux tâches ou
                 # savoir ce qu'une tâche attend (§82).
@@ -130,7 +130,7 @@ class VieTasksTool(MagasinParesseux, BaseTool):
                 },
                 "required": ["action"],
             },
-            category="succes",
+            category="vie",
             metadata={"risk": "routine_write", "reversible": True},
         )
 
@@ -426,11 +426,11 @@ class VieTasksTool(MagasinParesseux, BaseTool):
         )
 
 
-@ToolRegistry.register("succes_delete_task")
+@ToolRegistry.register("vie_delete_task")
 class VieDeleteTaskTool(MagasinParesseux, BaseTool):
     """Single-task deletion, always routed through Diapason approval."""
 
-    tool_id = "succes_delete_task"
+    tool_id = "vie_delete_task"
     is_local = True
 
     def __init__(self, store: VieStore | None = None) -> None:
@@ -440,9 +440,9 @@ class VieDeleteTaskTool(MagasinParesseux, BaseTool):
     @property
     def spec(self) -> ToolSpec:
         return ToolSpec(
-            name="succes_delete_task",
+            name="vie_delete_task",
             description=(
-                "Delete exactly one private Succès task by its exact ID. This is a "
+                "Delete exactly one private Diapason task by its exact ID. This is a "
                 "sensitive action and must wait for the user's approval. Never infer "
                 "an ID and never use it for bulk deletion."
             ),
@@ -452,12 +452,12 @@ class VieDeleteTaskTool(MagasinParesseux, BaseTool):
                 "properties": {
                     "task_id": {
                         "type": "string",
-                        "description": "Exact task ID returned by succes_tasks list.",
+                        "description": "Exact task ID returned by vie_tasks list.",
                     }
                 },
                 "required": ["task_id"],
             },
-            category="succes",
+            category="vie",
             requires_confirmation=True,
             metadata={"risk": "impactful", "reversible": False},
         )

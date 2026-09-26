@@ -249,11 +249,11 @@ def test_dia_routine_and_sensitive_tools_are_separated(tmp_path):
     )
     assert created.success is True
     assert routine.spec.requires_confirmation is False
-    assert "succes_continuity" in list_voice_tool_ids()
+    assert "vie_continuity" in list_voice_tool_ids()
 
     sensitive = VieDeleteContinuityTool(db)
     assert sensitive.spec.requires_confirmation is True
-    assert "succes_delete_continuity" not in list_voice_tool_ids()
+    assert "vie_delete_continuity" not in list_voice_tool_ids()
 
 
 def test_current_date_is_accepted_in_year_review(tmp_path):

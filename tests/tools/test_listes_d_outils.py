@@ -87,6 +87,26 @@ for module, entrees in voix._TOOL_MODULES:
         elif (nom := classe().spec.name) != cle:
             table.append(f"{module}.{attribut} s'appelle {nom}, pas {cle}")
 rapport["table_vocale"] = table
+
+# Étape 7 : le registre répond aussi sous l'ancien nom (succes_tasks), donc
+# `absents` ne verrait plus une liste restée à l'ancien nom. On la cherche.
+from diapason.core.noms_outils import ALIAS_OUTILS
+
+cites = (
+    list(_TROUSSE_ASSISTANT)
+    + [n for _, noms in trousse_chat._GROUPES for n in noms]
+    + list(trousse_chat._LECTURES)
+    + gras
+    + list(voix.DEFAULT_VOICE_TOOL_IDS)
+    + [cle for _, entrees in voix._TOOL_MODULES for cle, _ in entrees]
+)
+rapport["anciens_noms_cites"] = sorted({n for n in cites if n in ALIAS_OUTILS})
+rapport["anciens_noms_au_catalogue"] = sorted(
+    set(ToolRegistry.keys()) & set(ALIAS_OUTILS)
+)
+rapport["canoniques_absents"] = sorted(
+    set(ALIAS_OUTILS.values()) - set(ToolRegistry.keys())
+)
 print("RAPPORT=" + json.dumps(rapport))
 """
 
@@ -175,4 +195,21 @@ class TestChaqueNomCiteExiste:
         assert rapport["nombre_gras"] >= 30, (
             f"{rapport['nombre_gras']} noms en gras seulement : le format des "
             "puces de TOOL_ORAL_HINT a changé"
+        )
+
+    def test_aucune_liste_ne_cite_un_ancien_nom(self, rapport):
+        """Le registre traduit succes_tasks : sans ce test, une liste restée à
+        l'ancien nom passerait les six autres (étape 7, 25/09/2026)."""
+        assert rapport["anciens_noms_cites"] == [], (
+            f"{rapport['anciens_noms_cites']} : ce sont des alias, cite le nom "
+            "canonique (core/noms_outils.py)"
+        )
+
+    def test_le_catalogue_ne_montre_que_les_noms_canoniques(self, rapport):
+        """Deux outils identiques sous deux noms feraient hésiter le 9b."""
+        assert rapport["anciens_noms_au_catalogue"] == [], (
+            f"{rapport['anciens_noms_au_catalogue']} enregistrés sous l'ancien nom"
+        )
+        assert rapport["canoniques_absents"] == [], (
+            f"{rapport['canoniques_absents']} : un alias mène à un outil absent"
         )

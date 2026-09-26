@@ -304,6 +304,13 @@ class AgentExecutor:
         tool_names = config.get("tools", [])
         if isinstance(tool_names, str):
             tool_names = [t.strip() for t in tool_names.split(",") if t.strip()]
+        # 25/09/2026 : la liste vient d'agents.db. Un agent qui citait
+        # succes_tasks perdait l'outil sans un mot après le renommage en vie_*.
+        from diapason.core.noms_outils import noms_canoniques, signaler_outil_inconnu
+
+        tool_names = noms_canoniques(
+            t for t in tool_names if isinstance(t, str) and t.strip()
+        )
 
         tool_instances: list[Any] = []
         if tool_names:
@@ -317,6 +324,7 @@ class AgentExecutor:
                 pass
             from diapason.core.registry import ToolRegistry
 
+            hors_registre: list[str] = []
             for tname in tool_names:
                 if ToolRegistry.contains(tname):
                     try:
@@ -326,6 +334,8 @@ class AgentExecutor:
                         tool_instances.append(tool)
                     except Exception:
                         logger.warning("Failed to instantiate tool %s", tname)
+                else:
+                    hors_registre.append(tname)
 
             # Pull tools already discovered by SystemBuilder (e.g. external MCP
             # adapters) that aren't in the static ToolRegistry. Without this,
@@ -343,6 +353,12 @@ class AgentExecutor:
                     pooled = mcp_pool.get(tname)
                     if pooled is not None:
                         tool_instances.append(pooled)
+                        if tname in hors_registre:
+                            hors_registre.remove(tname)
+            # Ni dans le registre, ni parmi les outils MCP découverts : écarté
+            # sans un mot jusqu'au 25/09/2026.
+            for tname in hors_registre:
+                signaler_outil_inconnu(f"agent {agent['name']}", tname)
 
             if tool_instances:
                 logger.info(

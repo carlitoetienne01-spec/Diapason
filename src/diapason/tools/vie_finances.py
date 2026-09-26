@@ -41,20 +41,21 @@ def _store() -> VieFinancesStore:
     return VieSyncStore()
 
 
-@ToolRegistry.register("succes_finances")
+@ToolRegistry.register("vie_finances")
 class VieFinancesTool(BaseTool):
     """Inspect and record personal finances in the local Succès ledger."""
 
-    tool_id = "succes_finances"
+    tool_id = "vie_finances"
     is_local = True
 
     @property
     def spec(self) -> ToolSpec:
         return ToolSpec(
-            name="succes_finances",
+            name="vie_finances",
             description=(
-                "Gère le budget personnel Succès (CAD $) : résumé revenus/dépenses, "
-                "ajout d'une dépense ou d'un revenu, liste des abonnements et soldes. "
+                "Gère le budget personnel privé de Diapason (CAD $) : résumé "
+                "revenus/dépenses, ajout d'une dépense ou d'un revenu, liste des "
+                "abonnements et soldes. "
                 "Utilise overview pour répondre « où va mon argent », "
                 "add_transaction pour enregistrer une dépense/revenu dit à voix haute."
             ),
@@ -106,7 +107,7 @@ class VieFinancesTool(BaseTool):
                 },
                 "required": ["action"],
             },
-            category="succes",
+            category="vie",
         )
 
     def execute(self, **kwargs: Any) -> ToolResult:

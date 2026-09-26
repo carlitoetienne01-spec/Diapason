@@ -29,11 +29,11 @@ def _date(value: Any) -> str:
     return resolution.value
 
 
-@ToolRegistry.register("succes_continuity")
+@ToolRegistry.register("vie_continuity")
 class VieContinuityTool(MagasinParesseux, BaseTool):
     """Routine recurrence and review actions; deletion is deliberately separate."""
 
-    tool_id = "succes_continuity"
+    tool_id = "vie_continuity"
     is_local = True
 
     def __init__(self, store: VieContinuityStore | None = None) -> None:
@@ -43,10 +43,11 @@ class VieContinuityTool(MagasinParesseux, BaseTool):
     @property
     def spec(self) -> ToolSpec:
         return ToolSpec(
-            name="succes_continuity",
+            name="vie_continuity",
             description=(
-                "Manage private Succès recurring task/habit templates and motivational "
-                "quotes, materialize a date range, or read the annual/monthly review. "
+                "Manage private Diapason recurring task/habit templates and "
+                "motivational quotes, materialize a date range, or read the "
+                "annual/monthly review. "
                 "Deletion is unavailable in this routine tool."
             ),
             parameters={
@@ -102,7 +103,7 @@ class VieContinuityTool(MagasinParesseux, BaseTool):
                 },
                 "required": ["action"],
             },
-            category="succes",
+            category="vie",
             metadata={"risk": "routine_write", "reversible": True},
         )
 
@@ -202,9 +203,9 @@ class VieContinuityTool(MagasinParesseux, BaseTool):
         return item_id
 
 
-@ToolRegistry.register("succes_delete_continuity")
+@ToolRegistry.register("vie_delete_continuity")
 class VieDeleteContinuityTool(MagasinParesseux, BaseTool):
-    tool_id = "succes_delete_continuity"
+    tool_id = "vie_delete_continuity"
     is_local = True
 
     def __init__(self, store: VieContinuityStore | None = None) -> None:
@@ -214,9 +215,10 @@ class VieDeleteContinuityTool(MagasinParesseux, BaseTool):
     @property
     def spec(self) -> ToolSpec:
         return ToolSpec(
-            name="succes_delete_continuity",
+            name="vie_delete_continuity",
             description=(
-                "Delete one exact Succès recurrence or quote after native approval."
+                "Delete one exact private Diapason recurrence or quote after native "
+                "approval."
             ),
             parameters={
                 "type": "object",
@@ -227,7 +229,7 @@ class VieDeleteContinuityTool(MagasinParesseux, BaseTool):
                 },
                 "required": ["entity", "item_id"],
             },
-            category="succes",
+            category="vie",
             requires_confirmation=True,
             metadata={"risk": "impactful", "reversible": False},
         )

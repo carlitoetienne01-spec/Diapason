@@ -12,6 +12,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from diapason.core.noms_outils import nom_canonique
 from diapason.core.permissions import restreindre_au_proprietaire
 
 logger = logging.getLogger(__name__)
@@ -162,10 +163,13 @@ class CapabilityPolicy:
             for agent_data in data.get("agents", []):
                 agent_id = agent_data["agent_id"]
                 for grant_data in agent_data.get("grants", []):
+                    # The resource checked is the tool name. A policy written
+                    # before 25/09/2026 may still grant "succes_tasks": left
+                    # as is, it would silently stop matching "vie_tasks".
                     self.grant(
                         agent_id,
                         grant_data["capability"],
-                        grant_data.get("pattern", "*"),
+                        nom_canonique(grant_data.get("pattern", "*")),
                     )
                 for denied in agent_data.get("deny", []):
                     self.deny(agent_id, denied)

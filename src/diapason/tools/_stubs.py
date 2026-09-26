@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
 
 from diapason.core.events import EventBus, EventType
+from diapason.core.noms_outils import nom_canonique
 from diapason.core.types import ToolCall, ToolResult
 
 logger = logging.getLogger(__name__)
@@ -294,6 +295,15 @@ class ToolExecutor:
 
     def execute(self, tool_call: ToolCall) -> ToolResult:
         """Parse arguments, dispatch to tool, measure latency, emit events."""
+        # 25/09/2026 : un ancien nom (succes_tasks, cité par SOUL.md ou par
+        # l'historique d'une conversation) répondait « Unknown tool ». Traduit
+        # ici, AVANT le limiteur et la politique de capacités : l'appel est
+        # jugé sous le nom de l'outil qui s'exécute vraiment.
+        canonique = nom_canonique(tool_call.name)
+        if canonique != tool_call.name:
+            tool_call = ToolCall(
+                id=tool_call.id, name=canonique, arguments=tool_call.arguments
+            )
         tool = self._tools.get(tool_call.name)
         if tool is None:
             return ToolResult(
