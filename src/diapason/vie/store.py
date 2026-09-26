@@ -118,12 +118,26 @@ def now_ms() -> int:
     return int(time.time() * 1000)
 
 
-def _safe_timestamp(value: Any, *, fallback: int | None = None) -> int:
+def _safe_timestamp(
+    value: Any, *, fallback: int | None = None, plafond: int | None = None
+) -> int:
+    """Un horodatage lisible, jamais au-delà de ``plafond``.
+
+    Sans ``plafond``, la borne est « maintenant + 5 min » : une opération de
+    synchronisation vient d'un appareil dont l'horloge peut avancer un peu.
+    Un IMPORT, lui, passe son heure d'import (``plafond``) : une sauvegarde
+    ne peut rien contenir de plus récent que le moment où elle est arrivée.
+    26/09/2026 : borné à « maintenant + 5 min » recalculé à chaque rejeu au
+    démarrage, un horodatage en avance de deux jours dans la sauvegarde
+    écrasait, au redémarrage suivant, une note modifiée et une décoche
+    faites sur le Mac depuis l'import — sans un compte.
+    """
     try:
         parsed = int(float(value))
     except (TypeError, ValueError, OverflowError):
         parsed = fallback if fallback is not None else now_ms()
-    return max(0, min(parsed, now_ms() + MAX_FUTURE_SKEW_MS))
+    borne = plafond if plafond is not None else now_ms() + MAX_FUTURE_SKEW_MS
+    return max(0, min(parsed, borne))
 
 
 def _validate_iso_date(value: str, field: str = "date") -> str:
@@ -1665,6 +1679,7 @@ class VieStore:
             "archived": True,
         }
         sauts = resume_import.Sauts()
+        importe_a = now_ms()
         with self._transaction() as conn:
             existing_import = conn.execute(
                 "SELECT summary_json FROM vie_imports WHERE sha256=?", (digest,)
@@ -1672,16 +1687,14 @@ class VieStore:
             if existing_import:
                 previous = json.loads(existing_import["summary_json"])
                 return {**previous, "alreadyImported": True}
-            for project in projects:
-                if not isinstance(project, Mapping):
-                    continue
-                if self._import_project(conn, project, sauts):
+            for project in resume_import.dedoublonner(
+                projects, "projects", sauts, champ="name"
+            ):
+                if self._import_project(conn, project, sauts, plafond=importe_a):
                     summary["projectsImported"] += 1
-            for todo in todos:
-                if not isinstance(todo, Mapping):
-                    continue
+            for todo in resume_import.dedoublonner(todos, "tasks", sauts):
                 try:
-                    imported = self._import_task(conn, todo, sauts)
+                    imported = self._import_task(conn, todo, sauts, plafond=importe_a)
                 except VieError as exc:
                     sauts.noter(
                         "tasks",
@@ -1701,7 +1714,7 @@ class VieStore:
                     source,
                     digest,
                     raw,
-                    now_ms(),
+                    importe_a,
                     json.dumps(summary, ensure_ascii=False),
                 ),
             )
@@ -1712,10 +1725,15 @@ class VieStore:
         # « déjà importé » avec un résumé amputé de tout le reste. Les couches
         # passent désormais par `_materialiser_import`, et la ligne reçoit le
         # résumé entier.
+        # Les coches passent APRÈS toutes les couches : c'est la couche des
+        # modèles qui crée l'habitude d'un modèle « habitude ». 26/09/2026 :
+        # rejouées avant elle, ses coches se disaient « habitude absente du
+        # Mac », puis apparaissaient au redémarrage suivant.
         summary = resume_import.fusionner(
             summary,
             sauts.resume(),
-            self._materialiser_import(snapshot),
+            self._materialiser_import(snapshot, plafond=importe_a),
+            self._materialiser_coches(snapshot, plafond=importe_a),
             {"ignoredKeys": resume_import.cles_ignorees(snapshot)},
         )
         with self._transaction() as conn:
@@ -1725,8 +1743,16 @@ class VieStore:
             )
         return {**summary, "alreadyImported": False}
 
-    def _materialiser_import(self, snapshot: Mapping[str, Any]) -> dict[str, Any]:
+    def _materialiser_import(
+        self, snapshot: Mapping[str, Any], *, plafond: int | None = None
+    ) -> dict[str, Any]:
         """Ce que les couches au-dessus importent de la sauvegarde archivée."""
+        return {}
+
+    def _materialiser_coches(
+        self, snapshot: Mapping[str, Any], *, plafond: int | None = None
+    ) -> dict[str, Any]:
+        """Les coches d'habitude, une fois toutes les habitudes en place."""
         return {}
 
     def _import_project(
@@ -1734,6 +1760,8 @@ class VieStore:
         conn: sqlite3.Connection,
         project: Mapping[str, Any],
         sauts: resume_import.Sauts,
+        *,
+        plafond: int | None = None,
     ) -> bool:
         project_id = str(project.get("id") or "").strip()
         etiquette = resume_import.libelle(project.get("name"))
@@ -1758,14 +1786,17 @@ class VieStore:
         if not name:
             sauts.noter("projects", resume_import.TITRE_VIDE, project_id)
             return False
-        ts = _safe_timestamp(project.get("updatedAtMs"), fallback=0)
+        ts = _safe_timestamp(project.get("updatedAtMs"), fallback=0, plafond=plafond)
         current = conn.execute(
             "SELECT updated_at_ms FROM vie_projects WHERE id=?",
             (project_id,),
         ).fetchone()
-        if current and current["updated_at_ms"] > ts:
+        if current and current["updated_at_ms"] >= ts:
             sauts.noter(
-                "projects", resume_import.PLUS_RECENT_SUR_LE_MAC, project_id, etiquette
+                "projects",
+                resume_import.motif_face_au_mac(current["updated_at_ms"], ts),
+                project_id,
+                etiquette,
             )
             return False
         conn.execute(
@@ -1798,6 +1829,8 @@ class VieStore:
         conn: sqlite3.Connection,
         todo: Mapping[str, Any],
         sauts: resume_import.Sauts,
+        *,
+        plafond: int | None = None,
     ) -> bool:
         task_id = str(todo.get("id") or "").strip()
         etiquette = resume_import.libelle(todo.get("title"))
@@ -1816,13 +1849,20 @@ class VieStore:
         if not title or title.lower() == "input text":
             sauts.noter("tasks", resume_import.TITRE_VIDE, task_id)
             return False
-        ts = _safe_timestamp(todo.get("updatedAtMs"), fallback=0)
+        ts = _safe_timestamp(todo.get("updatedAtMs"), fallback=0, plafond=plafond)
         current = conn.execute(
             "SELECT updated_at_ms FROM vie_tasks WHERE id=?", (task_id,)
         ).fetchone()
-        if current and current["updated_at_ms"] > ts:
+        # 26/09/2026 : la comparaison était stricte. Une tâche INCHANGÉE était
+        # donc réimportée à chaque import d'une sauvegarde qui avait bougé
+        # ailleurs (tasksImported: 1) et émettait une opération de
+        # synchronisation pour rien.
+        if current and current["updated_at_ms"] >= ts:
             sauts.noter(
-                "tasks", resume_import.PLUS_RECENT_SUR_LE_MAC, task_id, etiquette
+                "tasks",
+                resume_import.motif_face_au_mac(current["updated_at_ms"], ts),
+                task_id,
+                etiquette,
             )
             return False
         priority = str(todo.get("priority") or "medium").lower()
@@ -1870,13 +1910,22 @@ class VieStore:
                 str(todo.get("parentTaskId") or ""),
             ),
         )
-        conn.execute(
-            "UPDATE vie_subtasks SET deleted_at_ms=? "
-            "WHERE task_id=? AND deleted_at_ms IS NULL",
-            (ts, task_id),
-        )
+        # 26/09/2026 : toutes les sous-tâches de la tâche recevaient ici une
+        # pierre tombale avant la réinsertion de celles de la sauvegarde. Une
+        # sous-tâche ajoutée sur le Mac — que le téléphone ne peut pas
+        # connaître — était donc EFFACÉE au second import, sous une phrase qui
+        # disait « n'efface rien sur le Mac ». Chaque sous-tâche se compare
+        # désormais seule, à son horodatage ; une sous-tâche absente de la
+        # sauvegarde n'est pas touchée (l'import n'efface rien).
         self._import_subtasks(
-            conn, task_id, todo.get("subtasks"), parent_id=None, depth=0, fallback_ts=ts
+            conn,
+            task_id,
+            todo.get("subtasks"),
+            parent_id=None,
+            depth=0,
+            fallback_ts=ts,
+            sauts=sauts,
+            plafond=plafond,
         )
         task = self._load_task(conn, task_id)
         assert task is not None
@@ -1900,20 +1949,45 @@ class VieStore:
         parent_id: str | None,
         depth: int,
         fallback_ts: int,
+        sauts: resume_import.Sauts,
+        plafond: int | None = None,
     ) -> None:
-        if depth >= MAX_SUBTASK_DEPTH or not isinstance(raw_nodes, list):
+        if not isinstance(raw_nodes, list):
             return
         for order, raw in enumerate(raw_nodes):
             if not isinstance(raw, Mapping):
                 continue
             subtask_id = str(raw.get("id") or "").strip()
-            if not subtask_id:
-                continue
-            title = str(raw.get("title") or "").strip()
+            etiquette = resume_import.libelle(raw.get("title"))
             children = (
                 raw.get("children") if isinstance(raw.get("children"), list) else []
             )
-            ts = _safe_timestamp(raw.get("updatedAtMs"), fallback=fallback_ts)
+            # 26/09/2026 : le Dart garde 25 niveaux, le Mac 24 ; une
+            # sous-tâche sans identifiant ou trop profonde disparaissait sans
+            # être comptée, ses enfants avec elle.
+            if depth >= MAX_SUBTASK_DEPTH:
+                self._noter_branche(sauts, raw, resume_import.TROP_PROFOND)
+                continue
+            if not subtask_id:
+                self._noter_branche(sauts, raw, resume_import.INVALIDE)
+                continue
+            ts = _safe_timestamp(
+                raw.get("updatedAtMs"), fallback=fallback_ts, plafond=plafond
+            )
+            current = conn.execute(
+                "SELECT updated_at_ms FROM vie_subtasks WHERE id=?", (subtask_id,)
+            ).fetchone()
+            if current and current["updated_at_ms"] > ts:
+                sauts.noter(
+                    "subtasks",
+                    resume_import.PLUS_RECENT_SUR_LE_MAC,
+                    subtask_id,
+                    etiquette,
+                )
+                continue
+            title = sauts.tronquer(
+                "subtasks", "title", str(raw.get("title") or "").strip(), 200
+            )
             conn.execute(
                 """INSERT INTO vie_subtasks
                    (id,task_id,parent_id,title,done,is_group,order_index,updated_at_ms,deleted_at_ms)
@@ -1927,7 +2001,7 @@ class VieStore:
                     subtask_id,
                     task_id,
                     parent_id,
-                    title[:200],
+                    title,
                     int(bool(raw.get("done"))),
                     int(bool(children)),
                     order,
@@ -1941,7 +2015,22 @@ class VieStore:
                 parent_id=subtask_id,
                 depth=depth + 1,
                 fallback_ts=ts,
+                sauts=sauts,
+                plafond=plafond,
             )
+
+    @staticmethod
+    def _noter_branche(
+        sauts: resume_import.Sauts, raw: Mapping[str, Any], motif: str
+    ) -> None:
+        """Une sous-tâche écartée, et chacune de ses descendantes avec elle."""
+        sauts.noter(
+            "subtasks", motif, raw.get("id"), resume_import.libelle(raw.get("title"))
+        )
+        enfants = raw.get("children")
+        for enfant in enfants if isinstance(enfants, list) else []:
+            if isinstance(enfant, Mapping):
+                VieStore._noter_branche(sauts, enfant, motif)
 
 
 __all__ = [

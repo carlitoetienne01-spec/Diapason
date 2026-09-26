@@ -83,10 +83,10 @@ class TestLImportNePerdPlusDeCochesNiDeNotesSansLeDire:
         resume = magasin.import_legacy_snapshot(_instantane())
 
         coches = _coches(magasin.db_path)
-        assert sorted(coches) == ["2026-09-20", "2026-09-21", "2026-09-22"], (
-            f"les trois coches doivent devenir trois lignes, pas {sorted(coches)}"
+        faites = sorted(jour for jour, (fait, _) in coches.items() if fait)
+        assert faites == ["2026-09-20", "2026-09-21", "2026-09-22"], (
+            f"les trois coches doivent devenir trois lignes faites, pas {faites}"
         )
-        assert all(fait == 1 for fait, _ in coches.values()), "les trois sont faites"
         assert resume["habitLogsImported"] == 3
         assert resume["habitLogsWithoutTimestamp"] == 2, (
             "deux coches n'avaient pas d'horodatage : le résumé doit le dire"
@@ -94,6 +94,18 @@ class TestLImportNePerdPlusDeCochesNiDeNotesSansLeDire:
         assert coches["2026-09-22"][1] == 1790062200000, (
             "la coche horodatée garde SON horodatage, pas celui de repli"
         )
+
+    def test_une_decoche_du_telephone_n_est_pas_comptee_coche(self, magasin):
+        """26/09/2026 : une clé de ``habitLogsAt`` absente de ``habitLogs``
+        est une DÉCOCHE (``toggleHabitLog``). Le Mac l'écrivait bien à 0,
+        mais la comptait « coche importée » : 4 annoncées pour 3."""
+        resume = magasin.import_legacy_snapshot(_instantane())
+
+        assert _coches(magasin.db_path)["2026-09-23"] == (0, 1790157600000), (
+            "la décoche devient une ligne à 0, avec SON horodatage"
+        )
+        assert resume["habitLogsImported"] == 3, "trois coches, pas quatre"
+        assert resume["habitLogUnchecksImported"] == 1
 
     def test_un_second_import_rend_already_imported_avec_le_resume_entier(
         self, magasin
@@ -108,7 +120,7 @@ class TestLImportNePerdPlusDeCochesNiDeNotesSansLeDire:
         assert {k: v for k, v in second.items() if k != "alreadyImported"} == {
             k: v for k, v in premier.items() if k != "alreadyImported"
         }, "le second import doit rendre le résumé du premier, en entier"
-        assert len(_coches(magasin.db_path)) == 3, "aucune ligne en double"
+        assert len(_coches(magasin.db_path)) == 4, "aucune ligne en double"
 
     def test_la_note_sans_titre_figure_au_resume_avec_son_motif(self, magasin):
         resume = magasin.import_legacy_snapshot(_instantane())
@@ -207,7 +219,7 @@ class TestLImportNePerdPlusDeCochesNiDeNotesSansLeDire:
         corps = reponse.json()
         assert corps["summary"]["habitLogsImported"] == 3
         message = corps["message"]
-        assert "3 coches d'habitude" in message, message
+        assert "3 coches d'habitude, 1 décoche d'habitude" in message, message
         assert "1 note (sans titre)" in message, message
         assert "1 tâche (trop long)" in message, message
         assert "1 suppression faite ailleurs n'efface rien" in message, message

@@ -7,6 +7,7 @@ remote replication is a separate, explicitly configured phase.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 import uuid
@@ -937,11 +938,32 @@ class VieContinuityStore(VieWorkspaceStore):
                 continue
             self._materialize_continuity_snapshot(snapshot)
 
-    def _materialiser_import(self, snapshot: Mapping[str, Any]) -> dict[str, Any]:
+    def _materialiser_import(
+        self, snapshot: Mapping[str, Any], *, plafond: int | None = None
+    ) -> dict[str, Any]:
         return resume_import.fusionner(
-            super()._materialiser_import(snapshot),
+            super()._materialiser_import(snapshot, plafond=plafond),
             self._materialize_continuity_snapshot(snapshot),
         )
+
+    @staticmethod
+    def _identifiant_stable(prefixe: str, raw: Mapping[str, Any]) -> str:
+        """L'identifiant d'un élément qui n'en a pas, le même à chaque rejeu.
+
+        26/09/2026 : un modèle ou une citation sans ``id`` (l'ancien site
+        en écrivait) recevait un identifiant ALÉATOIRE. Ce rejeu tourne à
+        chaque démarrage, et l'existence se testait sur l'identifiant : un
+        modèle et une citation de plus à chaque redémarrage (4 après trois),
+        sous un résumé qui disait « 1 ». L'empreinte du contenu est la même
+        à chaque rejeu de la même sauvegarde archivée.
+        """
+        contenu = json.dumps(
+            {k: v for k, v in raw.items() if k != "id"},
+            ensure_ascii=False,
+            sort_keys=True,
+            default=str,
+        )
+        return f"{prefixe}-{hashlib.sha256(contenu.encode('utf-8')).hexdigest()[:16]}"
 
     def _materialize_continuity_snapshot(
         self, snapshot: Mapping[str, Any]
@@ -955,14 +977,13 @@ class VieContinuityStore(VieWorkspaceStore):
         if not isinstance(state, Mapping):
             return summary
         sauts = resume_import.Sauts()
-        for raw in (
-            state.get("todoTemplates", [])
-            if isinstance(state.get("todoTemplates"), list)
-            else []
+        for raw in resume_import.dedoublonner(
+            state.get("todoTemplates"), "templates", sauts
         ):
-            if not isinstance(raw, Mapping):
-                continue
-            template_id = str(raw.get("id") or "")
+            template_id = str(raw.get("id") or "").strip()
+            if not template_id:
+                template_id = self._identifiant_stable("modele", raw)
+                raw = {**raw, "id": template_id}
             etiquette = resume_import.libelle(raw.get("title"), raw.get("name"))
             # Comme pour les citations ci-dessous : un modèle supprimé sur le
             # Mac compte comme présent. `get_template` l'ignorait, et
@@ -992,12 +1013,13 @@ class VieContinuityStore(VieWorkspaceStore):
                 )
                 continue
             summary["templatesImported"] += 1
-        for raw in (
-            state.get("quotes", []) if isinstance(state.get("quotes"), list) else []
+        for raw in resume_import.dedoublonner(
+            state.get("quotes"), "quotes", sauts, champ="text"
         ):
-            if not isinstance(raw, Mapping):
-                continue
-            quote_id = str(raw.get("id") or "")
+            quote_id = str(raw.get("id") or "").strip()
+            if not quote_id:
+                quote_id = self._identifiant_stable("citation", raw)
+                raw = {**raw, "id": quote_id}
             etiquette = resume_import.libelle(raw.get("text"))
             # 25/09/2026 : `_load_quote` ignore les lignes supprimées. Une
             # citation importée puis supprimée semblait donc absente, et ce

@@ -409,7 +409,9 @@ export type VieImportSkipReason =
   | 'titreVide'
   | 'tropLong'
   | 'invalide'
-  | 'habitudeAbsente';
+  | 'habitudeAbsente'
+  | 'enDouble'
+  | 'tropProfond';
 
 export async function importLegacyVieSnapshot(snapshot: unknown): Promise<{
   summary: {
@@ -419,6 +421,7 @@ export async function importLegacyVieSnapshot(snapshot: unknown): Promise<{
     habitsImported?: number;
     notesImported?: number;
     habitLogsImported?: number;
+    habitLogUnchecksImported?: number;
     habitLogsWithoutTimestamp?: number;
     templatesImported?: number;
     quotesImported?: number;

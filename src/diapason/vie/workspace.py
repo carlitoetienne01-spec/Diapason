@@ -1937,44 +1937,49 @@ class VieWorkspaceStore(VieStore):
     def materialize_archived_snapshots(self) -> None:
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT snapshot_json FROM vie_imports ORDER BY imported_at_ms"
+                "SELECT snapshot_json, imported_at_ms FROM vie_imports "
+                "ORDER BY imported_at_ms"
             ).fetchall()
         for row in rows:
             try:
                 snapshot = json.loads(row["snapshot_json"])
             except (TypeError, json.JSONDecodeError):
                 continue
-            self._materialize_workspace_snapshot(snapshot)
+            # Le plafond est l'heure de CET import, fixe : borné à « maintenant
+            # + 5 min » recalculé à chaque démarrage, un horodatage en avance
+            # dans la sauvegarde écrasait ce que le Mac avait changé depuis.
+            plafond = int(row["imported_at_ms"])
+            self._materialize_workspace_snapshot(snapshot, plafond=plafond)
+            self._materialiser_coches(snapshot, plafond=plafond)
 
-    def _materialiser_import(self, snapshot: Mapping[str, Any]) -> dict[str, Any]:
+    def _materialiser_import(
+        self, snapshot: Mapping[str, Any], *, plafond: int | None = None
+    ) -> dict[str, Any]:
         return resume_import.fusionner(
-            super()._materialiser_import(snapshot),
-            self._materialize_workspace_snapshot(snapshot),
+            super()._materialiser_import(snapshot, plafond=plafond),
+            self._materialize_workspace_snapshot(snapshot, plafond=plafond),
         )
 
-    def _materialize_workspace_snapshot(
-        self, snapshot: Mapping[str, Any]
-    ) -> dict[str, Any]:
-        state = (
+    @staticmethod
+    def _etat_de(snapshot: Mapping[str, Any]) -> Any:
+        return (
             snapshot.get("state")
             if isinstance(snapshot.get("state"), Mapping)
             else snapshot
         )
-        summary: dict[str, Any] = {
-            "habitsImported": 0,
-            "notesImported": 0,
-            "habitLogsImported": 0,
-            "habitLogsWithoutTimestamp": 0,
-        }
+
+    def _materialize_workspace_snapshot(
+        self, snapshot: Mapping[str, Any], *, plafond: int | None = None
+    ) -> dict[str, Any]:
+        state = self._etat_de(snapshot)
+        summary: dict[str, Any] = {"habitsImported": 0, "notesImported": 0}
         if not isinstance(state, Mapping):
             return summary
         sauts = resume_import.Sauts()
         with self._transaction() as conn:
-            for raw in (
-                state.get("habits", []) if isinstance(state.get("habits"), list) else []
+            for raw in resume_import.dedoublonner(
+                state.get("habits"), "habits", sauts, champ="name"
             ):
-                if not isinstance(raw, Mapping):
-                    continue
                 habit_id = str(raw.get("id") or "").strip()
                 etiquette = resume_import.libelle(raw.get("name"))
                 if not habit_id:
@@ -1983,14 +1988,18 @@ class VieWorkspaceStore(VieStore):
                 if not str(raw.get("name") or "").strip():
                     sauts.noter("habits", resume_import.TITRE_VIDE, habit_id)
                     continue
-                timestamp = _safe_timestamp(raw.get("updatedAtMs"), fallback=0)
+                timestamp = _safe_timestamp(
+                    raw.get("updatedAtMs"), fallback=0, plafond=plafond
+                )
                 current = conn.execute(
                     "SELECT updated_at_ms FROM vie_habits WHERE id=?", (habit_id,)
                 ).fetchone()
                 if current and current["updated_at_ms"] >= timestamp:
                     sauts.noter(
                         "habits",
-                        resume_import.PLUS_RECENT_SUR_LE_MAC,
+                        resume_import.motif_face_au_mac(
+                            current["updated_at_ms"], timestamp
+                        ),
                         habit_id,
                         etiquette,
                     )
@@ -2039,11 +2048,7 @@ class VieWorkspaceStore(VieStore):
                     ),
                 )
                 summary["habitsImported"] += 1
-            for raw in (
-                state.get("notes", []) if isinstance(state.get("notes"), list) else []
-            ):
-                if not isinstance(raw, Mapping):
-                    continue
+            for raw in resume_import.dedoublonner(state.get("notes"), "notes", sauts):
                 note_id = str(raw.get("id") or "").strip()
                 # Une note sans titre se reconnaît à son début : c'est lui que
                 # le résumé montre.
@@ -2054,14 +2059,18 @@ class VieWorkspaceStore(VieStore):
                 if not str(raw.get("title") or "").strip():
                     sauts.noter("notes", resume_import.TITRE_VIDE, note_id, etiquette)
                     continue
-                timestamp = _safe_timestamp(raw.get("updatedAtMs"), fallback=0)
+                timestamp = _safe_timestamp(
+                    raw.get("updatedAtMs"), fallback=0, plafond=plafond
+                )
                 current = conn.execute(
                     "SELECT updated_at_ms FROM vie_notes WHERE id=?", (note_id,)
                 ).fetchone()
                 if current and current["updated_at_ms"] >= timestamp:
                     sauts.noter(
                         "notes",
-                        resume_import.PLUS_RECENT_SUR_LE_MAC,
+                        resume_import.motif_face_au_mac(
+                            current["updated_at_ms"], timestamp
+                        ),
                         note_id,
                         etiquette,
                     )
@@ -2112,6 +2121,22 @@ class VieWorkspaceStore(VieStore):
                     ),
                 )
                 summary["notesImported"] += 1
+        return resume_import.fusionner(summary, sauts.resume())
+
+    def _materialiser_coches(
+        self, snapshot: Mapping[str, Any], *, plafond: int | None = None
+    ) -> dict[str, Any]:
+        state = self._etat_de(snapshot)
+        summary: dict[str, Any] = {
+            "habitLogsImported": 0,
+            "habitLogUnchecksImported": 0,
+            "habitLogsWithoutTimestamp": 0,
+        }
+        if not isinstance(state, Mapping):
+            return summary
+        sauts = resume_import.Sauts()
+        with self._transaction() as conn:
+            tombes = self._tombes_de_coches(conn)
             logs = (
                 state.get("habitLogs")
                 if isinstance(state.get("habitLogs"), Mapping)
@@ -2146,7 +2171,9 @@ class VieWorkspaceStore(VieStore):
                     sauts.noter("habitLogs", resume_import.HABITUDE_ABSENTE, key)
                     continue
                 if key in logs_at:
-                    timestamp = _safe_timestamp(logs_at[key], fallback=0)
+                    timestamp = _safe_timestamp(
+                        logs_at[key], fallback=0, plafond=plafond
+                    )
                 else:
                     # Horodatage de repli : minuit (UTC) du jour coché. Il
                     # doit être FIXE — ce rejeu tourne à chaque démarrage
@@ -2155,12 +2182,14 @@ class VieWorkspaceStore(VieStore):
                     # décoche faite depuis sur le Mac. Et il est ANCIEN :
                     # toute bascule faite sur le Mac pour ce jour-là, à
                     # partir de ce jour-là, gagne sur la sauvegarde.
-                    timestamp = int(
+                    minuit = int(
                         datetime(
                             jour.year, jour.month, jour.day, tzinfo=timezone.utc
                         ).timestamp()
                         * 1000
                     )
+                    # Une coche d'un jour à venir ne date pas d'après l'import.
+                    timestamp = _safe_timestamp(minuit, plafond=plafond)
                     summary["habitLogsWithoutTimestamp"] += 1
                 current = conn.execute(
                     """SELECT updated_at_ms FROM vie_habit_logs
@@ -2168,17 +2197,53 @@ class VieWorkspaceStore(VieStore):
                     (habit_id, iso),
                 ).fetchone()
                 if current and current["updated_at_ms"] >= timestamp:
+                    sauts.noter(
+                        "habitLogs",
+                        resume_import.motif_face_au_mac(
+                            current["updated_at_ms"], timestamp
+                        ),
+                        key,
+                    )
+                    continue
+                # 26/09/2026 : la synchronisation EFFACE la ligne d'une coche
+                # retirée (pierre tombale dans vie_sync_tombstones). Sans
+                # ligne, rien ne s'opposait au rejeu : la coche revenait au
+                # démarrage suivant.
+                if tombes.get(key, -1) >= timestamp:
                     sauts.noter("habitLogs", resume_import.PLUS_RECENT_SUR_LE_MAC, key)
                     continue
+                fait = int(bool(logs.get(key)))
                 conn.execute(
                     """INSERT INTO vie_habit_logs
                        (habit_id,log_date,done,updated_at_ms)
                        VALUES (?,?,?,?) ON CONFLICT(habit_id,log_date) DO UPDATE SET
                        done=excluded.done,updated_at_ms=excluded.updated_at_ms""",
-                    (habit_id, iso, int(bool(logs.get(key))), timestamp),
+                    (habit_id, iso, fait, timestamp),
                 )
-                summary["habitLogsImported"] += 1
+                # Une clé présente dans `habitLogsAt` seulement est une
+                # DÉCOCHE : `toggleHabitLog` retire la clé de `habitLogs` mais
+                # horodate la bascule. La compter « coche » annonçait 4 coches
+                # pour 1 faite.
+                summary[
+                    "habitLogsImported" if fait else "habitLogUnchecksImported"
+                ] += 1
         return resume_import.fusionner(summary, sauts.resume())
+
+    @staticmethod
+    def _tombes_de_coches(conn: sqlite3.Connection) -> dict[str, int]:
+        """Les coches que la synchronisation a effacées, et quand.
+
+        La table naît avec la couche de synchronisation, APRÈS le premier
+        rejeu d'une base neuve : son absence veut dire « aucune ».
+        """
+        try:
+            lignes = conn.execute(
+                "SELECT entity_id, deleted_at_ms FROM vie_sync_tombstones "
+                "WHERE entity='habit_logs'"
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return {}
+        return {str(r["entity_id"]): int(r["deleted_at_ms"]) for r in lignes}
 
 
 __all__ = [

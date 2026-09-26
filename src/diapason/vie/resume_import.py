@@ -27,6 +27,13 @@ TITRE_VIDE = "titreVide"
 TROP_LONG = "tropLong"
 INVALIDE = "invalide"
 HABITUDE_ABSENTE = "habitudeAbsente"
+# 26/09/2026 : deux éléments de même identifiant dans la sauvegarde
+# comptaient deux importés pour une ligne, ou le second se disait « plus
+# récent sur le Mac » alors qu'il venait de la même sauvegarde.
+EN_DOUBLE = "enDouble"
+# 26/09/2026 : le Dart garde 25 niveaux de sous-tâches, le Mac en garde 24 ;
+# le 25e disparaissait sans un mot.
+TROP_PROFOND = "tropProfond"
 
 # Les raisons pour lesquelles une clé de la sauvegarde n'est pas importée.
 ETAT_INTERFACE = "etatInterface"
@@ -120,6 +127,60 @@ class Sauts:
         }
 
 
+def motif_face_au_mac(sur_le_mac: int, dans_la_sauvegarde: int) -> str:
+    """Pourquoi un élément que le Mac a déjà n'est pas réécrit.
+
+    26/09/2026 : à horodatage ÉGAL, la version est la même ; le résumé
+    disait « une version plus récente est sur le Mac », et un second import
+    d'une sauvegarde à peine changée annonçait trois coches plus récentes
+    qui n'existaient pas.
+    """
+    if sur_le_mac == dans_la_sauvegarde:
+        return DEJA_SUR_LE_MAC
+    return PLUS_RECENT_SUR_LE_MAC
+
+
+def horodatage(valeur: Any) -> int:
+    """``updatedAtMs`` lu comme un entier, 0 s'il est absent ou illisible."""
+    try:
+        return int(float(valeur))
+    except (TypeError, ValueError, OverflowError):
+        return 0
+
+
+def dedoublonner(
+    elements: Any, genre: str, sauts: Sauts, *, champ: str = "title"
+) -> list[Mapping[str, Any]]:
+    """Un seul élément par identifiant : le plus récent, les autres comptés.
+
+    Garde l'ordre de la sauvegarde. Un élément sans identifiant passe tel
+    quel : c'est à l'importeur de le refuser avec son motif.
+    """
+    if not isinstance(elements, list):
+        return []
+    retenus: dict[str, int] = {}
+    sortie: list[Mapping[str, Any]] = []
+    for element in elements:
+        if not isinstance(element, Mapping):
+            continue
+        ident = str(element.get("id") or "").strip()
+        if not ident:
+            sortie.append(element)
+            continue
+        if ident not in retenus:
+            retenus[ident] = len(sortie)
+            sortie.append(element)
+            continue
+        place = retenus[ident]
+        ecarte = element
+        if horodatage(element.get("updatedAtMs")) > horodatage(
+            sortie[place].get("updatedAtMs")
+        ):
+            ecarte, sortie[place] = sortie[place], element
+        sauts.noter(genre, EN_DOUBLE, ident, libelle(ecarte.get(champ)))
+    return sortie
+
+
 def fusionner(*parties: Mapping[str, Any]) -> dict[str, Any]:
     """Les résumés des couches d'import, réunis sans qu'aucun n'écrase l'autre.
 
@@ -203,6 +264,10 @@ _IMPORTES = (
     ("projectsImported", "projet", "projets"),
     ("habitsImported", "habitude", "habitudes"),
     ("habitLogsImported", "coche d'habitude", "coches d'habitude"),
+    # 26/09/2026 : une décoche horodatée par le téléphone (clé présente
+    # dans `habitLogsAt` seulement) se comptait « coche » : 4 coches
+    # annoncées pour 1 seule faite.
+    ("habitLogUnchecksImported", "décoche d'habitude", "décoches d'habitude"),
     ("notesImported", "note", "notes"),
     ("templatesImported", "modèle", "modèles"),
     ("quotesImported", "citation", "citations"),
@@ -210,6 +275,7 @@ _IMPORTES = (
 
 _GENRES = {
     "tasks": ("tâche", "tâches"),
+    "subtasks": ("sous-tâche", "sous-tâches"),
     "projects": ("projet", "projets"),
     "habits": ("habitude", "habitudes"),
     "habitLogs": ("coche d'habitude", "coches d'habitude"),
@@ -225,6 +291,8 @@ _MOTIFS = {
     TROP_LONG: "trop long",
     INVALIDE: "invalide",
     HABITUDE_ABSENTE: "habitude absente du Mac",
+    EN_DOUBLE: "en double dans la sauvegarde",
+    TROP_PROFOND: "trop profonde",
 }
 
 
@@ -295,9 +363,12 @@ def phrase(resume: Mapping[str, Any]) -> str:
         if cle.get("reason") == SUPPRESSIONS_NON_REJOUEES
     )
     if suppressions:
+        # 26/09/2026 : le verbe restait au singulier — « 2 suppressions
+        # faites ailleurs n'efface rien ».
+        verbe = "n'efface" if suppressions == 1 else "n'effacent"
         morceaux.append(
             f"{_nombre(suppressions, 'suppression faite', 'suppressions faites')} "
-            "ailleurs n'efface rien sur le Mac."
+            f"ailleurs {verbe} rien sur le Mac."
         )
     return " ".join(morceaux)
 
@@ -308,6 +379,7 @@ __all__ = [
     "DEJA_SUR_LE_MAC",
     "ELEMENTS_NOMMES_MAX",
     "ENVELOPPE",
+    "EN_DOUBLE",
     "ETAT_INTERFACE",
     "HABITUDE_ABSENTE",
     "INVALIDE",
@@ -317,8 +389,12 @@ __all__ = [
     "Sauts",
     "TITRE_VIDE",
     "TROP_LONG",
+    "TROP_PROFOND",
     "cles_ignorees",
+    "dedoublonner",
     "fusionner",
+    "horodatage",
+    "motif_face_au_mac",
     "libelle",
     "motif_de_l_erreur",
     "phrase",
