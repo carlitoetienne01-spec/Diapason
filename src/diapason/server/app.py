@@ -9,8 +9,6 @@ import time
 from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
 
 from diapason.server.analytics_routes import router as analytics_router
 from diapason.server.api_routes import include_all_routes
@@ -367,33 +365,6 @@ def _restore_sendblue_bindings(app: FastAPI) -> None:
         logger.debug("SendBlue binding restore skipped: %s", exc)
 
 
-# No-cache headers applied to static file responses
-_NO_CACHE_HEADERS = {
-    "Cache-Control": "no-cache, no-store, must-revalidate",
-    "Pragma": "no-cache",
-    "Expires": "0",
-}
-
-
-class _NoCacheStaticFiles(StaticFiles):
-    """StaticFiles subclass that adds no-cache headers to every response."""
-
-    async def __call__(self, scope, receive, send):
-        async def _send_with_headers(message):
-            if message["type"] == "http.response.start":
-                extra = [(k.encode(), v.encode()) for k, v in _NO_CACHE_HEADERS.items()]
-                # Remove etag and last-modified
-                existing = [
-                    (k, v)
-                    for k, v in message.get("headers", [])
-                    if k.lower() not in (b"etag", b"last-modified")
-                ]
-                message = {**message, "headers": existing + extra}
-            await send(message)
-
-        await super().__call__(scope, receive, _send_with_headers)
-
-
 def create_app(
     engine,
     model: str,
@@ -700,27 +671,12 @@ def create_app(
     # Serve static frontend assets if the static/ directory exists
     static_dir = pathlib.Path(__file__).parent / "static"
     if static_dir.is_dir():
-        assets_dir = static_dir / "assets"
-        if assets_dir.is_dir():
-            app.mount(
-                "/assets",
-                _NoCacheStaticFiles(directory=assets_dir),
-                name="static-assets",
-            )
+        # 26/09/2026 : tout partait en « no-store » sans ETag — le téléphone
+        # retéléchargeait 2 480 Ko à chaque ouverture (2 350 ms jusqu'à la
+        # Discussion en 4G simulée). Voir server/bundle_statique.py.
+        from diapason.server.bundle_statique import monter_le_bundle
 
-        @app.get("/{full_path:path}")
-        async def spa_catch_all(full_path: str):
-            """Serve static files directly, fall back to index.html for SPA routes."""
-            if full_path:
-                candidate = (static_dir / full_path).resolve()
-                # Path traversal prevention
-                resolved_root = static_dir.resolve()
-                if candidate.is_relative_to(resolved_root) and candidate.is_file():
-                    return FileResponse(candidate, headers=_NO_CACHE_HEADERS)
-            return FileResponse(
-                static_dir / "index.html",
-                headers=_NO_CACHE_HEADERS,
-            )
+        monter_le_bundle(app, static_dir)
 
     return app
 
