@@ -902,7 +902,7 @@ export const MESSAGES = {
     'models.catalogueSource': 'Models are downloaded from the Ollama registry',
     'models.cloudKeyStatusFailed': 'Failed to read cloud key status',
     'models.cloudKeysDesktop': 'Add your API keys to use cloud models. Keys are stored in secure desktop storage.',
-    'models.cloudKeysServer': 'Configure cloud provider keys in the server environment to use cloud models.',
+    'models.cloudKeysServer': 'Cloud keys are added in the Diapason app on the Mac (or in the server’s environment). Here you only see which ones are present, never their value.',
     'models.customPlaceholder': 'e.g. codellama:7b',
     'models.customPrompt': 'Or enter any Ollama model name:',
     'models.deleteModel': 'Delete model',
@@ -1523,6 +1523,9 @@ export const MESSAGES = {
     "natif.delai": "The phone did not answer “{verbe}” within {secondes} s.",
     "natif.absent": "This works only in the Diapason app on the phone.",
     "natif.enregistrementEchoue": "The phone could not save the file.",
+    "desktopOnly.cloudKey": "API keys are saved from the Diapason app on the Mac.",
+    "desktopOnly.inferenceSource": "The inference source is chosen in the Diapason app on the Mac.",
+    "inference.readFailed": "Could not read the Mac’s inference source (HTTP {status}).",
   },
 
   fr: {
@@ -2410,7 +2413,7 @@ export const MESSAGES = {
     'models.catalogueSource': 'Les modèles proviennent du registre Ollama',
     'models.cloudKeyStatusFailed': 'Impossible de lire l’état des clés cloud',
     'models.cloudKeysDesktop': 'Ajoutez vos clés API pour utiliser les modèles cloud. Elles sont conservées dans le stockage sécurisé du poste.',
-    'models.cloudKeysServer': 'Configurez les clés des fournisseurs cloud dans l’environnement serveur pour utiliser les modèles cloud.',
+    'models.cloudKeysServer': 'Les clés cloud s’ajoutent dans l’app Diapason du Mac (ou dans l’environnement du serveur). Ici, vous voyez seulement lesquelles sont présentes, jamais leur valeur.',
     'models.customPlaceholder': 'ex. codellama:7b',
     'models.customPrompt': 'Ou saisissez le nom d’un modèle Ollama :',
     'models.deleteModel': 'Supprimer le modèle',
@@ -3031,5 +3034,8 @@ export const MESSAGES = {
     "natif.delai": "Le téléphone n’a pas répondu à « {verbe} » en {secondes} s.",
     "natif.absent": "Cela ne marche que dans l’app Diapason du téléphone.",
     "natif.enregistrementEchoue": "Le téléphone n’a pas pu enregistrer le fichier.",
+    "desktopOnly.cloudKey": "Les clés d’API s’enregistrent depuis l’app Diapason du Mac.",
+    "desktopOnly.inferenceSource": "La source d’inférence se choisit dans l’app Diapason du Mac.",
+    "inference.readFailed": "Impossible de lire la source d’inférence du Mac (HTTP {status}).",
   },
 } as const;

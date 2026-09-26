@@ -23,6 +23,7 @@ from diapason.server.conversations_store import ConversationsStore
 from diapason.server.dashboard import dashboard_router
 from diapason.server.dictation_routes import create_dictation_router
 from diapason.server.digest_routes import create_digest_router
+from diapason.server.lecture_reglages import create_lecture_reglages_router
 from diapason.server.research_router import router as research_router
 from diapason.server.routes import router
 from diapason.server.screen_share_routes import create_screen_share_router
@@ -610,6 +611,7 @@ def create_app(
     app.include_router(create_digest_router())
     app.include_router(create_dictation_router())
     app.include_router(create_config_router())
+    app.include_router(create_lecture_reglages_router())
     # Les conversations du chat. Sur l'app localhost UNIQUEMENT, jamais sur
     # la sous-app lan : ce sont des transcriptions privées. Avant ce magasin
     # (16 sept. 2026), l'historique vivait dans le localStorage du bundle,

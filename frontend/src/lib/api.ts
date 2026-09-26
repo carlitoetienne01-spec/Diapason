@@ -1,5 +1,6 @@
 import type { ModelInfo, SavingsData, ServerInfo } from '../types';
 import { isCloudModel } from './cloud-models';
+import { traduire } from '../i18n/translate';
 
 // ---------------------------------------------------------------------------
 // Runtime
@@ -15,8 +16,28 @@ export const isTauri = () => typeof window !== 'undefined' && !!window.__TAURI_I
 
 export type CloudKeyStatus = Record<string, boolean>;
 
+/** `[{key, set}]` → `{KEY: set}`, en ignorant toute ligne mal formée. */
+export function lireStatutCles(rows: unknown): CloudKeyStatus {
+  if (!Array.isArray(rows)) return {};
+  const statut: CloudKeyStatus = {};
+  for (const row of rows) {
+    if (row && typeof row.key === 'string' && typeof row.set === 'boolean') {
+      statut[row.key] = row.set;
+    }
+  }
+  return statut;
+}
+
+// 26/09/2026 : hors de Tauri (le téléphone, un navigateur), cette fonction
+// rendait `{}` : aucune clé, donc aucun modèle cloud proposé, même quand le
+// Mac en avait. Elle lit désormais le serveur, qui ne dit que « présente »
+// ou « absente » — jamais une valeur.
 export async function getCloudKeyStatus(): Promise<CloudKeyStatus> {
-  if (!isTauri()) return {};
+  if (!isTauri()) {
+    const res = await apiFetch('/v1/cloud/keys');
+    if (!res.ok) throw new Error(traduire('models.cloudKeyStatusFailed'));
+    return lireStatutCles((await res.json())?.keys);
+  }
   try {
     const { invoke } = await import('@tauri-apps/api/core');
     const rows = await invoke<Array<{ key: string; set: boolean }>>('get_cloud_key_status');
@@ -28,7 +49,7 @@ export async function getCloudKeyStatus(): Promise<CloudKeyStatus> {
 
 export async function saveCloudKey(keyName: string, keyValue: string): Promise<void> {
   if (!isTauri()) {
-    throw new Error('Cloud API keys can be saved in the desktop app only.');
+    throw new Error(traduire('desktopOnly.cloudKey'));
   }
   try {
     const { invoke } = await import('@tauri-apps/api/core');
@@ -1299,6 +1320,9 @@ export type InferenceSource = {
   engine?: string;
 };
 
+// 26/09/2026 : hors de Tauri, cette fonction rendait « ollama » sans rien
+// demander — une source qui pouvait contredire celle du Mac. Elle lit
+// désormais `inference.json` par le serveur, en lecture seule.
 export async function getInferenceSource(): Promise<InferenceSource> {
   if (isTauri()) {
     try {
@@ -1308,13 +1332,15 @@ export async function getInferenceSource(): Promise<InferenceSource> {
       throw new Error(e?.message ?? e ?? 'Failed to read inference source');
     }
   }
-  return { kind: 'ollama' };
+  const res = await apiFetch('/v1/inference/source');
+  if (!res.ok) throw new Error(traduire('inference.readFailed', { status: res.status }));
+  return res.json();
 }
 
 export async function setInferenceSource(
   src: InferenceSource & { apiKey?: string },
 ): Promise<void> {
-  if (!isTauri()) throw new Error('Inference source is configurable in the desktop app only.');
+  if (!isTauri()) throw new Error(traduire('desktopOnly.inferenceSource'));
   try {
     const { invoke } = await import('@tauri-apps/api/core');
     await invoke<void>('set_inference_source', {

@@ -124,18 +124,17 @@ export function CommandPalette() {
     [t],
   );
 
+  // Hors de l'app de bureau, l'état vient du serveur (26/09/2026) : les
+  // modèles cloud d'un Mac qui a les clés restent choisissables depuis le
+  // téléphone, sans que la clé elle-même quitte le Mac.
   const refreshCloudKeyStatus = useCallback(async () => {
-    if (!desktopKeyStorage) {
-      setCloudKeyStatus({});
-      return;
-    }
     try {
       setCloudKeyStatus(await getCloudKeyStatus());
       setCloudKeyError(null);
     } catch (e: any) {
       setCloudKeyError(e?.message || t('models.cloudKeyStatusFailed'));
     }
-  }, [desktopKeyStorage, t]);
+  }, [t]);
 
   const filtered = tab === 'installed'
     ? (query
@@ -563,7 +562,10 @@ export function CommandPalette() {
                           {isVisible ? <EyeOff size={12} /> : <Eye size={12} />}
                         </button>
                       </div>
-                      {hasSavedKey && (
+                      {/* Retirer une clé écrit dans le trousseau du Mac :
+                          seule l'app de bureau le peut. Hors d'elle, le
+                          bouton lèverait « desktop app only » (26/09/2026). */}
+                      {hasSavedKey && desktopKeyStorage && (
                         <button
                           onClick={() => handleSaveKey(provider, '')}
                           disabled={isSaving}
