@@ -494,7 +494,7 @@ Le contrat que la coquille doit tenir, tel que le bundle l'attend (26/09/2026) :
 - **Canal.** Un `JavaScriptChannel` nommé `DiapasonNatif`, injecté avant le chargement. Sa présence — et elle seule — fait `estMobile` : ni la largeur, ni l'agent utilisateur.
 - **Du bundle vers la coquille.** `DiapasonNatif.postMessage(JSON)` avec `{type: "demande", id, verbe, donnees}` ; `id` vaut `b1`, `b2`… La coquille répond par `window.diapasonNatifRecevoir(JSON)` avec `{type: "reponse", id, ok, donnees?, erreur?}`. Une réponse peut arriver avant que l'attente soit posée ; un `id` inconnu ou expiré est ignoré.
 - **Verbes sortants et délais.** `theme` (10 s) : `{theme, skin, fond, encre, clair}`. `ouvrirExterne` (10 s) : `{url}`, http(s) seulement, filtré avant l'envoi. `enregistrer` (120 s, parce qu'il attend une personne dans le sélecteur d'Android) : `{nom, mime, base64}` ; `ok` avec `donnees.nom` = le nom écrit (affiché tel quel) ; `ok: false, erreur: "annule"` = la personne a renoncé, rien n'est annoncé ; toute autre `erreur` est une phrase affichée.
-- **Verbe entrant.** La coquille envoie `{type: "demande", id, verbe: "retour"}` ; le bundle répond `ok: true, donnees: {traite}`. `traite: false` n'est pas un échec : la coquille fait alors `goBack()`, puis passe en arrière-plan. Aucun gestionnaire n'est inscrit dans ce lot (la barre latérale s'y inscrira à l'étape 5) : le bundle répond donc toujours `false` aujourd'hui. Un verbe entrant inconnu reçoit `ok: false, erreur: "verbeInconnu"`.
+- **Verbe entrant.** La coquille envoie `{type: "demande", id, verbe: "retour"}` ; le bundle répond `ok: true, donnees: {traite}`. `traite: false` n'est pas un échec : la coquille fait alors `goBack()`, puis passe en arrière-plan. Depuis l'étape 5 (`5e87751`), la barre latérale s'y inscrit : un tiroir ouvert se ferme et le bundle répond `traite: true` ; sinon `false`. Un verbe entrant inconnu reçoit `ok: false, erreur: "verbeInconnu"`.
 - **Aucun verbe ne rend un secret.** La liste est fermée par un test (`natif.test.ts`) : l'élargir est une décision.
 
 **4. « Hors de Tauri, des pages annonçaient un succès qui n'avait pas eu lieu ».** *Côté bundle commité le 26/09/2026 : exports et liens (`70ba5de`), lectures serveur (`4be917d`, `f8ea8bf`), gestes (`77eeac4`), et un correctif de construction (`c71df92`). Reste, à l'étape 7 : la vraie écriture dans Téléchargements, vue à la main.*
@@ -516,7 +516,43 @@ Ce que la réalisation a appris ou ajouté (26/09/2026) :
 - **piège de construction** : `document.documentElement?.getAttribute?.('lang')` écrit en valeur par défaut de paramètre était abaissé par esbuild (cible de Vite, safari14) en une référence hors de portée — « n is not defined » dans le bundle, vitest vert. Vu à l'écran, pas par les tests ; `locale.build.test.ts` construit désormais le vrai fichier ;
 - vu à l'écran le 26/09/2026, instance de test sur 127.0.0.1:18100 et pont natif simulé par une page de banc hors dépôt, à 375, 340 et ~700 px : `data-diapason-mobile="1"`, le thème envoyé au chargement puis à chaque changement (Ardéchine : `clair: true`, fond `#beb3a1`), l'export JSON du Bilan annoncé avec le nom rendu par la coquille et silencieux sur `annule`, la sauvegarde des conversations des Réglages, la phrase des gestes à la place du panneau (le panneau reste en `?compact` à 340 px), la source d'inférence du Mac affichée et son refus d'écriture en français. Pas vu : l'export PDF d'une pile et d'un visuel (ni photo ni graphique sur l'instance de test ; même chemin, couvert par les tests).
 
-**5. « À 390 px, la barre latérale cachait deux tiers de la Discussion et ne se refermait jamais ».**
+~~**5. « À 390 px, la barre latérale cachait deux tiers de la Discussion et ne se refermait jamais ».**~~ *Côté bundle commité le 26/09/2026, avec l'adaptation au téléphone de toutes les pages décidée au §4 (douze commits, de `5e87751` à `5117cfa`, et celui qui barre cette ligne). Reste, à l'étape 7 : revoir chaque page dans la vraie WebView d'Android — survol, clavier virtuel et barre d'état ne se simulent pas.*
+
+Ce que la réalisation a ajouté au plan :
+- **le téléphone est un mode, pas une largeur** : variant `mobile:` (`data-diapason-mobile`, posé par le pont), à côté de `max-sm:` et `compact:` sur chaque action révélée au survol — `max-sm:` s'éteint à 640 px, un téléphone à l'horizontale en fait 740 à 915 (`0239897`). Le menu « ⋯ » des discussions, la case et la légende d'une photo et Copier n'avaient aucune exception ;
+- `barreApresNavigation` laisse le tiroir ouvert dans deux cas qui ne sont pas des choix : entrer dans les Réglages et en sortir par « Retour » (le tiroir change de contenu). Le retour d'Android ne ferme qu'un tiroir, jamais une colonne (`lib/barre.ts`, 16 cas vitest) ;
+- **cibles de 40 px au doigt**, posées une fois dans `index.css` pour le seul mode `mobile` ; un contrôle dessiné (interrupteur, case) garde sa taille et étend sa surface par un pseudo-élément (`cible-etendue`) — vu à l'écran : porté à 40 px, l'interrupteur devenait une goutte (`66feb8d`) ;
+- ce qui flotte au-dessus des pages a sa réserve : `--bande-barre-fermee` (le bouton de la barre couvrait le surtitre de chaque page et le coin des fenêtres modales) et `--degagement-barre-fermee` (le titre de la Discussion) (`dfa9997`) ;
+- le panneau Système couvrait la Discussion au premier lancement : il ne s'ouvre seul que là où il est une colonne (`32aac52`) ;
+- défauts de page trouvés en regardant : une adresse longue faisait défiler tout le fil (`ee44ed1`), les chemises 3D des Notes et des Projets débordaient de 13 et 7 px (`e77d7f1`), les Réglages écrasaient leurs étiquettes (`5b86ba7`), ✕ de la fenêtre Photos sortait du cadre (`639ff45`), « Synchroniser » était rogné dans les Sources (`18e77c4`), les Journaux cassaient leurs boutons et parlaient anglais (`ae4dc05`), Copier couvrait les commandes de Démarrer (`5117cfa`) ;
+- le cas téléphone est écrit dans `mini-panneau-responsive.md` (règles 6 à 9) et résumé dans `CLAUDE.md`.
+
+**Pages vues le 26/09/2026.** Instance de test (`127.0.0.1:18100`, moteur factice, données créées par l'API : 8 tâches, 6 projets — un par forme —, 3 habitudes, 2 notes, 1 compte et 3 transactions, 1 pile de 3 photos, 3 discussions dont un tableau large, du code et une adresse longue), dans le Chromium du banc. « Vue » = regardée à l'écran ; « mesurée » = `scrollWidth` du document égal à sa largeur, aucun défilement horizontal hors des défileurs voulus (bloc de code, tableau, onglets des Finances, colonnes du pipeline) et, à 375 px, aucune cible de moins de 40 px hors curseurs et contrôles à surface étendue. 375 px : pont natif simulé (un faux canal `DiapasonNatif` injecté avant le bundle). 340 px : `?compact`, sans pont. 1280 px : sans pont, barre ouverte.
+
+| Page | 375 px (téléphone) | 340 px (mini-panneau) | 1280 px (bureau) |
+|---|---|---|---|
+| Discussion (compositeur, bulles, cartes d'outils, menus « Demander » et modèle, sauteur, menu « ⋯ ») | vue | vue | vue |
+| Tableau de bord | vue | mesurée | mesurée |
+| Planificateur | vue | mesurée | mesurée |
+| Tâches (Liste, Semaine, Mois, formulaire) | vue | mesurée | mesurée |
+| Projets (liste, et Liste, Arbre, Carte, Pipeline, Réseau — Graphe et Liste —, Cycle ; fenêtre Photos et pile ouverte) | vue | mesurée | vue (fenêtre Photos) |
+| Finances (et formulaire de transaction) | vue | mesurée | mesurée |
+| Habitudes | vue | mesurée | mesurée |
+| Notes (liste et éditeur) | vue | mesurée | mesurée |
+| Bilan | vue | mesurée | mesurée |
+| Réglages | vue | vue | vue |
+| Agents (et choix d'un modèle d'agent) | vue | mesurée | mesurée |
+| Sources de données (trois onglets) | vue | mesurée | mesurée |
+| Journaux | vue | mesurée | mesurée |
+| Démarrer | vue | mesurée | mesurée |
+| Appareils | vue | mesurée | mesurée |
+| Vue d'ensemble du système (le tableau système) | vue | mesurée | mesurée |
+| Synchronisation | vue | mesurée | mesurée |
+| Panneau Système de la Discussion | vue (fermé au lancement) | — | vue (ouvert au lancement) |
+
+Pas vu : la palette ⌘K (sans clavier sur un téléphone ; le choix du modèle a son menu), les toasts, un export réel.
+
+Le plan, tel qu'écrit le 25/09/2026 :
 - `sidebarOpen` démarre fermé sous `md` (`store.ts:367`), lu par `matchMedia` une seule fois à l'amorçage, sans `innerWidth` (règle 2 du mini-panneau).
 - La fonction pure `barreApresNavigation()` referme la barre après une navigation.
 - Le retour Android ferme d'abord la barre.

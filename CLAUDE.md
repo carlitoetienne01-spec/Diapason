@@ -202,6 +202,10 @@ Le mini-panneau de la réglette charge le vrai bundle dans une WKWebView
 redimensionnable : la convention (cinq règles — base 340 px, largeur en CSS,
 `compact` = mode, pop-ups qui retournent et se bornent, secondaire caché sous
 `sm`) vit dans [`docs/development/mini-panneau-responsive.md`](docs/development/mini-panneau-responsive.md).
+Le téléphone est un **mode** (`mobile:`, reconnu au pont natif, jamais à la
+largeur) et y ajoute quatre règles (26/09/2026) : cibles de 40 px au doigt,
+rien qui n'existe qu'au survol, barre latérale en tiroir sous `md`, rien qui
+se superpose ne s'ouvre seul.
 
 ### Les conversations du chat vivent sur le serveur
 
