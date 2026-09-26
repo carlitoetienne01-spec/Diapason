@@ -10,19 +10,25 @@ processeur ×4), dont un ``index-*.js`` de 1 422 181 octets qui en pèse
 353 108 en brotli. Rien dans l'historique ne justifiait le ``no-store`` : il
 datait du renommage du dépôt.
 
-Trois règles, et elles tiennent ensemble :
+Quatre règles, et elles tiennent ensemble :
 
 1. **Les fichiers à empreinte sont immuables.** ``/assets/<nom>-<hash>.<ext>``
    : Vite change le nom dès que le contenu change, donc un nom donné n'a
    qu'un contenu, pour toujours. ``public, max-age=31536000, immutable``.
-2. **Tout le reste se revalide.** ``index.html``, ``sw.js``, le manifeste,
-   les icônes et les polices sans empreinte : ``no-cache`` et un ETag.
-   ``no-cache`` ne veut pas dire « ne pas garder » : le navigateur garde,
-   mais redemande à chaque usage ; un 304 de quelques centaines d'octets
-   répond quand rien n'a changé. C'est ce qui garantit que le téléphone
-   exécute EXACTEMENT le bundle du Mac : un nouveau build réécrit
-   ``index.html`` (nouvel ETag), qui ne nomme que les nouvelles empreintes.
-3. **Les variantes précomprimées sont choisies, jamais fabriquées ici.**
+2. **Le document ne se garde pas.** ``index.html`` (et tout ``.html``)
+   part en ``no-store`` : c'est lui qui nomme les empreintes, donc lui qui
+   garantit que le téléphone exécute EXACTEMENT le bundle du Mac. En
+   ``no-cache``, un retour arrière le reprenait du cache SANS le redemander
+   — Chromium 152, cache de retour arrière coupé comme dans la WebView
+   (26/09/2026) : l'ancien index et son ancien bundle tournaient après un
+   nouveau build, zéro requête. Il pèse 909 octets : le garder ne gagnait
+   que l'écart entre un 304 et un 200, dans le même aller-retour.
+3. **Tout le reste se revalide.** ``sw.js``, le manifeste, les icônes et
+   les polices sans empreinte : ``no-cache`` et un ETag. ``no-cache`` ne
+   veut pas dire « ne pas garder » : le navigateur garde, mais redemande à
+   chaque usage ; un 304 de quelques centaines d'octets répond quand rien
+   n'a changé.
+4. **Les variantes précomprimées sont choisies, jamais fabriquées ici.**
    ``frontend/scripts/precomprimer.mjs`` pose ``.br`` et ``.gz`` à côté de
    chaque fichier texte au build ; on sert la meilleure que le client
    accepte, avec ``Vary: Accept-Encoding``. Comprimer à la volée un fichier
@@ -50,12 +56,14 @@ from starlette.responses import FileResponse, Response
 from starlette.staticfiles import NotModifiedResponse, StaticFiles
 
 __all__ = [
+    "CACHE_DOCUMENT",
     "CACHE_IMMUABLE",
     "CACHE_REVALIDE",
     "COMPRESSIBLES",
     "FichiersDuBundle",
     "ReponseDuBundle",
     "choisir_encodage",
+    "cache_hors_empreinte",
     "encodages_acceptes",
     "fichier_du_bundle",
     "monter_le_bundle",
@@ -64,6 +72,7 @@ __all__ = [
 
 CACHE_IMMUABLE = "public, max-age=31536000, immutable"
 CACHE_REVALIDE = "no-cache"
+CACHE_DOCUMENT = "no-store"
 
 # L'empreinte que Vite pose par défaut : huit caractères base64url avant
 # l'extension (« index-DP3oxbgi.css », « KaTeX_Main-Regular-CTRA-rTL.woff »).
@@ -99,6 +108,14 @@ _VARIANTES = (("br", ".br"), ("gzip", ".gz"))
 def porte_une_empreinte(nom: str) -> bool:
     """Vrai quand le nom du fichier porte une empreinte de contenu Vite."""
     return bool(_EMPREINTE_RE.search(nom))
+
+
+def cache_hors_empreinte(nom: str) -> str:
+    """La règle d'un fichier sans empreinte : ``no-store`` pour un document
+    HTML (règle 2), ``no-cache`` pour le reste (règle 3)."""
+    if os.path.splitext(nom)[1].lower() in (".html", ".htm"):
+        return CACHE_DOCUMENT
+    return CACHE_REVALIDE
 
 
 def encodages_acceptes(entete: str | None) -> frozenset[str]:
@@ -249,7 +266,10 @@ class FichiersDuBundle(StaticFiles):
         status_code: int = 200,
     ) -> Response:
         nom = os.path.basename(os.fspath(full_path))
-        cache = CACHE_IMMUABLE if porte_une_empreinte(nom) else CACHE_REVALIDE
+        if porte_une_empreinte(nom):
+            cache = CACHE_IMMUABLE
+        else:
+            cache = cache_hors_empreinte(nom)
         return ReponseDuBundle(full_path, cache, stat_result, status_code)
 
 
@@ -268,4 +288,4 @@ def monter_le_bundle(app: Any, racine: Path) -> None:
         """Serve static files directly, fall back to index.html for SPA routes."""
         # La recherche touche le disque : dans un fil, pas sur la boucle.
         chemin = await asyncio.to_thread(fichier_du_bundle, racine, full_path)
-        return ReponseDuBundle(chemin, CACHE_REVALIDE)
+        return ReponseDuBundle(chemin, cache_hors_empreinte(chemin.name))

@@ -101,15 +101,25 @@ class TestLeCache:
             assert "no-store" not in reponse.headers["cache-control"], chemin
             assert reponse.headers.get("etag"), f"{chemin} sans ETag ne se revalide pas"
 
-    def test_l_index_se_revalide_et_rend_304_quand_rien_n_a_change(self, bundle):
-        """Une ouverture où rien n'a changé ne doit coûter qu'un aller-retour
-        de quelques centaines d'octets, pas l'index entier."""
+    def test_l_index_ne_se_garde_jamais(self, bundle):
+        """26/09/2026, contre-épreuve : en ``no-cache``, un retour arrière
+        reprenait l'index du cache sans le redemander (Chromium 152, cache de
+        retour arrière coupé comme dans la WebView) et l'ancien bundle
+        tournait après un nouveau build. Toute route de la SPA rend l'index :
+        toutes doivent le dire ``no-store``."""
         client = _client(bundle)
-        premiere = client.get("/")
-        assert premiere.headers["cache-control"] == "no-cache"
+        for chemin in ("/", "/taches", "/vie/tasks", "/index.html"):
+            reponse = client.get(chemin)
+            assert reponse.status_code == 200, chemin
+            assert reponse.headers["cache-control"] == "no-store", chemin
+
+    def test_un_fichier_revalide_rend_304_quand_rien_n_a_change(self, bundle):
+        """sw.js et ses pareils ne coûtent qu'un 304 sans corps."""
+        client = _client(bundle)
+        premiere = client.get("/sw.js")
         etag = premiere.headers["etag"]
-        seconde = client.get("/taches", headers={"If-None-Match": etag})
-        assert seconde.status_code == 304, "même index, même ETag : 304 attendu"
+        seconde = client.get("/sw.js", headers={"If-None-Match": etag})
+        assert seconde.status_code == 304, "même fichier, même ETag : 304 attendu"
         assert seconde.content == b"", "un 304 n'a pas de corps"
         assert seconde.headers["cache-control"] == "no-cache", "le 304 garde sa règle"
 
