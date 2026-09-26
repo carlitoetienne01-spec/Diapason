@@ -82,6 +82,10 @@
       "path": null
     },
     {
+      "route": "diapason://tasks",
+      "path": null
+    },
+    {
       "route": "https://example.com",
       "path": null
     },
