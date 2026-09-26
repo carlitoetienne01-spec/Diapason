@@ -351,6 +351,111 @@ class TestLesTroisSocketsDemarrent:
         # Les sockets d'avant ne changent pas de forme.
         assert (prises[0].lifespan, prises[0].proxy_headers) == ("auto", True)
 
+    def test_un_port_secondaire_tenu_ne_fait_pas_tomber_l_api_locale(self):
+        """26/09/2026 (contre-épreuve) : un socket occupait le port du
+        tailnet ; le serveur mourait en code 3 (uvicorn, Errno 48) sans que
+        l'API locale ait jamais servi — et launchd l'aurait relancé toutes
+        les dix secondes. Le téléphone injoignable ne doit pas priver le Mac
+        de son serveur."""
+        import socket
+        import threading
+        import time
+
+        import httpx
+        from fastapi import FastAPI
+
+        from diapason.cli.serve import _Prise, _servir_les_sockets
+
+        maison = self._port_libre()
+        occupant = socket.socket()
+        occupant.bind(("127.0.0.1", 0))
+        occupant.listen(1)
+        tenu = occupant.getsockname()[1]
+
+        principal = FastAPI()
+
+        @principal.get("/vivant")
+        def _vivant():
+            return {"ok": True}
+
+        arret = threading.Event()
+        erreurs: list[BaseException] = []
+
+        def _servir():
+            try:
+                _servir_les_sockets(
+                    [
+                        _Prise("principal", principal, "127.0.0.1", maison),
+                        _Prise(
+                            "tailnet",
+                            FastAPI(),
+                            "127.0.0.1",
+                            tenu,
+                            lifespan="off",
+                            proxy_headers=False,
+                        ),
+                    ],
+                    arret,
+                )
+            except BaseException as exc:  # noqa: BLE001 - SystemExit compris
+                erreurs.append(exc)
+
+        fil = threading.Thread(target=_servir, daemon=True)
+        fil.start()
+        reponse = None
+        try:
+            for _ in range(100):
+                try:
+                    reponse = httpx.get(f"http://127.0.0.1:{maison}/vivant", timeout=1)
+                    break
+                except Exception:  # noqa: BLE001 - le serveur monte encore
+                    if not fil.is_alive():
+                        break
+                    time.sleep(0.05)
+        finally:
+            arret.set()
+            fil.join(timeout=10)
+            occupant.close()
+        assert not fil.is_alive(), "les sockets ont survécu au test"
+        assert reponse is not None and reponse.status_code == 200, (
+            f"l'API locale n'a jamais servi ; le serveur est tombé : {erreurs}"
+        )
+        assert erreurs == [], f"le serveur est sorti en erreur : {erreurs}"
+
+    def test_un_port_secondaire_tenu_est_ecarte_avant_de_servir(self):
+        """Le constat se dit en français, port et occupant nommés — pas en
+        « [Errno 48] address already in use » au milieu du journal."""
+        import io
+
+        from fastapi import FastAPI
+        from rich.console import Console
+
+        from diapason.cli.serve import _Prise, _prises_liables
+        from diapason.core import ports
+
+        sortie = io.StringIO()
+        prises = [
+            _Prise("principal", FastAPI(), "127.0.0.1", 8000),
+            _Prise("maillage", FastAPI(), "0.0.0.0", 8001),
+            _Prise("tailnet", FastAPI(), "127.0.0.1", 8002),
+        ]
+        etats = {
+            8000: (ports.OCCUPE, "PID 1 sur 127.0.0.1"),
+            8001: (ports.LIBRE, ""),
+            8002: (ports.OCCUPE, "PID 4242 sur 127.0.0.1"),
+        }
+        gardees = _prises_liables(
+            prises,
+            console=Console(file=sortie, width=200),
+            etat_du_port=lambda port: etats[port],
+        )
+        assert [p.nom for p in gardees] == ["principal", "maillage"], (
+            "le principal reste à attendre_le_port ; seul le tailnet tenu part"
+        )
+        texte = sortie.getvalue()
+        assert "8002" in texte and "PID 4242" in texte, texte
+        assert "téléphone" in texte, texte
+
     def test_sans_option_aucune_passerelle(self, tmp_path, monkeypatch):
         monkeypatch.setenv("DIAPASON_HOME", str(tmp_path))
         from fastapi import FastAPI

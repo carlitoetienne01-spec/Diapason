@@ -142,6 +142,24 @@ class TestLaPasserelleDuTailnet:
         assert "socket à part" in resultat.output
         _ne_rien_installer.assert_not_called()
 
+    def test_un_port_du_tailnet_tenu_se_dit_a_l_installation(self):
+        """Le service démarre sans la passerelle plutôt que de tomber ; celui
+        qui installe doit l'apprendre à ce moment-là (26/09/2026)."""
+
+        def etat(port):
+            if port == 8002:
+                return ("occupe", "PID 4242 sur 127.0.0.1")
+            return ("libre", "")
+
+        with (
+            patch("diapason.core.ports.port_state", side_effect=etat),
+            patch("diapason.desktop.launch_agent.job_pid", return_value=None),
+        ):
+            resultat = _invoquer("--tailnet")
+        assert resultat.exit_code == 0, resultat.output
+        assert "8002" in resultat.output and "PID 4242" in resultat.output
+        assert "sans la passerelle du tailnet" in resultat.output
+
     def test_l_etape_suivante_est_dite_et_le_piege_nomme(self):
         resultat = _invoquer("--tailnet")
         assert "tailscale serve --bg 8002" in resultat.output

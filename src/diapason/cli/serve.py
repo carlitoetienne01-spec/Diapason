@@ -362,6 +362,53 @@ def _prises(
     return prises
 
 
+# Ce que perd le Mac quand un socket secondaire ne s'ouvre pas — dit dans
+# le journal au lieu de « [Errno 48] address already in use ».
+_CE_QUI_MANQUE = {
+    "maillage": "les appareils du réseau local ne joindront pas ce Mac",
+    "tailnet": "le téléphone ne joindra pas ce Mac par le tailnet",
+}
+
+
+def _prises_liables(
+    prises: list[_Prise],
+    *,
+    console: Console,
+    etat_du_port: Callable[[int], tuple[str, str]] = ports.port_state,
+) -> list[_Prise]:
+    """Écarte, en le disant, un socket SECONDAIRE dont le port est tenu.
+
+    26/09/2026 (contre-épreuve) : un port du tailnet déjà pris faisait
+    mourir tout le serveur en code 3, API locale comprise, avant qu'elle ait
+    servi une seule requête — et launchd (KeepAlive, ThrottleInterval 10)
+    l'aurait relancé toutes les dix secondes. Le défaut existait déjà pour
+    le maillage (--lan-port) depuis le 26 août. Le socket principal, lui,
+    reste à ``attendre_le_port`` : sans lui, il n'y a pas de serveur.
+    """
+    gardees: list[_Prise] = []
+    for prise in prises:
+        if prise.nom != "principal":
+            etat, detail = etat_du_port(prise.port)
+            if etat == ports.OCCUPE:
+                manque = _CE_QUI_MANQUE.get(prise.nom, "ce socket reste fermé")
+                console.print(
+                    f"[yellow]Le port {prise.port} ({prise.nom}) est déjà tenu "
+                    f"({detail}) : ce socket ne s'ouvre pas, et {manque}. "
+                    "L'API locale démarre quand même.[/yellow]\n"
+                    f"  Pour l'identifier : lsof -nP -iTCP:{prise.port} "
+                    "-sTCP:LISTEN — puis relancer le service."
+                )
+                logger.warning(
+                    "socket %s : port %s tenu (%s), non ouvert",
+                    prise.nom,
+                    prise.port,
+                    detail,
+                )
+                continue
+        gardees.append(prise)
+    return gardees
+
+
 def _servir_les_sockets(prises: list[_Prise], arret: object | None = None) -> None:
     """N sockets, UN SEUL PROCESSUS — et ce n'est pas un détail.
 
@@ -375,6 +422,24 @@ def _servir_les_sockets(prises: list[_Prise], arret: object | None = None) -> No
     import asyncio
 
     import uvicorn
+
+    async def _servir(prise: _Prise, serveur: "uvicorn.Server") -> None:
+        try:
+            await serveur.serve()
+        except SystemExit:
+            # uvicorn sort en 3 quand le bind échoue. Pour le socket
+            # principal, c'est la fin du serveur ; pour un socket secondaire
+            # pris entre _prises_liables et son bind, c'était AUSSI la fin du
+            # principal (26/09/2026). Il se dit, et le reste continue.
+            if prise.nom == "principal" or serveur.started:
+                raise
+            logger.error(
+                "socket %s (%s:%s) non ouvert : %s. L'API locale continue.",
+                prise.nom,
+                prise.host,
+                prise.port,
+                _CE_QUI_MANQUE.get(prise.nom, "ce socket reste fermé"),
+            )
 
     async def _toutes() -> None:
         serveurs = [
@@ -391,13 +456,18 @@ def _servir_les_sockets(prises: list[_Prise], arret: object | None = None) -> No
             for prise in prises
         ]
         if arret is None:
-            await asyncio.gather(*(serveur.serve() for serveur in serveurs))
+            await asyncio.gather(
+                *(_servir(prise, serveur) for prise, serveur in zip(prises, serveurs))
+            )
             return
         # Le banc à plusieurs sockets survivait à pytest : les serveurs étaient
         # enfermés ici, donc le test ne pouvait poser `should_exit` sur aucun
         # d'eux. L'événement est injecté uniquement pour rendre leur cycle
         # de vie observable ; le service de production garde le même chemin.
-        taches = [asyncio.create_task(serveur.serve()) for serveur in serveurs]
+        taches = [
+            asyncio.create_task(_servir(prise, serveur))
+            for prise, serveur in zip(prises, serveurs)
+        ]
         await asyncio.to_thread(arret.wait)
         for serveur in serveurs:
             serveur.should_exit = True
@@ -1217,13 +1287,16 @@ def serve(
     from diapason.server.passerelle_tailnet import adresse_du_tailnet
 
     _servir_les_sockets(
-        _prises(
-            app,
-            bind_host,
-            bind_port,
-            lan_host=lan_host,
-            lan_port=lan_port,
-            tailnet_port=tailnet_port,
-            adresse_tailnet=adresse_du_tailnet(config),
+        _prises_liables(
+            _prises(
+                app,
+                bind_host,
+                bind_port,
+                lan_host=lan_host,
+                lan_port=lan_port,
+                tailnet_port=tailnet_port,
+                adresse_tailnet=adresse_du_tailnet(config),
+            ),
+            console=console,
         )
     )

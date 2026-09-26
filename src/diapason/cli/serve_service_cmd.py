@@ -176,6 +176,28 @@ def install(
             err=True,
         )
 
+    # Les sockets secondaires ne font plus tomber le serveur quand leur port
+    # est tenu (26/09/2026) : ils s'écartent en le disant. Mieux vaut le dire
+    # ICI, au moment où Carlito installe, que dans serve.err.log.
+    notre_pid = launch_agent.job_pid(launch_agent.SERVE_LABEL)
+    for demande, secondaire, quoi in (
+        (maillage_reseau, lan_port, "le maillage du réseau local"),
+        (tailnet, tailnet_port, "la passerelle du tailnet"),
+    ):
+        if not demande:
+            continue
+        etat_s, detail_s = ports.port_state(secondaire)
+        if etat_s == ports.OCCUPE and not (
+            notre_pid is not None and f"PID {notre_pid} " in f"{detail_s} "
+        ):
+            click.echo(
+                f"⚠ Le port {secondaire} est déjà tenu ({detail_s}) : le service "
+                f"démarrera sans {quoi}, l'API locale sur {port} servira quand "
+                f"même.\n  Pour l'identifier : lsof -nP -iTCP:{secondaire} "
+                "-sTCP:LISTEN",
+                err=True,
+            )
+
     path = launch_agent.install(
         label=launch_agent.SERVE_LABEL,
         log_prefix="serve",
