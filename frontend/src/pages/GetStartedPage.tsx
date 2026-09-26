@@ -119,7 +119,10 @@ function CodeBlock({ code }: { code: string }) {
       className="relative group rounded-lg px-4 py-3 text-sm font-mono overflow-x-auto"
       style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }}
     >
-      <pre className="whitespace-pre-wrap break-all">{code}</pre>
+      {/* Copier, toujours visible au doigt et dans le mini-panneau, se posait
+          sur la fin des lignes (« …github.c » coupé dessous, 26/09/2026) : le
+          texte lui laisse sa place là où il ne se cache pas. */}
+      <pre className="whitespace-pre-wrap break-all max-sm:pr-8 compact:pr-8 mobile:pr-11">{code}</pre>
       <button
         onClick={handleCopy}
         className="absolute top-2 right-2 p-1.5 rounded-md opacity-0 group-hover:opacity-100 focus-visible:opacity-100 max-sm:opacity-100 compact:opacity-100 mobile:opacity-100 transition-opacity cursor-pointer"
