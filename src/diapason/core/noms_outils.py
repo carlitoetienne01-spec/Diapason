@@ -47,6 +47,27 @@ def nom_canonique(nom: str) -> str:
     return ALIAS_OUTILS.get(nom, nom)
 
 
+_PREFIXE_ANCIEN = "succes_"
+_PREFIXE_NEUF = "vie_"
+
+
+def motif_canonique(motif: str) -> str:
+    """Un motif glob de politique de capacités, traduit.
+
+    Un nom exact suit :func:`nom_canonique`. Un motif qui commence par
+    ``succes_`` et porte un joker (``succes_*``, ``succes_del*``) passe à
+    ``vie_`` : le 25/09/2026, seuls les noms exacts l'étaient, et un motif
+    écrit avant le renommage cessait de correspondre sans un mot. Les sept
+    alias sont tous ``succes_X`` → ``vie_X`` : le motif traduit désigne
+    exactement les mêmes outils, rien de plus.
+    """
+    if motif in ALIAS_OUTILS:
+        return ALIAS_OUTILS[motif]
+    if motif.startswith(_PREFIXE_ANCIEN) and any(c in motif for c in "*?["):
+        return _PREFIXE_NEUF + motif[len(_PREFIXE_ANCIEN) :]
+    return motif
+
+
 def noms_canoniques(noms: Iterable[str]) -> list[str]:
     """Traduits, dans l'ordre, sans doublon.
 
@@ -88,6 +109,7 @@ def signaler_outil_inconnu(lieu: str, nom: str) -> None:
 
 __all__ = [
     "ALIAS_OUTILS",
+    "motif_canonique",
     "nom_canonique",
     "noms_canoniques",
     "signaler_outil_inconnu",

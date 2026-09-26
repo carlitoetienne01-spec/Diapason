@@ -206,3 +206,79 @@ class TestLaPolitiqueDeCapacites:
         assert politique.check("voice", "file:read", "vie_tasks"), (
             "la permission accordée à succes_tasks doit valoir pour vie_tasks"
         )
+
+    def test_un_motif_succes_etoile_vaut_pour_les_outils_vie(self, tmp_path: Path):
+        """Contre-épreuve du 25/09/2026 : seul un nom EXACT était traduit ; un
+        motif « succes_* » écrit avant le renommage ne correspondait plus à
+        rien, et l'agent perdait la permission sans un mot."""
+        from diapason.security.capabilities import CapabilityPolicy
+
+        fichier = tmp_path / "capabilities.json"
+        fichier.write_text(
+            json.dumps(
+                {
+                    "agents": [
+                        {
+                            "agent_id": "voice",
+                            "grants": [
+                                {"capability": "file:read", "pattern": "succes_*"},
+                                {"capability": "net:*", "pattern": "succes_del*"},
+                            ],
+                        }
+                    ]
+                }
+            )
+        )
+        politique = CapabilityPolicy(policy_path=str(fichier), default_deny=True)
+        assert politique.check("voice", "file:read", "vie_tasks"), (
+            "« succes_* » doit valoir pour vie_tasks"
+        )
+        assert politique.check("voice", "net:fetch", "vie_delete_task")
+        assert not politique.check("voice", "file:read", "web_search"), (
+            "la traduction ne doit rien élargir au-delà des outils vie"
+        )
+        assert not politique.check("voice", "net:fetch", "vie_tasks")
+
+
+class TestLesAutresSitesTraduisent:
+    """Contre-épreuve du 25/09/2026 : retirer la traduction de
+    system/builder.py, ou garder l'ancien nom pour le limiteur de l'exécuteur,
+    laissait tous les tests verts."""
+
+    def test_la_configuration_qui_cite_succes_tasks_garde_l_outil(self, registre):
+        """config.toml peut encore dire ``tools.enabled = "succes_tasks"`` :
+        le constructeur indexe les outils par leur nom réel, un ancien nom y
+        tombait (avec un seul WARNING)."""
+        from diapason.core.config import DiapasonConfig
+        from diapason.system.builder import SystemBuilder
+
+        config = DiapasonConfig()
+        config.tools.enabled = "succes_tasks,vie_workspace,succes_workspace"
+
+        outils = SystemBuilder()._resolve_tools(config, None, None, None)
+
+        assert [o.spec.name for o in outils] == ["vie_tasks", "vie_workspace"], (
+            "l'ancien nom garde l'outil, et un nom cité deux fois ne le donne "
+            "qu'une fois"
+        )
+
+    def test_le_limiteur_compte_sous_le_nom_canonique(self, tmp_path):
+        """Sous l'ancien nom, la clé du limiteur se dédoublait : deux seaux
+        pour un seul outil, donc deux fois le débit permis."""
+        magasin = VieSyncStore(tmp_path / "vie.db")
+        cles: list[str] = []
+
+        class Limiteur:
+            def check(self, cle):
+                cles.append(cle)
+                return True, 0.0
+
+        executeur = ToolExecutor([VieTasksTool(magasin)], rate_limiter=Limiteur())
+        for nom in ("succes_tasks", "vie_tasks"):
+            executeur.execute(
+                ToolCall(id=nom, name=nom, arguments=json.dumps({"action": "list"}))
+            )
+
+        assert cles == ["anonymous:vie_tasks"] * 2, (
+            f"un seul seau pour un seul outil, vu {cles}"
+        )
