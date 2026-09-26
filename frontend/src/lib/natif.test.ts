@@ -10,7 +10,9 @@ import {
   detecterCanal,
   doitPasserParLaCoquille,
   installerPont,
+  estCanalLie,
   estMobile,
+  BONJOUR,
   type CanalNatif,
 } from './natif';
 
@@ -345,6 +347,99 @@ describe('Le pont se branche sur la fenêtre que la coquille a préparée', () =
       verbe: 'ouvrirExterne',
       donnees: { url: 'https://exemple.org/source' },
     });
+  });
+});
+
+describe('Le canal lié à l’origine du Mac (constat 2, 26/09/2026)', () => {
+  // Échec évité : l'ancien `JavaScriptChannel` était injecté dans TOUTE page
+  // chargée dans la WebView, et la coquille répondait en exécutant
+  // `window.diapasonNatifRecevoir(…)` dans la page COURANTE. Le canal lié
+  // (`WebViewCompat.addWebMessageListener`) n'existe que dans les pages du
+  // Mac et répond par l'événement `message` de l'objet.
+
+  /** Le canal lié : `postMessage`, et les messages de la coquille en événements. */
+  function canalLie() {
+    const envoyes: Array<Record<string, unknown>> = [];
+    const ecouteurs: Array<(e: { data?: unknown }) => void> = [];
+    const canal = {
+      postMessage(texte: string) {
+        envoyes.push(JSON.parse(texte) as Record<string, unknown>);
+      },
+      addEventListener(type: 'message', fn: (e: { data?: unknown }) => void) {
+        if (type === 'message') ecouteurs.push(fn);
+      },
+    };
+    const coquilleDit = (message: Record<string, unknown>) => {
+      for (const fn of ecouteurs) fn({ data: JSON.stringify(message) });
+    };
+    const fenetre: Record<string, unknown> = {
+      DiapasonNatif: canal,
+      location: { origin: 'https://atelier.exemple.ts.net' },
+    };
+    const attributs: Record<string, string> = {};
+    const doc = {
+      documentElement: { setAttribute: (n: string, v: string) => (attributs[n] = v) },
+      addEventListener: () => {},
+    };
+    return { canal, envoyes, ecouteurs, coquilleDit, fenetre, doc, attributs };
+  }
+
+  it('distingue le canal lié de l’ancien canal', () => {
+    expect(estCanalLie(canalLie().canal)).toBe(true);
+    expect(estCanalLie({ postMessage: () => {} })).toBe(false);
+  });
+
+  it('écoute les messages de l’objet, sans poser de point d’entrée sur window', async () => {
+    const { fenetre, doc, envoyes, coquilleDit, attributs, ecouteurs } = canalLie();
+    const pont = installerPont(fenetre, doc)!;
+    expect(pont, 'le canal lié est un téléphone').not.toBeNull();
+    expect(attributs['data-diapason-mobile']).toBe('1');
+    expect(ecouteurs, 'une seule écoute').toHaveLength(1);
+    expect(
+      fenetre.diapasonNatifRecevoir,
+      'rien de plus exposé : la page n’offre plus d’entrée que toute page pourrait appeler',
+    ).toBeUndefined();
+    const promesse = pont.demander('enregistrer', { nom: 'a.json' });
+    const demande = envoyes.find((m) => m.type === 'demande')!;
+    coquilleDit({ type: 'reponse', id: demande.id, ok: true, donnees: { nom: 'a.json' } });
+    await expect(promesse).resolves.toMatchObject({ ok: true, donnees: { nom: 'a.json' } });
+  });
+
+  it('salue la coquille une fois, sans identifiant ni verbe', () => {
+    // La voie de retour d'Android naît du premier message de la page : sans
+    // ce salut, un bouton retour pressé avant tout échange se perdait.
+    const { fenetre, doc, envoyes } = canalLie();
+    installerPont(fenetre, doc);
+    expect(envoyes).toEqual([{ type: 'bonjour' }]);
+    expect(BONJOUR).toEqual({ type: 'bonjour' });
+  });
+
+  it('répond au retour d’Android par le canal lié', () => {
+    const { fenetre, doc, envoyes, coquilleDit } = canalLie();
+    const pont = installerPont(fenetre, doc)!;
+    pont.surRetour(() => true);
+    coquilleDit({ type: 'demande', id: 'c1', verbe: 'retour' });
+    expect(envoyes[envoyes.length - 1]).toEqual({ type: 'reponse', id: 'c1', ok: true, donnees: { traite: true } });
+  });
+
+  it('ignore un événement sans texte lisible', () => {
+    const { fenetre, doc, envoyes, ecouteurs } = canalLie();
+    installerPont(fenetre, doc);
+    for (const data of [undefined, null, 42, 'pas du json', '{"type":"reponse"}']) {
+      ecouteurs[0]({ data });
+    }
+    expect(envoyes, 'rien ne répond à ce qui n’est pas une demande').toEqual([{ type: 'bonjour' }]);
+  });
+
+  it('l’ancien canal garde son point d’entrée et ne reçoit pas de salut', () => {
+    // Un téléphone qui porte encore l'APK d'avant le canal lié : sans
+    // `diapasonNatifRecevoir`, chacun de ses `enregistrer` échouerait au bout
+    // de deux minutes.
+    const { canal, envoyes } = canalEspion();
+    const fenetre: Record<string, unknown> = { DiapasonNatif: canal };
+    installerPont(fenetre, null);
+    expect(typeof fenetre.diapasonNatifRecevoir).toBe('function');
+    expect(envoyes).toEqual([]);
   });
 });
 

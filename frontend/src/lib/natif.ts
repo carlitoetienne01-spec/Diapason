@@ -1,9 +1,8 @@
 // Le pont natif — quand le bundle tourne dans la coquille Flutter du
 // téléphone (docs/development/diapason-mobile.md, phase 3, étape 3).
 //
-// La coquille injecte AVANT le chargement un canal JavaScript nommé
-// `DiapasonNatif` (un `JavaScriptChannel` de webview_flutter : un objet qui
-// n'a qu'une méthode, `postMessage(texte)`). Sa présence est LA seule preuve
+// La coquille injecte AVANT le chargement un objet nommé `DiapasonNatif`,
+// muni de `postMessage(texte)`. Sa présence est LA seule preuve
 // qu'on est dans le téléphone — ni la largeur, ni l'agent utilisateur : un
 // navigateur de 375 px n'est pas un téléphone qui sait enregistrer un
 // fichier. Comme `compact.ts`, on lit une fois et on normalise sur <html>
@@ -12,6 +11,17 @@
 // Le secret de session reste un cookie HttpOnly que ce code ne voit jamais :
 // aucun verbe ne rend une clé, un jeton ou un mot de passe au JavaScript.
 // La liste des verbes est fermée et gardée par un test.
+//
+// Deux formes du canal (26/09/2026, constat 2 de la seconde contre-épreuve,
+// docs/development/diapason-mobile.md) :
+// - le canal LIÉ, `WebViewCompat.addWebMessageListener` : Android ne
+//   l'injecte que dans les pages de l'origine du Mac, et la coquille répond
+//   par la voie de retour de CETTE page — l'événement `message` de l'objet.
+//   Aucun point d'entrée n'est posé sur `window` ;
+// - l'ancien `JavaScriptChannel` (APK jusqu'à `c8d0d09`), injecté dans toute
+//   page chargée, qui répond en exécutant `window.diapasonNatifRecevoir(…)`.
+//   Gardé tant qu'un téléphone porte cette app : sans lui, chacun de ses
+//   `enregistrer` attendrait deux minutes pour échouer.
 
 import { traduire } from '../i18n/translate';
 
@@ -50,6 +60,30 @@ export const DELAIS_MS: Record<VerbeSortant, number> = {
 export interface CanalNatif {
   postMessage(message: string): void;
 }
+
+/**
+ * Le canal lié à l'origine du Mac (`PontLie.kt` de la coquille) : l'objet de
+ * `addWebMessageListener` porte aussi les messages de la coquille, en
+ * événements `message` dont `data` est le texte.
+ */
+export interface CanalLie extends CanalNatif {
+  addEventListener(type: 'message', ecouteur: (evenement: { data?: unknown }) => void): void;
+}
+
+/** Vrai pour le canal lié ; faux pour l'ancien `JavaScriptChannel`. */
+export function estCanalLie(canal: CanalNatif): canal is CanalLie {
+  return typeof (canal as Partial<CanalLie>).addEventListener === 'function';
+}
+
+/**
+ * Ce que le bundle poste en premier sur le canal lié.
+ *
+ * La coquille ne peut parler qu'à une page qui lui a parlé : la voie de
+ * retour d'Android naît du premier message. Sans lui, un bouton retour
+ * pressé avant tout échange n'atteindrait pas la page. Il ne porte rien —
+ * ni identifiant, ni verbe — et la coquille n'y répond pas.
+ */
+export const BONJOUR = { type: 'bonjour' } as const;
 
 export type ReponseNatif = {
   type: 'reponse';
@@ -214,7 +248,10 @@ export class PontNatif {
     });
   }
 
-  /** Point d'entrée de la coquille : `window.diapasonNatifRecevoir(message)`. */
+  /**
+   * Point d'entrée de la coquille : l'événement `message` du canal lié, ou
+   * `window.diapasonNatifRecevoir(message)` pour l'ancien canal.
+   */
   recevoir(brut: unknown): void {
     const message = lireMessage(brut);
     if (!message) return;
@@ -364,10 +401,11 @@ type DocumentNatif = {
 /**
  * Brancher le pont sur une fenêtre : rend le pont, ou `null` sans canal.
  *
- * Pose `data-diapason-mobile`, le point d'entrée de la coquille
- * (`window.diapasonNatifRecevoir`) — SANS lui, chaque `enregistrer`
- * attendait deux minutes pour échouer et le retour d'Android n'était
- * jamais traité — et l'écouteur qui envoie les liens externes à la coquille.
+ * Pose `data-diapason-mobile`, le point d'entrée de la coquille — l'écoute
+ * des `message` du canal lié, ou `window.diapasonNatifRecevoir` pour
+ * l'ancien canal ; SANS lui, chaque `enregistrer` attendait deux minutes
+ * pour échouer et le retour d'Android n'était jamais traité — et l'écouteur
+ * qui envoie les liens externes à la coquille.
  * Une fonction, pas du code de module, pour qu'un test l'éprouve sur une
  * fausse fenêtre (26/09/2026 : retirer l'affectation laissait les 1 340
  * tests verts).
@@ -380,7 +418,16 @@ export function installerPont(
   const canal = detecterCanal(fenetre);
   if (!canal) return null;
   const pont = new PontNatif(canal, options);
-  fenetre.diapasonNatifRecevoir = (message: unknown) => pont.recevoir(message);
+  if (estCanalLie(canal)) {
+    canal.addEventListener('message', (evenement) => pont.recevoir(evenement?.data));
+    try {
+      canal.postMessage(JSON.stringify(BONJOUR));
+    } catch {
+      // Le canal est mort : les demandes le diront par leur délai.
+    }
+  } else {
+    fenetre.diapasonNatifRecevoir = (message: unknown) => pont.recevoir(message);
+  }
   if (doc) {
     doc.documentElement.setAttribute('data-diapason-mobile', '1');
     const origine = fenetre.location?.origin ?? '';
