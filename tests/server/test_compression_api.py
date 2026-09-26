@@ -10,6 +10,7 @@ mot à mot.
 from __future__ import annotations
 
 import asyncio
+import gzip
 import json
 from unittest.mock import MagicMock
 
@@ -118,16 +119,28 @@ async def _appeler(app, scope: dict, corps: bytes = b"", *, sur_morceau=None):
         await asyncio.sleep(3600)
         return {"type": "http.disconnect"}
 
+    fini = False
+
     async def envoyer(message: dict) -> None:
+        # Strict comme uvicorn (26/09/2026, contre-épreuve) : un harnais qui
+        # acceptait un second `http.response.start` et des corps après le
+        # dernier laissait vert un middleware qui coupait le flux au premier
+        # mot — sous un vrai serveur, « data: Bonjour » seul, code 200.
+        nonlocal fini
+        assert not fini, f"message après la fin de la réponse : {message['type']}"
         if message["type"] == "http.response.start":
+            assert not debut, "un second http.response.start"
             debut.update(message)
         elif message["type"] == "http.response.body":
+            assert debut, "un corps avant l'en-tête"
             morceau = message.get("body", b"")
             morceaux.append(morceau)
             if morceau and sur_morceau is not None:
                 sur_morceau(morceau)
+            fini = not message.get("more_body", False)
 
     await asyncio.wait_for(app(scope, recevoir, envoyer), timeout=5)
+    assert fini, "la réponse ne s'est jamais terminée"
     return debut, morceaux
 
 
@@ -154,6 +167,89 @@ def _scope(chemin: str, *, methode: str = "GET", entetes=()) -> dict:
 
 def _entetes(debut: dict) -> dict[str, str]:
     return {n.decode().lower(): v.decode() for n, v in debut.get("headers", [])}
+
+
+class TestLesGardeFous:
+    """Chaque garde de ``CompressionDesReponses``, tenue seule.
+
+    26/09/2026, contre-épreuve : le seuil, l'ETag affaibli, le 206, le double
+    codage, la compression qui grossit et le filtre de type survivaient
+    chacun à leur retrait — la suite restait verte."""
+
+    @staticmethod
+    def _repondre(corps: bytes, type_: str, *, statut=200, entetes=None):
+        from starlette.responses import Response
+
+        async def app(scope, receive, send):
+            await Response(
+                corps, status_code=statut, media_type=type_, headers=entetes
+            )(scope, receive, send)
+
+        debut, morceaux = asyncio.run(
+            _appeler(CompressionDesReponses(app), _scope("/v1/x"))
+        )
+        return _entetes(debut), b"".join(morceaux)
+
+    def test_une_reponse_complete_qui_n_est_pas_du_json_part_brute(self):
+        """Un flux SSE servi d'un bloc (une reprise, une erreur) ou une page
+        HTML : sans le filtre de type, ils partiraient comprimés, et un
+        client qui lit le SSE au fil de l'eau recevrait du brotli."""
+        for type_ in ("text/event-stream", "text/html", "text/plain"):
+            corps = ("data: mot\n\n" * 400).encode()
+            entetes, recu = self._repondre(corps, type_)
+            assert "content-encoding" not in entetes, type_
+            assert recu == corps, type_
+
+    def test_un_json_sous_le_seuil_part_brut_meme_compressible(self):
+        """900 octets de JSON répétitif se compriment très bien : c'est le
+        seuil, pas le hasard du taux, qui doit les laisser bruts."""
+        corps = json.dumps({"x": "a" * 880}).encode()
+        assert len(corps) < ca.SEUIL_DE_COMPRESSION
+        assert len(brotli.compress(corps)) < len(corps) / 5, "compressible"
+        entetes, recu = self._repondre(corps, "application/json")
+        assert "content-encoding" not in entetes
+        assert recu == corps
+
+    def test_un_etag_fort_devient_faible_une_fois_comprime(self):
+        """Un ETag fort nomme des octets : gardé tel quel sur un corps
+        comprimé, il ferait valider par 304 un brut contre du brotli."""
+        corps = json.dumps({"x": ["Tâche"] * 400}).encode()
+        entetes, recu = self._repondre(
+            corps, "application/json", entetes={"etag": '"abc"'}
+        )
+        assert entetes["content-encoding"] == "br"
+        assert entetes["etag"] == 'W/"abc"'
+        assert brotli.decompress(recu) == corps
+
+    def test_une_reponse_partielle_n_est_pas_recomprimee(self):
+        """Un 206 porte une TRANCHE : la comprimer rendrait son
+        Content-Range faux."""
+        corps = json.dumps({"x": ["Tâche"] * 400}).encode()
+        entetes, recu = self._repondre(
+            corps,
+            "application/json",
+            statut=206,
+            entetes={"content-range": f"bytes 0-{len(corps) - 1}/99999"},
+        )
+        assert "content-encoding" not in entetes
+        assert recu == corps
+
+    def test_un_corps_deja_code_n_est_pas_code_deux_fois(self):
+        corps = gzip.compress(json.dumps({"x": ["Tâche"] * 400}).encode())
+        corps = corps + b" " * 2000
+        entetes, recu = self._repondre(
+            corps, "application/json", entetes={"content-encoding": "gzip"}
+        )
+        assert entetes["content-encoding"] == "gzip", "un seul codage"
+        assert recu == corps
+
+    def test_une_compression_qui_grossit_la_reponse_est_ecartee(self, monkeypatch):
+        """Un JSON déjà dense (du base64) peut grossir : on garde le brut."""
+        monkeypatch.setattr(ca, "_comprimer", lambda corps, enc: corps + b"\0" * 64)
+        corps = json.dumps({"x": ["Tâche"] * 400}).encode()
+        entetes, recu = self._repondre(corps, "application/json")
+        assert "content-encoding" not in entetes
+        assert recu == corps
 
 
 class TestLesFluxRestentMotAMot:
