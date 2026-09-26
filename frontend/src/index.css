@@ -93,6 +93,17 @@ html[data-diapason-mobile='1'] .cible-etendue::after {
   inset: var(--cible-marge, -8px);
 }
 
+/* La roue remplace la barre latérale au téléphone (26/09/2026, lot 3,
+ * features/roue/) : plus de bouton de barre à gauche de l'en-tête de la
+ * Discussion, dont le titre reprend ses 60 px. Et une bande en bas de chaque
+ * page pour le bouton « Aller à… » (52 px, 8 px d'air dessous, 8 dessus) :
+ * rien de la page ne passe sous lui. La bande du haut (`--bande-barre-fermee`)
+ * reste : la cloche y flotte toujours. */
+html[data-diapason-mobile='1'] {
+  --degagement-barre-fermee: 0px;
+  --reserve-roue: 68px;
+}
+
 /*
  * Diapason design tokens.
  * Zinc/slate neutrals, blue accent. Light default, dark via class or system pref.

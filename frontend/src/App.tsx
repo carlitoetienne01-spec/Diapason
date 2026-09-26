@@ -547,7 +547,13 @@ export default function App() {
           pile (`data-y-position` sur chaque toast) est décidé ici par sonner :
           le CSS seul ne pouvait pas la retourner ; index.css cale ensuite les
           toasts sous la bande de glissement et borne leur largeur. */}
-      <Toaster position={estCompact ? 'top-center' : 'bottom-right'} />
+      {/* Au téléphone, en bas au centre et AU-DESSUS du bouton « Aller à… »
+          (76 px = la bande de la roue, 68, et 8 d'air ; 26/09/2026) : en bas
+          à droite, un toast couvrait le bouton pendant quatre secondes. */}
+      <Toaster
+        position={estCompact ? 'top-center' : estMobile ? 'bottom-center' : 'bottom-right'}
+        {...(estMobile ? { offset: { bottom: 76 }, mobileOffset: { bottom: 76 } } : {})}
+      />
       <TalkToDiapasonHost />
       {/* Seule la fenêtre du Mac vide la boîte du maillage et publie sa vue
           (lib/hotesDuMac.ts, 26/09/2026). */}

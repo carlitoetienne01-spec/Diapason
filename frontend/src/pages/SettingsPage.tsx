@@ -683,6 +683,22 @@ export function SettingsPage() {
                 <option value="large">{t('settings.fontSize.large')}</option>
               </select>
             </SettingRow>
+            {/* Au téléphone seulement : la main qui tient la roue (26/09/2026,
+                lot 3). Le bureau et le mini-panneau n'ont pas de roue. */}
+            {estMobile && (
+              <SettingRow label={t('settings.roue.gauche')} description={t('settings.roue.gaucheAide')}>
+                <label className="inline-flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={settings.roueAGauche}
+                    onChange={(e) => { updateSettings({ roueAGauche: e.target.checked }); showSaved(); }}
+                    className="w-4 h-4 cursor-pointer"
+                    style={{ accentColor: 'var(--color-accent)' }}
+                  />
+                  <span className="sr-only">{t('settings.roue.gauche')}</span>
+                </label>
+              </SettingRow>
+            )}
             {/* Le zoom agrandit TOUT, pixels compris — la taille du texte
                 ci-dessus ne touche que les unités relatives. Réservé à l'app
                 de bureau : un navigateur a déjà le sien (⌘ +). */}

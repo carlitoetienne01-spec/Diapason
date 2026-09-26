@@ -204,8 +204,9 @@ redimensionnable : la convention (cinq règles — base 340 px, largeur en CSS,
 `sm`) vit dans [`docs/development/mini-panneau-responsive.md`](docs/development/mini-panneau-responsive.md).
 Le téléphone est un **mode** (`mobile:`, reconnu au pont natif, jamais à la
 largeur) et y ajoute cinq règles (26/09/2026) : cibles de 40 px au doigt,
-rien qui n'existe qu'au survol, barre latérale en tiroir sous `md`, rien qui
-se superpose ne s'ouvre seul, aspect plat (ni flou, ni grande ombre, ni
+rien qui n'existe qu'au survol, la roue à la place de la barre latérale
+(`features/roue/`, toute page de la barre dans `PAGES_ROUE`), rien qui se
+superpose ne s'ouvre seul, aspect plat (ni flou, ni grande ombre, ni
 animation de fond : `src/telephonePlat.css`).
 
 ### Les conversations du chat vivent sur le serveur

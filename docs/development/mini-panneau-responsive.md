@@ -76,16 +76,23 @@ Les cinq règles valent telles quelles ; le téléphone en ajoute cinq (6 à 9, 
    Le variant `mobile:` (index.css) s'ajoute aux deux autres sur toute
    action révélée au survol : `max-sm:` s'éteint à 640 px, et un doigt ne
    survole rien, même à 900 px.
-8. **La barre latérale est un tiroir sous `md`.** Elle démarre fermée là
-   où elle couvrirait la page, se retire après une navigation choisie dans
-   le tiroir, et le bouton retour d'Android la ferme d'abord
-   (`lib/barre.ts`, fonctions pures testées ; la requête média est lue à
-   l'amorçage et au moment de naviguer, jamais `innerWidth`). Ce qui flotte
-   au-dessus des pages — le bouton qui rouvre la barre, la cloche — a sa
-   réserve : `--bande-barre-fermee` au-dessus des pages et de
-   `.voile-modal`, `--degagement-barre-fermee` à gauche de l'en-tête de la
-   Discussion. Toute nouvelle page reçoit la bande par `Layout.tsx` ; toute
-   nouvelle surface plein écran la respecte.
+8. **Au téléphone, la roue remplace la barre latérale** (26/09/2026, lot 3
+   de la fluidité, `features/roue/`). Un bouton rond « Aller à… » en bas à
+   droite (à gauche avec Réglages → « Roue à gauche ») et un glissé depuis
+   ce bord ouvrent l'écran « Aller à » : toutes les pages sur un arc, la
+   courante allumée ; le pouce tourne, le toucher (ou le relâché d'un geste
+   continu) ouvre. Toute la géométrie est dans `geometrieRoue.ts`,
+   fonctions pures testées ; la liste des pages dans `pagesRoue.ts`, qu'un
+   test confronte aux routes — **une page ajoutée à la barre l'est aussi à
+   `PAGES_ROUE`**. §82 : une vue « Liste » (un toucher, une page), les
+   flèches, Entrée et Échap, la voix par le maillage ; le retour d'Android
+   ferme d'abord la roue. Ce qui flotte a sa réserve : `--reserve-roue` en
+   bas de chaque page (Layout.tsx) sous le bouton, `--bande-barre-fermee`
+   en haut pour la cloche. Les boutons ⌕ ＋ ⋯ de l'en-tête de la
+   Discussion y sont visibles (`mobile:inline-flex`), comme en compact.
+   Hors du mode téléphone, sur un écran étroit, la barre reste un tiroir
+   sous `md` (`lib/barre.ts`, fonctions pures testées ; la requête média
+   est lue à l'amorçage et au moment de naviguer, jamais `innerWidth`).
 9. **Ce qui se superpose sous `sm` ne s'ouvre pas tout seul.** Le panneau
    Système de la Discussion ne s'ouvre au premier lancement que là où il
    est une colonne (`lib/panneauSysteme.ts`). Un choix mémorisé reste un

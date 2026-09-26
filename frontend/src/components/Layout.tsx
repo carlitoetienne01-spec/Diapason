@@ -6,6 +6,8 @@ import { SystemPulse } from './SystemPulse';
 import { useAppStore } from '../lib/store';
 import { checkHealth } from '../lib/api';
 import { estCompact } from '../lib/compact';
+import { estMobile } from '../lib/natif';
+import { RoueNavigation } from '../features/roue/RoueNavigation';
 import { signalerPanneauOuvert } from '../lib/panneau';
 import { titreDiscussion } from '../lib/discussions';
 import { useTranslation } from '../i18n/useTranslation';
@@ -130,8 +132,10 @@ export function Layout() {
       <BandeauCompte />
 
       <div className="flex flex-1 min-h-0 relative z-10">
-        <Sidebar />
-        {sidebarOpen && (
+        {/* Au téléphone, la roue remplace la barre (26/09/2026, lot 3) : le
+            tiroir de 260 px et son voile n'y sont plus montés du tout. */}
+        {!estMobile && <Sidebar />}
+        {!estMobile && sidebarOpen && (
           <div
             className="fixed inset-0 z-20 bg-black/40 md:hidden"
             onClick={() => useAppStore.getState().setSidebarOpen(false)}
@@ -143,12 +147,19 @@ export function Layout() {
               d'elles (index.css, `--bande-barre-fermee`). */}
           <div
             className="flex-1 flex flex-col min-w-0 min-h-0 relative z-[2]"
-            style={{ paddingTop: pathname === '/' ? 0 : 'var(--bande-barre-fermee, 0px)' }}
+            style={{
+              paddingTop: pathname === '/' ? 0 : 'var(--bande-barre-fermee, 0px)',
+              // Au téléphone, la bande du bouton « Aller à… » : rien de la
+              // page — ni le bas d'une liste, ni le bouton d'envoi du
+              // compositeur — ne passe sous lui (index.css, `--reserve-roue`).
+              paddingBottom: estMobile ? 'var(--reserve-roue, 0px)' : undefined,
+            }}
           >
             <Outlet />
           </div>
         </main>
       </div>
+      {estMobile && <RoueNavigation />}
     </div>
   );
 }

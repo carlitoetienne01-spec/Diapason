@@ -37,6 +37,10 @@ import { ATTRIBUT_BASCULE_SAUTEUR, SauteurDiscussions } from './SauteurDiscussio
  * quand la barre est repliée) et l'icône du panneau système restent visibles ;
  * ⌕ ＋ ⋯ n'apparaissent qu'en compact (`hidden compact:inline-flex`), et y
  * sont PERMANENTS — le NSPanel ne livre pas le survol (convention, règle 5).
+ *
+ * 26/09/2026 (lot 3) : au téléphone, la roue remplace la barre latérale ; sans
+ * ces trois boutons, « Nouvelle discussion » et le menu d'une discussion n'y
+ * avaient plus aucun chemin (§82). Ils y sont donc aussi (`mobile:`).
  */
 
 /** Horizontal room the window's floating top-right cluster needs: its measured
@@ -254,7 +258,7 @@ export function EnteteDiscussion({ sauteurOuvert, onOuvrirSauteur, onFermerSaute
         <button
           type="button"
           onClick={basculerSauteur}
-          className={`hidden compact:inline-flex ${BOUTON}`}
+          className={`hidden compact:inline-flex mobile:inline-flex ${BOUTON}`}
           style={{ color: 'var(--color-text-tertiary)' }}
           title={t('chat.header.jump')}
           aria-label={t('chat.header.jump')}
@@ -268,7 +272,7 @@ export function EnteteDiscussion({ sauteurOuvert, onOuvrirSauteur, onFermerSaute
           type="button"
           onClick={nouvelle}
           disabled={enFlux}
-          className={`hidden compact:inline-flex ${BOUTON} disabled:opacity-40 disabled:cursor-default`}
+          className={`hidden compact:inline-flex mobile:inline-flex ${BOUTON} disabled:opacity-40 disabled:cursor-default`}
           style={{ color: 'var(--color-text-tertiary)' }}
           title={t('chat.header.newChat', { shortcut: raccourci('N') })}
           aria-label={t('chat.header.newChat', { shortcut: raccourci('N') })}
@@ -287,7 +291,7 @@ export function EnteteDiscussion({ sauteurOuvert, onOuvrirSauteur, onFermerSaute
             const rect = boutonMenuRef.current?.getBoundingClientRect();
             if (rect) setMenuAncre(rect);
           }}
-          className={`hidden compact:inline-flex ${BOUTON} disabled:opacity-40 disabled:cursor-default`}
+          className={`hidden compact:inline-flex mobile:inline-flex ${BOUTON} disabled:opacity-40 disabled:cursor-default`}
           style={{ color: 'var(--color-text-tertiary)' }}
           title={t('sidebar.conversationOptions')}
           aria-label={t('sidebar.conversationOptions')}

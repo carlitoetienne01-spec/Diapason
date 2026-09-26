@@ -162,6 +162,9 @@ interface Settings {
   temperature: number;
   maxTokens: number;
   speechEnabled: boolean;
+  /** Au téléphone, la roue et son bouton passent à gauche, pour la main
+   *  gauche (26/09/2026, lot 3). Le bureau et le mini-panneau l'ignorent. */
+  roueAGauche: boolean;
 }
 
 function loadSettings(): Settings {
@@ -177,6 +180,7 @@ function loadSettings(): Settings {
     temperature: 0.7,
     maxTokens: 4096,
     speechEnabled: false,
+    roueAGauche: false,
   };
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
