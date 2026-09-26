@@ -1677,6 +1677,102 @@ l'environnement ne l'ouvrent : seul le commit d'ouverture (étape 13, point 4).
   les droits d'accès et d'effacement se traitent à la main tant qu'il n'existe
   pas.
 
+## 6 ter. Écarts de l'implémentation, étapes 10 et 11 (25/09/2026)
+
+Écrites, puis éprouvées par un VPS hostile, par la vérité des tests (chaque
+correction cassée à la main doit faire échouer son test : 31 mutations sur 31
+à l'étape 10, 14 sur 14 à l'étape 11) et par le coût d'intégration.
+
+**Le moteur endormi** (exigence de la session principale, au-delà de la
+spécification). Tant qu'aucun compte n'est déverrouillé : aucune requête,
+aucune tâche qui boucle, et le moteur consulte `COMPTES_OUVERTS`. L'export du
+§4.3 (étape 1) ne tourne donc que moteur réveillé, et non « toujours, même
+verrouillé » ; rien ne se perd, l'export repart du `seq` du magasin et une
+tombale non confirmée ne se purge pas tant qu'un compte existe. Côté Tauri, P10
+est conditionné : `prevent_exit` seulement si `compte/etat.key` existe (un
+`stat`, aucune requête), puis `sync-now` seulement si le statut dit un compte
+déverrouillé avec des écritures en attente, borné à 3 s, et jamais quand le
+serveur est l'agent launchd (§4.10). Le §3.11 disait `prevent_exit` puis
+`sync-now` à chaque fermeture.
+
+**Étape 10, ce qui diffère du texte :**
+
+- `serverRolledBack` compare `serverSeq` au plus haut jamais vu
+  (`serverSeqMax`, relevé aussi sur les réponses de poussée), pas au curseur :
+  un appareil seul à écrire revoyait un `serverSeq` égal à son curseur et ne
+  détectait rien. Ordre du §6 bis tenu : `generation` d'abord.
+- Les planchers du coffre sont comparés à `meta` avec les valeurs lues AVANT
+  la requête : une rotation locale pendant la requête faisait lire la réponse
+  comme un retour arrière.
+- **Le §4.3 est faux** quand il écrit « échec → `connus.rev_max = item.rev` » :
+  `rev_max` ne monte que sur une révision authentifiée ; une révision
+  illisible ne sert que de base CAS pendant le cycle. Sinon une seule réponse
+  forgée rendait l'appareil sourd aux écritures des autres, qu'il effaçait.
+- **Le §2.11 bis devient une règle de borne ordonnée** : `bornesEpoque` retient
+  le `serverSeq` de la première réponse sous chaque époque, et un objet — connu
+  ou neuf — scellé sous une époque passée au-delà de sa borne est mis en
+  quarantaine ; à `rev == rev_max`, le contenu est comparé. Risque résiduel :
+  le `seq` n'est pas authentifié, un VPS complice peut passer par un tirage
+  depuis 0. « Notre écriture » se reconnaît au contenu, pas au `seq` (§4.12).
+- Réaffirmation (`rev < rev_max`) : aucune colonne ne garde `baseRev`, le
+  moteur pousse avec `baseRev = rev_max`, reçoit le conflit et rejoue à
+  `current.rev` (3 rejeux au plus par cycle).
+- Consentement : sans aucune donnée locale au premier cycle, `consentement=1`
+  est posé seul — il n'y a rien à demander.
+- `serverRolledBack` reste affiché après une reconnexion jusqu'à une rotation
+  (changement de mot de passe) ; **aucun écran ne la propose encore**. Le cas
+  « coffre revenu sous le plancher → `serverKeyStale` permanent » à la
+  connexion reste ouvert (étape 8).
+- Nouvelles clés de la table `etat` d'`etat.key`, sans migration :
+  `synchroPortee`, `synchroEtat`, `synchroErreur`, `serverSeqMax`,
+  `repairedCount`, `curseurDistant`, `bornesEpoque`, `rotationExigee` ;
+  `a_reprendre` encode `rev` et `seq` dans son motif (`previous:<rev>:<seq>`).
+- `sync-now` attend 2 s au plus le verrou et rend alors `syncing` : le 200
+  porte l'issue réelle (`sync.state`, `pendingCount`).
+
+**Étape 11, ce qui diffère du texte :**
+
+- **Le §2.6 est imprécis** : `pieceId = HMAC(K_piece_e, "attachment\0" ‖
+  SHA-256(clair entier))`, et le clair d'une pièce est `uint32 BE(L) ‖ JSON
+  canonique ‖ charge` — `{"header":"data:…;base64,"}` suivi des octets
+  décodés, ou `{"form":"raw"}` suivi de la chaîne en UTF-8 —, avec la règle
+  « ré-encoder et comparer » à l'ouverture. Un vecteur de ce clair dans
+  `vecteurs_compte.json` reste à ajouter pour le client Dart (§2.12).
+- « Objet dégradé : relire la version serveur et fusionner AVANT de pousser »
+  (§4.3, §4.7) est remplacé par `trous`/`combler` : à l'ingestion, les
+  références manquantes sont retenues par message (`pieces_manquantes`) et
+  remises dans le clair avant toute empreinte ou poussée. L'image du serveur
+  n'est jamais effacée, sans requête de plus. Dans le magasin, un message
+  dégradé perd son champ `images` (retiré, pas vidé), sinon
+  `_meilleur_message` préférait la liste raccourcie à la version complète.
+- Deux tables de plus dans `etat.key` (§4.2) : `references_pieces` (les pièces
+  que référence la version SERVEUR de chaque objet — sans elle, ni orphelines ni
+  réclamation) et `pieces_manquantes`.
+- L'empreinte se calcule sur la forme ATTACHÉE : une rotation ne fait pas
+  repousser toutes les conversations illustrées, seulement la prochaine
+  poussée de chacune.
+- Ordre du cycle : réclamation quotidienne après le tirage et avant la
+  poussée ; orphelines marquées après, avec `asOfSeq` = `until` du tirage. Une
+  pièce déposée pour un objet qui ne part jamais n'est jamais marquée
+  orpheline : petite fuite de quota assumée.
+- Un lot de poussée garde au plus 32 Mio de clairs de pièces ; `quotaExceeded`
+  reporte l'objet, 413/422 ou une pièce scellée de plus de 10 Mio le met en
+  quarantaine visible (`rejected:<code>`).
+
+**Reste ouvert après les étapes 10 et 11**
+
+- **Une pièce illisible servie par un VPS hostile laisse l'appareil lecteur
+  dégradé pour toujours, sans que l'écran le dise** : la pièce est immuable,
+  `/pieces/missing` la dit présente, et l'appareil qui a les octets ne la
+  redépose jamais. Soit un champ `degradedCount` au statut (§4.11), lu par
+  l'interface ; soit la ligne au §4.12. À trancher avant l'étape 13.
+- `synchro.py` et `pieces.py` touchent des membres privés de `transport.py`
+  (`_envoyer`, `_http`, `_erreur_de`…) et d'`etat.py` (`_verrou`, `_ouvrir`),
+  faute de méthodes typées : à ajouter.
+- La rotation après sortie de `serverRolledBack` n'est pas automatique.
+- Tauri, relance après mise à jour : `stop_all` sans attente, comme avant le
+  compte ; le KILL d'une seconde plus tard n'est pas garanti (défaut antérieur).
+
 ## 7. Décisions qui appartiennent à Carlito
 
 Le champ `decisionsPourCarlito` porte la liste complète, avec une recommandation pour chacune. Voici celles qui bloquent :
