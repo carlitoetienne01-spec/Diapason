@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { creerCacheConversations } from './cacheConversations';
 
 import { modeleInitial } from './modelePrefere';
+import { barreOuverteAuDemarrage } from './barre';
 import { doitAfficherLeFil, plusRecente, trouverDiscussionVierge } from './discussions';
 import type {
   Conversation,
@@ -364,7 +365,14 @@ export const useAppStore = create<AppState>((set, get) => {
     settings: loadSettings(),
 
     commandPaletteOpen: false,
-    sidebarOpen: true,
+    // 26/09/2026 : ouverte partout, elle couvrait les deux tiers d'un écran
+    // de 390 px à chaque lancement. La requête média est lue UNE fois ici ;
+    // la largeur, ensuite, reste au CSS (lib/barre.ts).
+    sidebarOpen: barreOuverteAuDemarrage(
+      typeof window !== 'undefined' && window.matchMedia
+        ? window.matchMedia.bind(window)
+        : undefined,
+    ),
     systemPanelOpen: loadSystemPanelOpen(),
 
     // ── Conversations ───────────────────────────────────────────────

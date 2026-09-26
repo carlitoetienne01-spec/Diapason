@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import {
   Plus,
@@ -34,18 +34,20 @@ import { BandeauMiseAJour } from '../Desktop/BandeauMiseAJour';
 import { useAppStore, type ThemeMode, type TerminalSkin } from '../../lib/store';
 import { useTranslation } from '../../i18n/useTranslation';
 import { demanderLeFocusDuCompositeur } from '../../lib/panneau';
+import {
+  barreApresNavigation,
+  barreSuperposee,
+  estCheminDesReglages,
+  retourFermeLaBarre,
+} from '../../lib/barre';
+import { pontNatif } from '../../lib/natif';
 
-/** Pages that live behind the Réglages drawer, so a deep link opens it. */
-const SETTINGS_PATHS = [
-  '/settings',
-  '/get-started',
-  '/data-sources',
-  '/agents',
-  '/logs',
-  '/vie/sync',
-  '/devices',
-  '/dashboard',
-];
+/** Ce que la fenêtre sait de sa largeur, en CSS — jamais `innerWidth`. */
+function lireSuperposee(): boolean {
+  return barreSuperposee(
+    typeof window !== 'undefined' && window.matchMedia ? window.matchMedia.bind(window) : undefined,
+  );
+}
 
 export function Sidebar() {
   const { t } = useTranslation();
@@ -54,7 +56,7 @@ export function Sidebar() {
   const [searchQuery, setSearchQuery] = useState('');
   // ChatGPT-style: a magnifier in the header, the input appears on demand.
   const [searchOpen, setSearchOpen] = useState(false);
-  const onSettingsRoute = SETTINGS_PATHS.includes(location.pathname);
+  const onSettingsRoute = estCheminDesReglages(location.pathname);
   const [settingsOpen, setSettingsOpen] = useState(onSettingsRoute);
 
   const sidebarOpen = useAppStore((s) => s.sidebarOpen);
@@ -67,10 +69,46 @@ export function Sidebar() {
 
   // Les fenêtres modales se centrent dans ce qui reste à droite de la barre
   // (`.voile-modal`, index.css) : elles doivent savoir si elle est ouverte.
-  useEffect(() => {
+  // Avant la peinture : le dégagement du bouton flottant
+  // (`--degagement-barre-fermee`) en dépend, et un effet ordinaire laissait
+  // l'en-tête de la Discussion sauter de 60 px au premier affichage.
+  useLayoutEffect(() => {
     if (sidebarOpen) document.documentElement.dataset.barre = 'ouverte';
     else delete document.documentElement.dataset.barre;
   }, [sidebarOpen]);
+
+  // 26/09/2026 : en tiroir (sous `md`), la barre restait ouverte par-dessus
+  // la page qu'on venait d'y choisir. Chaque navigation — y compris vers la
+  // même adresse, une autre discussion ouverte depuis « / » — change la clé
+  // de l'emplacement ; `barreApresNavigation` dit alors si le tiroir se
+  // retire. Le montage n'est pas une navigation : la clé de départ est gardée.
+  const derniereNavigation = useRef({ cle: location.key, chemin: location.pathname });
+  useEffect(() => {
+    const precedente = derniereNavigation.current;
+    if (precedente.cle === location.key) return;
+    derniereNavigation.current = { cle: location.key, chemin: location.pathname };
+    const etat = useAppStore.getState();
+    const suivante = barreApresNavigation({
+      ouverte: etat.sidebarOpen,
+      superposee: lireSuperposee(),
+      avant: precedente.chemin,
+      apres: location.pathname,
+    });
+    if (suivante !== etat.sidebarOpen) etat.setSidebarOpen(suivante);
+  }, [location.key, location.pathname]);
+
+  // Le bouton retour d'Android ferme d'abord le tiroir (verbe `retour` de la
+  // coquille) ; sans quoi il quittait la page sous le voile, tiroir resté
+  // ouvert. Hors du téléphone, `pontNatif` est nul et rien ne s'inscrit.
+  useEffect(() => {
+    if (!pontNatif) return;
+    return pontNatif.surRetour(() => {
+      const etat = useAppStore.getState();
+      if (!retourFermeLaBarre(etat.sidebarOpen, lireSuperposee())) return false;
+      etat.setSidebarOpen(false);
+      return true;
+    });
+  }, []);
 
   // Each terminal screen is its own stop, so the shortcut walks all seven
   // looks rather than treating Terminal as a single destination.
@@ -159,7 +197,7 @@ export function Sidebar() {
     // the app again while the pane still displayed Réglages. Deep links have no
     // page to return to, so they fall back to the chat.
     if (onSettingsRoute) {
-      navigate(back && !SETTINGS_PATHS.includes(back) ? back : '/');
+      navigate(back && !estCheminDesReglages(back) ? back : '/');
     }
   };
 

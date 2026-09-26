@@ -108,6 +108,12 @@ html[data-diapason-compact='1'] [data-sonner-toaster] [data-sonner-toast] {
        elle est fermée ou flottante (mobile), sa largeur quand elle est en
        flux. Posé par Sidebar.tsx via data-barre, lu par .voile-modal. */
     --decalage-barre: 0px;
+    /* La place du bouton flottant qui rouvre la barre fermée (Sidebar.tsx,
+       `fixed top-3 left-3`). 26/09/2026 : la barre démarre fermée sur un
+       téléphone, et ce bouton se posait sur le titre de la Discussion
+       (« …velle discussion »). Nul quand la barre est ouverte et dans le
+       mini-panneau, qui n'a pas de barre. */
+    --degagement-barre-fermee: 0px;
     --chat-max-width: 720px;
 
     --font-display: 'Chakra Petch', 'Space Grotesk', system-ui, sans-serif;
@@ -470,6 +476,10 @@ html[data-diapason-compact='1'] [data-sonner-toaster] [data-sonner-toast] {
     :root[data-barre='ouverte'] {
       --decalage-barre: var(--sidebar-width);
     }
+  }
+  /* 0,75rem de marge + 40 px de bouton (sa taille au doigt) + 0,5rem. */
+  :root:not([data-barre='ouverte']):not([data-diapason-compact='1']) {
+    --degagement-barre-fermee: 3.75rem;
   }
 
   html { font-size: 16px; }

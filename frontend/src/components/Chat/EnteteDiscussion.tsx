@@ -187,7 +187,7 @@ export function EnteteDiscussion({ sauteurOuvert, onOuvrirSauteur, onFermerSaute
   return (
     <div
       ref={rangeeRef}
-      className={`flex items-center gap-1 h-10 pl-3 shrink-0 ${
+      className={`flex items-center gap-1 h-10 pl-[calc(0.75rem_+_var(--degagement-barre-fermee,0px))] shrink-0 ${
         // Talk and the approval bell are pinned to the window's top-right
         // corner. With the system panel open the panel sits beneath them;
         // closed, this bar reaches that same edge, so it has to yield their
