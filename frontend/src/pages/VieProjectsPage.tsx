@@ -1724,7 +1724,7 @@ export function VieProjectsPage() {
           })()}
           {inspected && (
             <aside
-              className="fixed bottom-3 inset-x-3 w-auto sm:inset-x-auto sm:right-6 sm:bottom-6 sm:w-80 max-w-full max-h-[min(60vh,420px)] overflow-y-auto z-30 rounded-2xl p-4 shadow-xl"
+              className="fixed bottom-3 mobile:bottom-[calc(var(--reserve-roue)+12px)] inset-x-3 w-auto sm:inset-x-auto sm:right-6 sm:bottom-6 sm:w-80 max-w-full max-h-[min(60vh,420px)] overflow-y-auto z-30 rounded-2xl p-4 shadow-xl"
               style={{
                 background: 'var(--color-surface)',
                 border: '1px solid var(--color-border)',

@@ -97,7 +97,7 @@ export function VoyantGestes() {
         ? 'garde seulement l’index tendu'
         : 'montre ta main pour contrôler le curseur';
     return (
-      <div className="fixed bottom-4 left-4 z-40 flex max-w-[calc(100vw-2rem)] items-center gap-2 rounded-full border border-border bg-card/95 px-3 py-1.5 text-xs shadow-lg backdrop-blur">
+      <div className="fixed bottom-4 mobile:bottom-[calc(var(--reserve-roue)+8px)] left-4 z-40 flex max-w-[calc(100vw-2rem)] items-center gap-2 rounded-full border border-border bg-card/95 px-3 py-1.5 text-xs shadow-lg backdrop-blur">
         <span
           aria-hidden
           className={`h-2 w-2 rounded-full ${
@@ -231,7 +231,7 @@ export function VoyantGestes() {
   // ici qu'elle devient répondable.
   if (attente) {
     return (
-      <div className="fixed bottom-4 left-4 z-40 max-w-sm rounded-xl border border-border bg-card/95 px-4 py-3 text-xs shadow-lg backdrop-blur">
+      <div className="fixed bottom-4 mobile:bottom-[calc(var(--reserve-roue)+8px)] left-4 z-40 max-w-sm rounded-xl border border-border bg-card/95 px-4 py-3 text-xs shadow-lg backdrop-blur">
         <div className="flex items-center gap-2">
           <Hand className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
           <span className="text-foreground">
@@ -268,7 +268,7 @@ export function VoyantGestes() {
   if (transfertActif) {
     const progression = diagnostic?.lastDrop?.progress ?? 0;
     return (
-      <div className="fixed bottom-4 left-4 z-40 w-[min(26rem,calc(100vw-2rem))] rounded-2xl border border-border bg-card/95 px-4 py-3 text-xs shadow-lg backdrop-blur">
+      <div className="fixed bottom-4 mobile:bottom-[calc(var(--reserve-roue)+8px)] left-4 z-40 w-[min(26rem,calc(100vw-2rem))] rounded-2xl border border-border bg-card/95 px-4 py-3 text-xs shadow-lg backdrop-blur">
         <div className="flex items-center gap-2">
           <FileUp className="h-4 w-4 text-emerald-500" aria-hidden />
           <span className="font-medium text-foreground">{message}</span>
@@ -289,7 +289,7 @@ export function VoyantGestes() {
   }
 
   return (
-    <div className="fixed bottom-4 left-4 z-40 flex max-w-[calc(100vw-2rem)] items-center gap-2 rounded-full border border-border bg-card/95 px-3 py-1.5 text-xs shadow-lg backdrop-blur">
+    <div className="fixed bottom-4 mobile:bottom-[calc(var(--reserve-roue)+8px)] left-4 z-40 flex max-w-[calc(100vw-2rem)] items-center gap-2 rounded-full border border-border bg-card/95 px-3 py-1.5 text-xs shadow-lg backdrop-blur">
       <span
         aria-hidden
         className="h-2 w-2 animate-pulse rounded-full bg-emerald-500"
