@@ -127,6 +127,10 @@ export const MESSAGES = {
       'Microphone access is blocked. Allow Diapason in System Settings › Privacy & Security › Microphone.',
     'talk.sessionFailed':
       'The voice session could not start. Try again; technical details are available in the logs.',
+    'talk.closedInactivity':
+      'Voice switched itself off after a long silence: the microphone is closed. Start again to keep talking.',
+    'talk.closedMaxDuration':
+      'Voice switched itself off: a session lasts ten minutes at most. Start again to keep talking.',
     'talk.localNotReady':
       'Local voice needs Ollama running — open the Ollama app, then try again.',
     'talk.localComponentsMissing':
@@ -1683,6 +1687,10 @@ export const MESSAGES = {
       'L’accès au microphone est bloqué. Autorisez Diapason dans Réglages Système › Confidentialité et sécurité › Microphone.',
     'talk.sessionFailed':
       'La séance vocale n’a pas pu démarrer. Réessayez ; les détails techniques restent disponibles dans les journaux.',
+    'talk.closedInactivity':
+      'La voix s’est coupée seule après un long silence : le micro est fermé. Relancez-la pour reprendre.',
+    'talk.closedMaxDuration':
+      'La voix s’est coupée seule : une séance dure dix minutes au plus. Relancez-la pour reprendre.',
     'talk.localNotReady':
       "La voix locale nécessite Ollama — lancez l'application Ollama, puis réessayez.",
     'talk.localComponentsMissing':

@@ -126,3 +126,24 @@ describe('voice health preflight', () => {
     );
   });
 });
+
+describe('la coupure dite par le serveur (§78, 26/09/2026)', () => {
+  it('traduit les deux motifs de fermeture du Mac en message pour l’orbe', async () => {
+    const { motifDeFermeture } = await freshVoiceLive();
+    // Sans ce motif, l'orbe revenait à « inactif » sans un mot : une coupure
+    // voulue se lisait comme une panne.
+    expect(motifDeFermeture({ reason: 'inactivity' }), 'deux minutes sans parole').toBe(
+      'voice-closed-inactivity',
+    );
+    expect(motifDeFermeture({ reason: 'maxDuration' }), 'dix minutes au plus').toBe(
+      'voice-closed-max-duration',
+    );
+  });
+
+  it('ne dit rien d’une fermeture demandée par l’utilisateur ou d’un motif inconnu', async () => {
+    const { motifDeFermeture } = await freshVoiceLive();
+    expect(motifDeFermeture({}), '« Terminer » n’est pas une coupure du serveur').toBeNull();
+    expect(motifDeFermeture({ reason: 'autreChose' }), 'un motif inconnu ne se devine pas').toBeNull();
+    expect(motifDeFermeture({ reason: 42 })).toBeNull();
+  });
+});

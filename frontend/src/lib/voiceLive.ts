@@ -29,6 +29,23 @@ export function canStartVoiceSession(
   return !!health?.enabled && health.providers?.[provider]?.configured === true;
 }
 
+/**
+ * Pourquoi le SERVEUR a fermé la voix, dit à l'utilisateur (§78, 26/09/2026).
+ *
+ * Le Mac coupe seul une séance après deux minutes sans parole ou dix minutes
+ * au total (`speech/realtime/bridge.py`). Sans ce motif, l'orbe revenait à
+ * « inactif » sans un mot, et une coupure voulue se lisait comme une panne.
+ * Un motif inconnu (un serveur plus récent) ne dit rien plutôt que de
+ * deviner.
+ */
+export type FermetureVocale = 'voice-closed-inactivity' | 'voice-closed-max-duration';
+
+export function motifDeFermeture(message: { reason?: unknown }): FermetureVocale | null {
+  if (message.reason === 'inactivity') return 'voice-closed-inactivity';
+  if (message.reason === 'maxDuration') return 'voice-closed-max-duration';
+  return null;
+}
+
 export function voiceLiveWsUrl(extraQuery: Record<string, string> = {}): string {
   const base = getBase() || window.location.origin;
   const u = new URL(base);

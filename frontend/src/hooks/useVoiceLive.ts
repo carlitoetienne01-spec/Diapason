@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   canStartVoiceSession,
   fetchVoiceLiveHealth,
+  motifDeFermeture,
   VoiceLiveHealthError,
   voiceLiveDiagnosticUrl,
   voiceLiveProtocols,
@@ -409,9 +410,14 @@ export function useVoiceLive() {
               setState('error');
               setStatusLabel('Error');
               break;
-            case 'closed':
+            case 'closed': {
+              // Le motif AVANT stop() : stop() coupe le micro (le voyant
+              // d'Android s'éteint), le motif dit pourquoi.
+              const motif = motifDeFermeture(msg);
               stop();
+              if (motif) setError(motif);
               break;
+            }
             default:
               break;
           }

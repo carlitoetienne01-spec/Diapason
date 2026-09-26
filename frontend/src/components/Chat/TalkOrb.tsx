@@ -54,6 +54,8 @@ const ERREURS = {
   'voice-connection-failed': 'talk.connectionFailed',
   'microphone-denied': 'talk.microphoneDenied',
   'voice-session-failed': 'talk.sessionFailed',
+  'voice-closed-inactivity': 'talk.closedInactivity',
+  'voice-closed-max-duration': 'talk.closedMaxDuration',
 } as const;
 
 function CopieTranscript({ texte, etiquette }: { texte: string; etiquette: string }) {

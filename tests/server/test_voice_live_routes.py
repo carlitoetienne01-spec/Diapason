@@ -92,3 +92,54 @@ def test_voice_health_reports_local_runtime_reason(monkeypatch):
         "configured": False,
         "reason": "missing-dependencies",
     }
+
+
+class _SessionMuette(_ReadySession):
+    """Prête, puis silencieuse jusqu'à sa fermeture. Au bout de 3 s, elle
+    rend une erreur : une coupure régressée fait échouer le test au lieu
+    de le faire pendre."""
+
+    def __init__(self) -> None:
+        import asyncio
+
+        self._fermee = asyncio.Event()
+
+    async def events(self):
+        import asyncio
+
+        yield SessionEvent(kind="ready")
+        try:
+            await asyncio.wait_for(self._fermee.wait(), 3.0)
+        except TimeoutError:
+            yield SessionEvent(kind="error", detail="BANC: jamais coupée")
+            return
+        yield SessionEvent(kind="closed")
+
+    async def close(self) -> None:
+        self._fermee.set()
+
+
+def test_la_route_coupe_une_voix_muette_et_dit_pourquoi(monkeypatch):
+    """§78 : la coupure du pont s'applique à la vraie route, et la dernière
+    trame dit le motif avant une fermeture 1000 (voulue, pas une panne)."""
+    monkeypatch.setattr("diapason.speech.realtime.bridge.SILENCE_MAX_S", 0.3)
+    monkeypatch.setattr(
+        "diapason.speech.realtime.factory.create_realtime_session",
+        lambda *_args, **_kwargs: _SessionMuette(),
+    )
+    client = _client()
+
+    with client.websocket_connect(
+        "/v1/voice/live?provider=local",
+        subprotocols=["diapason", "diapason-auth.diapason_sk_test"],
+    ) as websocket:
+        websocket.send_json(
+            {"type": "start", "provider": "local", "include_memory": False}
+        )
+        assert websocket.receive_json() == {"type": "ready"}
+        assert websocket.receive_json() == {"type": "closed", "reason": "inactivity"}, (
+            "la voix muette n'a pas été coupée par le serveur"
+        )
+        with pytest.raises(WebSocketDisconnect) as fin:
+            websocket.receive_json()
+        assert fin.value.code == 1000
