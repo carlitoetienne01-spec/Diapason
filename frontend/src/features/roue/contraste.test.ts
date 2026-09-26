@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-import { lireHex, rapportDeContraste } from './contraste';
+import { contrasteEstompe, lireCouleur, lireHex, opaciteMinimale, rapportDeContraste } from './contraste';
+import { OPACITE_LISIBLE_PAR_DEFAUT } from './geometrieRoue';
 
 // Lu sur le disque : sous vitest, un import `?raw` de CSS rend une chaîne vide.
 const feuille = readFileSync(join(process.cwd(), 'src/index.css'), 'utf-8');
@@ -61,5 +62,30 @@ describe('La capsule allumée de la roue reste lisible dans les sept apparences'
     for (const [nom, t] of Object.entries(APPARENCES)) {
       expect(rapportDeContraste(t['--color-text'], t['--color-bg']), `${nom} : texte sur fond`).toBeGreaterThanOrEqual(4.5);
     }
+  });
+});
+
+describe('Les noms estompés qui se touchent gardent 4,5:1 dans les sept apparences', () => {
+  // 26/09/2026, contre-épreuve : touchables jusqu'à 1,09:1 en Sauge, 1,18:1
+  // en Ardéchine — le contraste « voisin » ignorait l'opacité de sa place.
+  it('lit les couleurs calculées du navigateur', () => {
+    expect(lireCouleur('rgb(8, 145, 178)')).toEqual([8, 145, 178]);
+    expect(lireCouleur('rgba(8, 145, 178, 0.5)')).toEqual([8, 145, 178]);
+    expect(lireCouleur('#0891b2')).toEqual([8, 145, 178]);
+    expect(contrasteEstompe('#000000', '#ffffff', 1)).toBeCloseTo(21, 5);
+    expect(contrasteEstompe('#000000', '#ffffff', 0)).toBeCloseTo(1, 5);
+  });
+
+  it('l’opacité minimale de chaque apparence tient 4,5:1, et pas un centième de moins', () => {
+    for (const [nom, t] of Object.entries(APPARENCES)) {
+      const alpha = opaciteMinimale(t['--color-text'], t['--color-bg']);
+      expect(contrasteEstompe(t['--color-text'], t['--color-bg'], alpha), `${nom} à ${alpha}`).toBeGreaterThanOrEqual(4.5);
+      expect(contrasteEstompe(t['--color-text'], t['--color-bg'], alpha - 0.02), `${nom} : au plus juste`).toBeLessThan(4.5);
+      expect(alpha, `${nom} : le repli par défaut doit couvrir cette apparence`).toBeLessThanOrEqual(OPACITE_LISIBLE_PAR_DEFAUT);
+    }
+  });
+
+  it('un texte qui ne passe pas même opaque n’est jamais estompé', () => {
+    expect(opaciteMinimale('#777777', '#888888')).toBe(1);
   });
 });

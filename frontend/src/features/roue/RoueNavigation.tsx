@@ -48,6 +48,7 @@ import {
   geometrieRoue,
   indexAllume,
   issueDuRelache,
+  largeurDuNom,
   placerElement,
   rotationAuTemps,
   rotationDuGlisse,
@@ -57,6 +58,7 @@ import {
   type Geometrie,
 } from './geometrieRoue';
 import { clavierOuvert, estUneSaisie, suivreHauteurMax } from './clavier';
+import { opaciteMinimale } from './contraste';
 import { freresARendreInertes, rendreInertes, reponseAuRetour } from './fermetureRoue';
 import { annoncerLeMenuDeLApp, OUVRIR_MENU_APP } from './menuDeLApp';
 import { PAGES_ROUE, indexDeLaPage } from './pagesRoue';
@@ -278,8 +280,18 @@ export function RoueNavigation() {
     if (!ouverte || mode !== 'roue' || !zone) return undefined;
     const mesurer = () => {
       const r = zone.getBoundingClientRect();
+      // L'opacité sous laquelle un nom n'a plus 4,5:1, dans CETTE apparence
+      // (contraste.ts) : l'écran « Aller à » porte la couleur du texte et
+      // celle du fond.
+      let opaciteLisible: number | undefined;
+      try {
+        const ecran = getComputedStyle(zone.closest('.roue-ecran') ?? zone);
+        opaciteLisible = opaciteMinimale(ecran.color, ecran.backgroundColor);
+      } catch {
+        opaciteLisible = undefined;
+      }
       // La place du bouton flottant, en bas : aucun élément ne passe dessous.
-      const g = geometrieRoue({ largeur: r.width, hauteur: r.height, cote, haut: 0, bas: r.height - 68 });
+      const g = geometrieRoue({ largeur: r.width, hauteur: r.height, cote, haut: 0, bas: r.height - 68, opaciteLisible });
       geoRef.current = g;
       const cx = g.cote === 'droite' ? g.centreX : g.largeur - g.centreX;
       arcRef.current?.setAttribute('cx', String(cx));
@@ -292,10 +304,12 @@ export function RoueNavigation() {
         'd',
         `M ${rx + 6 * s} ${g.centreY - 7} L ${rx} ${g.centreY} L ${rx + 6 * s} ${g.centreY + 7}`,
       );
+      const ligne = `${largeurDuNom(g)}px`;
       for (const el of elementsRef.current) {
         const nom = el?.querySelector<HTMLElement>('.roue-nom');
-        // Le nom le plus long garde la place entre la pastille et le bord.
-        if (nom) nom.style.maxWidth = `${Math.max(80, (g.cote === 'droite' ? g.xAllume : g.largeur - g.xAllume) - 60)}px`;
+        // Le nom a la place entre la pastille et la gouttière ; le plus long
+        // passe sur deux lignes (roue.css).
+        if (nom) nom.style.maxWidth = ligne;
       }
       appliquer();
     };

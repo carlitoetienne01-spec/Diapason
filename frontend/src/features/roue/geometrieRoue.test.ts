@@ -12,6 +12,12 @@ import {
   chargeBordRoue,
   cibleAimantation,
   BANDE_BORD_PX,
+  GOUTTIERE_PX,
+  largeurDuNom,
+  nomTient,
+  OPACITE_LISIBLE_PAR_DEFAUT,
+  opaciteSelonEcart,
+  PORTEE_LISIBLE,
   commenceAuBord,
   commenceDansLaBande,
   decisionDuBord,
@@ -82,6 +88,63 @@ describe("L'arc a son centre hors de l'écran, du côté de la main", () => {
   it('le rayon est borné, du petit écran à la tablette', () => {
     expect(geometrieRoue({ largeur: 320, hauteur: 400, cote: 'droite' }).rayon).toBe(RAYON_MIN_PX);
     expect(geometrieRoue({ largeur: 800, hauteur: 1400, cote: 'droite' }).rayon).toBe(RAYON_MAX_PX);
+  });
+});
+
+describe('Le nom le plus long n’est jamais coupé', () => {
+  // « Vue d'ensemble du système » en gras : 237 px sur une ligne en grande
+  // taille de texte (214 en taille normale), mesuré dans Chromium à 375 px
+  // le 26/09/2026 (scrollWidth de .roue-nom).
+  const LE_PLUS_LONG_PX = 237;
+
+  it('tient sur deux lignes de 360 à 412 px, des deux côtés', () => {
+    for (const largeur of [360, 375, 390, 412]) {
+      for (const cote of ['droite', 'gauche'] as const) {
+        const g = geometrieRoue({ largeur, hauteur: 700, cote });
+        expect(nomTient(LE_PLUS_LONG_PX, largeurDuNom(g)), `${largeur} px, ${cote}`).toBe(true);
+      }
+    }
+    expect(nomTient(LE_PLUS_LONG_PX, 172, 1), 'sur une seule ligne, il était coupé').toBe(false);
+  });
+
+  it('la capsule allumée ne dépasse jamais la gouttière de l’écran', () => {
+    for (const largeur of [320, 360, 375, 412]) {
+      const g = geometrieRoue({ largeur, hauteur: 700, cote: 'droite' });
+      // Bord gauche de la capsule : pastille − demi-pastille − écart − nom − rembourrage.
+      const bordGauche = g.xAllume - 20 - 12 - largeurDuNom(g) - 18;
+      expect(bordGauche, `${largeur} px`).toBeGreaterThanOrEqual(GOUTTIERE_PX - 1e-9);
+    }
+  });
+});
+
+describe('Un nom qu’on ne lit pas ne se touche pas', () => {
+  // 26/09/2026, contre-épreuve : 10 éléments estompés restaient touchables
+  // dans chaque apparence, jusqu'à 1,09:1.
+  it('trois voisins de chaque côté restent lisibles, puis s’éteignent', () => {
+    for (const lisible of [0.5, 0.68, 0.74]) {
+      expect(opaciteSelonEcart(0, lisible)).toBe(1);
+      expect(opaciteSelonEcart(PORTEE_LISIBLE, lisible), 'le dernier lisible, au plus juste').toBeCloseTo(lisible, 9);
+      expect(opaciteSelonEcart(PORTEE_LISIBLE + 0.5, lisible), 'au-delà, éteint').toBe(0);
+    }
+  });
+
+  it('aucun élément touchable n’est sous l’opacité lisible, quelle que soit la rotation', () => {
+    for (const lisible of [0.57, 0.74]) {
+      const g = geometrieRoue({ largeur: 375, hauteur: 600, cote: 'droite', opaciteLisible: lisible });
+      for (let rotation = 0; rotation <= 16; rotation += 0.1) {
+        for (let i = 0; i < 17; i += 1) {
+          const p = placerElement(i, rotation, g);
+          if (p.visible) expect(p.opacite, `élément ${i}, rotation ${rotation.toFixed(1)}`).toBeGreaterThanOrEqual(lisible - 1e-9);
+          if (Math.abs(p.distance) > PORTEE_LISIBLE + 0.01) expect(p.visible, `élément ${i} trop loin`).toBe(false);
+        }
+      }
+      const milieu = placerElement(8, 8, g);
+      expect(placerElement(11, 8, g).visible && milieu.visible, 'les trois voisins au cœur de la zone se touchent').toBe(true);
+    }
+  });
+
+  it('sans apparence lue, le repli est l’exigence de Sauge', () => {
+    expect(geometrieRoue({ largeur: 375, hauteur: 600, cote: 'droite' }).opaciteLisible).toBe(OPACITE_LISIBLE_PAR_DEFAUT);
   });
 });
 

@@ -29,9 +29,33 @@ export const RAYON_MAX_PX = 620;
 export const PART_RAYON = 0.6;
 
 /** Où tombe la pastille allumée : 38 % de la largeur depuis le bord de la
- *  roue (143 px à 375 px), ce qui laisse ~190 px au nom le plus long
- *  (« Vue d'ensemble du système » en 17 px gras) sans le couper. */
+ *  roue (143 px à 375 px). Le nom a la place entre la pastille et la
+ *  gouttière (`largeurDuNom`, 166 px à 375 px) ; le plus long passe sur
+ *  deux lignes plutôt que d'être coupé. 26/09/2026, contre-épreuve : ce
+ *  commentaire promettait ~190 px « sans le couper » ; le composant bornait
+ *  à 172 px sur une ligne, et « Vue d'ensemble du système » (237 px en gras)
+ *  sortait « Vue d'ensemble d… », allumé compris. */
 export const PART_RETRAIT = 0.38;
+
+/** Entre la pastille et le nom (roue.css : gap), le rembourrage de la
+ *  capsule côté nom, la demi-pastille, et la gouttière de l'écran. */
+const ECART_NOM_PASTILLE_PX = 12;
+const REMBOURRAGE_NOM_PX = 18;
+const DEMI_PASTILLE_PX = 20;
+export const GOUTTIERE_PX = 16;
+
+/** La largeur d'une ligne du nom : la capsule allumée ne dépasse jamais la
+ *  gouttière de l'écran. */
+export function largeurDuNom(g: Pick<Geometrie, 'cote' | 'largeur' | 'xAllume'>): number {
+  const xCote = g.cote === 'droite' ? g.xAllume : g.largeur - g.xAllume;
+  return Math.max(80, xCote - DEMI_PASTILLE_PX - ECART_NOM_PASTILLE_PX - REMBOURRAGE_NOM_PX - GOUTTIERE_PX);
+}
+
+/** Un nom tient-il en `lignes` lignes de `largeurDuNom` ? `largeurTexte` est
+ *  sa largeur sur une seule ligne ; 15 % de marge pour la coupure aux mots. */
+export function nomTient(largeurTexte: number, largeurLigne: number, lignes = 2): boolean {
+  return largeurTexte * 1.15 <= largeurLigne * lignes;
+}
 
 /** La bande du bord où un glissé ouvre la roue : 16 px, sous le pouce sans
  *  couvrir les contrôles, qui gardent 16 px de marge (index.css). */
@@ -56,8 +80,26 @@ export const INERTIE_MAX = 3;
 export const DUREE_MIN_MS = 150;
 export const DUREE_MAX_MS = 250;
 
-/** Ce que perd l'opacité par élément d'écart : le sixième voisin s'éteint. */
-export const ESTOMPE_PAR_ELEMENT = 0.17;
+/**
+ * Jusqu'où les voisins restent lisibles ET touchables : trois de chaque côté
+ * de l'allumé. Leur opacité descend de 1 à `opaciteLisible` (la plus basse
+ * qui garde 4,5:1 dans l'apparence, contraste.ts) ; au-delà, elle tombe à 0
+ * sur un demi-élément et l'élément ne se touche plus. 26/09/2026,
+ * contre-épreuve : l'ancien estompage (−0,17 par élément, touchable dès 0,05)
+ * laissait toucher des noms à 1,09:1 en Sauge — illisibles.
+ */
+export const PORTEE_LISIBLE = 3;
+
+/** L'opacité lisible quand l'apparence n'a pas pu être lue : la plus
+ *  exigeante des sept (Sauge, 0,74 au 26/09/2026). */
+export const OPACITE_LISIBLE_PAR_DEFAUT = 0.75;
+
+/** L'opacité d'un élément à `ecart` éléments de l'allumé. */
+export function opaciteSelonEcart(ecart: number, opaciteLisible: number): number {
+  if (ecart <= PORTEE_LISIBLE) return 1 - ((1 - opaciteLisible) * ecart) / PORTEE_LISIBLE;
+  if (ecart >= PORTEE_LISIBLE + 0.5) return 0;
+  return opaciteLisible * (1 - (ecart - PORTEE_LISIBLE) / 0.5);
+}
 
 /** La pastille allumée grandit de 30 %. */
 export const GROSSISSEMENT = 0.3;
@@ -82,6 +124,8 @@ export type Geometrie = {
   pas: number;
   /** Abscisse de la pastille allumée (côté réel, miroir compris). */
   xAllume: number;
+  /** Sous cette opacité, un nom n'a plus 4,5:1 : il ne se touche plus. */
+  opaciteLisible: number;
 };
 
 function borner(v: number, min: number, max: number): number {
@@ -94,6 +138,7 @@ export function geometrieRoue(entree: {
   cote: Cote;
   haut?: number;
   bas?: number;
+  opaciteLisible?: number;
 }): Geometrie {
   const { largeur, hauteur, cote } = entree;
   const haut = entree.haut ?? 0;
@@ -113,6 +158,7 @@ export function geometrieRoue(entree: {
     centreY: haut + utile / 2,
     pas: ECART_PX / rayon,
     xAllume: cote === 'droite' ? xDroite : largeur - xDroite,
+    opaciteLisible: entree.opaciteLisible ?? OPACITE_LISIBLE_PAR_DEFAUT,
   };
 }
 
@@ -126,7 +172,8 @@ export type Placement = {
   /** Échelle de la pastille. */
   echelle: number;
   allume: boolean;
-  /** Faux quand l'élément est hors de la zone : il ne se touche pas. */
+  /** Faux quand l'élément est hors de la zone ou trop estompé pour se lire :
+   *  il ne se touche pas. */
   visible: boolean;
 };
 
@@ -146,9 +193,7 @@ export function placerElement(index: number, rotation: number, g: Geometrie): Pl
   const x = g.cote === 'droite' ? xDroite : g.largeur - xDroite;
   const y = g.centreY + g.rayon * Math.sin(angle);
   const ecart = Math.abs(distance);
-  const opacite = surLArc
-    ? borner(1 - ESTOMPE_PAR_ELEMENT * ecart, 0, 1) * attenuationAuxBords(y, g.haut, g.bas)
-    : 0;
+  const opacite = surLArc ? opaciteSelonEcart(ecart, g.opaciteLisible) * attenuationAuxBords(y, g.haut, g.bas) : 0;
   return {
     x,
     y,
@@ -156,7 +201,9 @@ export function placerElement(index: number, rotation: number, g: Geometrie): Pl
     opacite,
     echelle: 1 + GROSSISSEMENT * Math.max(0, 1 - ecart),
     allume: ecart < 0.5,
-    visible: opacite > 0.05,
+    // Touchable seulement s'il reste lisible (4,5:1) : un nom qu'on ne lit
+    // pas ne doit pas ouvrir une page.
+    visible: opacite >= g.opaciteLisible - 1e-9,
   };
 }
 

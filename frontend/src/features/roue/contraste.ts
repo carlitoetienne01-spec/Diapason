@@ -26,3 +26,41 @@ export function rapportDeContraste(a: string, b: string): number {
   const [clair, sombre] = [luminance(lireHex(a)), luminance(lireHex(b))].sort((x, y) => y - x);
   return (clair + 0.05) / (sombre + 0.05);
 }
+
+/** `#rgb`, `#rrggbb`, `rgb(r, g, b)` ou `rgba(r, g, b, a)` (ce que rend
+ *  getComputedStyle) → [r, g, b] ; l'alpha est ignoré. */
+export function lireCouleur(couleur: string): [number, number, number] {
+  const brut = couleur.trim();
+  if (brut.startsWith('#')) return lireHex(brut);
+  const m = brut.match(/^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)/i);
+  if (!m) throw new Error(`couleur illisible : ${couleur}`);
+  return [Number(m[1]), Number(m[2]), Number(m[3])];
+}
+
+/** Le contraste d'un texte posé à l'opacité `alpha` sur son fond. */
+export function contrasteEstompe(texte: string, fond: string, alpha: number): number {
+  const t = lireCouleur(texte);
+  const f = lireCouleur(fond);
+  const mele = t.map((c, i) => c * alpha + f[i] * (1 - alpha)) as [number, number, number];
+  const [clair, sombre] = [luminance(mele), luminance(f)].sort((x, y) => y - x);
+  return (clair + 0.05) / (sombre + 0.05);
+}
+
+/**
+ * La plus petite opacité à laquelle un texte garde `cible`:1 sur son fond
+ * (au centième près, arrondie vers le haut). 26/09/2026, contre-épreuve :
+ * les noms estompés de la roue restaient touchables jusqu'à 1,09:1 en Sauge
+ * et 1,18:1 en Ardéchine — le contraste « voisin 7,81 à 18,9 » du lot 3
+ * ignorait l'opacité de leur place.
+ */
+export function opaciteMinimale(texte: string, fond: string, cible = 4.5): number {
+  if (contrasteEstompe(texte, fond, 1) < cible) return 1;
+  let bas = 0;
+  let haut = 1;
+  for (let i = 0; i < 20; i += 1) {
+    const milieu = (bas + haut) / 2;
+    if (contrasteEstompe(texte, fond, milieu) >= cible) haut = milieu;
+    else bas = milieu;
+  }
+  return Math.ceil(haut * 100) / 100;
+}

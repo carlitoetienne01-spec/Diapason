@@ -163,14 +163,24 @@ html[data-clavier-ouvert] .roue-bouton[aria-expanded='false'] { display: none; }
   opacity: 0;
   transition: opacity 150ms ease-out;
 }
+/* Deux lignes au plus, jamais coupé au milieu d'un mot : « Vue d'ensemble
+ * du système » (237 px en gras) sortait « Vue d'ensemble d… » sur une seule
+ * ligne de 172 px (26/09/2026, contre-épreuve). Deux lignes de 1,2 tiennent
+ * dans la capsule de 52 px. */
 .roue-nom {
   position: relative;
   font-size: 1rem;
   font-weight: 500;
-  white-space: nowrap;
+  line-height: 1.2;
+  white-space: normal;
   overflow: hidden;
-  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
+.roue-place[data-cote='droite'] .roue-nom { text-align: right; }
+.roue-place[data-cote='gauche'] .roue-nom { text-align: left; }
 .roue-pastille {
   position: relative;
   width: 40px;
