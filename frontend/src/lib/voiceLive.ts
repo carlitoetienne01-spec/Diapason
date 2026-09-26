@@ -46,6 +46,60 @@ export function motifDeFermeture(message: { reason?: unknown }): FermetureVocale
   return null;
 }
 
+/**
+ * La garde du CLIENT : quand couper le micro soi-même (§78, 26/09/2026).
+ *
+ * Contre-épreuve du 26/09/2026 : la coupure du Mac (`bridge.py`) n'atteint
+ * pas un téléphone hors réseau — ni la trame « closed » ni la fermeture ne
+ * lui arrivent, et son TCP (Tailscale garde son interface montée, Android
+ * ne détruit rien) retransmet jusqu'à quinze minutes. Pendant ce temps le
+ * micro restait ouvert, le voyant vert allumé, « Listening » à l'écran, et
+ * ~43 Ko/s de PCM en base64 s'entassaient dans la file d'envoi. Cette garde
+ * ne remplace pas celle du serveur (un client ancien ou planté ne
+ * l'appliquerait pas) : elle couvre le cas où le serveur ne peut plus parler.
+ */
+export type CoupureCliente = 'voice-lost-server' | 'voice-closed-max-duration';
+
+/**
+ * 45 s sans AUCUNE trame du Mac : trois battements manqués (`BATTEMENT_S` =
+ * 15 s dans `bridge.py`, tenu par le test). Un creux de réseau de trente
+ * secondes ne coupe rien ; au-delà, la réponse ne pourrait plus arriver.
+ */
+export const SERVEUR_MUET_MAX_MS = 45_000;
+
+/**
+ * 1 Mo en attente d'envoi : ~23 s de micro (16 kHz, 16 bits, base64 ≈
+ * 43 Ko/s) que le réseau n'a pas pris. Whisper ne tirerait rien d'une
+ * parole arrivée vingt secondes en retard. Le noyau absorbe d'abord son
+ * propre tampon, d'où ce seuil en appoint du battement, pas à sa place.
+ */
+export const TAMPON_MAX_OCTETS = 1_000_000;
+
+/**
+ * Dix minutes (`DUREE_MAX_S` du Mac) plus 30 s pour que sa trame « closed »
+ * traverse un réseau lent : au-delà, elle ne viendra plus.
+ */
+export const DUREE_LOCALE_MAX_MS = 630_000;
+
+export function coupureCliente(etat: {
+  maintenantMs: number;
+  debutMs: number;
+  derniereTrameMs: number;
+  /** Le Mac a battu au moins une fois : un serveur plus ancien ne bat pas,
+   * et son silence ne doit pas passer pour une mort. */
+  battementVu: boolean;
+  tamponOctets: number;
+}): CoupureCliente | null {
+  if (etat.maintenantMs - etat.debutMs >= DUREE_LOCALE_MAX_MS) {
+    return 'voice-closed-max-duration';
+  }
+  if (etat.tamponOctets >= TAMPON_MAX_OCTETS) return 'voice-lost-server';
+  if (etat.battementVu && etat.maintenantMs - etat.derniereTrameMs >= SERVEUR_MUET_MAX_MS) {
+    return 'voice-lost-server';
+  }
+  return null;
+}
+
 export function voiceLiveWsUrl(extraQuery: Record<string, string> = {}): string {
   const base = getBase() || window.location.origin;
   const u = new URL(base);

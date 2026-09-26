@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   canStartVoiceSession,
+  coupureCliente,
   fetchVoiceLiveHealth,
   motifDeFermeture,
   VoiceLiveHealthError,
@@ -251,6 +252,32 @@ export function useVoiceLive() {
       demarrageRef.current = false;
       const actuelle = () => wsRef.current === ws && generationRef.current === generation;
 
+      // La garde du client (26/09/2026, contre-épreuve) : la coupure du Mac
+      // n'atteint pas un téléphone hors réseau. Toutes les 5 s, on regarde
+      // si le Mac parle encore et si l'envoi avance ; sinon, le micro se
+      // ferme ici, et on dit pourquoi.
+      const debutMs = Date.now();
+      let derniereTrameMs = debutMs;
+      let battementVu = false;
+      const garde = window.setInterval(() => {
+        if (!actuelle()) {
+          window.clearInterval(garde);
+          return;
+        }
+        const coupure = coupureCliente({
+          maintenantMs: Date.now(),
+          debutMs,
+          derniereTrameMs,
+          battementVu,
+          tamponOctets: ws.bufferedAmount,
+        });
+        if (!coupure) return;
+        window.clearInterval(garde);
+        console.warn('[voice-live] closed by the client guard', { reason: coupure });
+        stop();
+        setError(coupure);
+      }, 5000);
+
       ws.onopen = async () => {
         if (!actuelle()) return;
         ws.send(
@@ -312,9 +339,13 @@ export function useVoiceLive() {
 
       ws.onmessage = (ev) => {
         if (!actuelle() || socketFailed) return;
+        derniereTrameMs = Date.now();
         try {
           const msg = JSON.parse(ev.data as string);
           switch (msg.type) {
+            case 'alive':
+              battementVu = true;
+              break;
             case 'ready':
               setState('listening');
               setStatusLabel('Listening · speak');

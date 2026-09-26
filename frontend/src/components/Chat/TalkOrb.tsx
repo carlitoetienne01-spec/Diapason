@@ -55,6 +55,7 @@ const ERREURS = {
   'voice-session-failed': 'talk.sessionFailed',
   'voice-closed-inactivity': 'talk.closedInactivity',
   'voice-closed-max-duration': 'talk.closedMaxDuration',
+  'voice-lost-server': 'talk.lostServer',
 } as const;
 
 function CopieTranscript({ texte, etiquette }: { texte: string; etiquette: string }) {

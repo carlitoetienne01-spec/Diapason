@@ -20,6 +20,7 @@ import pytest
 
 from diapason.speech.realtime.base import SessionEvent
 from diapason.speech.realtime.bridge import (
+    BATTEMENT_S,
     DUREE_MAX_S,
     MOTIF_DUREE,
     MOTIF_SILENCE,
@@ -296,6 +297,53 @@ class TestLaDureeCoupe:
         assert client.envoyes == [{"type": "closed", "reason": MOTIF_SILENCE}]
         assert session.fermee
         assert duree < _SILENCE + 1.0, f"coupée en {duree:.2f} s"
+
+
+class TestLeBattement:
+    """Le micro du téléphone ne sait rien de la coupure du Mac quand le
+    réseau est tombé : ni la trame « closed » ni la fermeture ne lui
+    arrivent, et son TCP retransmet jusqu'à quinze minutes (26/09/2026,
+    contre-épreuve). Le serveur bat ; le client coupe son micro quand les
+    battements cessent (``coupureCliente``, frontend/src/lib/voiceLive.ts)."""
+
+    @pytest.mark.asyncio
+    async def test_un_silence_porte_des_battements_et_la_fermeture_reste_derniere(
+        self,
+    ):
+        client, session = _Client(), _Session()
+        await _mener(_pont(client, session, silence_max_s=0.5, battement_s=0.1))
+        types = [m["type"] for m in client.envoyes]
+        assert types[0] == "ready", "un battement ne précède jamais « ready »"
+        assert types.count("alive") >= 3, (
+            f"un silence d'une demi-seconde doit porter des battements : {types}"
+        )
+        assert client.envoyes[-1] == {"type": "closed", "reason": MOTIF_SILENCE}, (
+            "la trame « closed » doit rester la dernière reçue"
+        )
+
+    @pytest.mark.asyncio
+    async def test_un_battement_ne_repousse_pas_la_coupure(self):
+        """Le battement est la voix du SERVEUR, pas une parole : compté, il
+        garderait le micro ouvert pour toujours."""
+        client, session = _Client(), _Session()
+        duree = await _mener(_pont(client, session, battement_s=0.05))
+        assert client.envoyes[-1]["reason"] == MOTIF_SILENCE
+        assert duree < _SILENCE + 1.0, f"coupée en {duree:.2f} s"
+
+    @pytest.mark.asyncio
+    async def test_un_chauffage_bloque_ne_bat_pas(self):
+        """Pas de battement avant « ready » : le client n'arme sa garde qu'au
+        premier, et un serveur plus ancien, qui ne bat pas, n'est jamais
+        pris pour un mort."""
+        client, session = _Client(), _Session(connexion_bloquee=True)
+        await _mener(_pont(client, session, battement_s=0.05))
+        assert client.envoyes == [{"type": "closed", "reason": MOTIF_SILENCE}]
+
+    def test_le_battement_laisse_trois_chances_avant_la_garde_du_client(self):
+        """Le client coupe après 45 s sans trame : trois battements manqués.
+        La valeur du client est tenue contre celle-ci par voiceLive.test.ts."""
+        assert BATTEMENT_S == 15.0
+        assert BATTEMENT_S * 3 <= 45.0
 
 
 class TestLesVraiesLimites:

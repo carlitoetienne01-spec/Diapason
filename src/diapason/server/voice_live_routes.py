@@ -134,7 +134,8 @@ async def websocket_voice_live(websocket: WebSocket) -> None:
         {"type": "tool", "name": "...", "ok": bool, "detail": "..."}
         {"type": "interrupted"}
         {"type": "error", "detail": "..."}
-        {"type": "closed"}
+        {"type": "alive"}          # every BATTEMENT_S, once ready
+        {"type": "closed", "reason": "inactivity" | "maxDuration"}
     """
     from diapason.server.auth_middleware import (
         websocket_authorized,

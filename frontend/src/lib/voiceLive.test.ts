@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 const fetchMock = vi.fn<typeof fetch>();
 
@@ -145,5 +147,78 @@ describe('la coupure dite par le serveur (§78, 26/09/2026)', () => {
     expect(motifDeFermeture({}), '« Terminer » n’est pas une coupure du serveur').toBeNull();
     expect(motifDeFermeture({ reason: 'autreChose' }), 'un motif inconnu ne se devine pas').toBeNull();
     expect(motifDeFermeture({ reason: 42 })).toBeNull();
+  });
+});
+
+describe('la garde du client quand le Mac ne répond plus (§78, 26/09/2026)', () => {
+  // Contre-épreuve du 26/09/2026 : la coupure du Mac n'atteint pas un
+  // téléphone hors réseau ; son micro restait armé jusqu'à quinze minutes.
+  const T0 = 1_790_400_000_000;
+  const vivant = {
+    maintenantMs: T0 + 60_000,
+    debutMs: T0,
+    derniereTrameMs: T0 + 50_000,
+    battementVu: true,
+    tamponOctets: 0,
+  };
+
+  it('ne coupe pas une séance dont le Mac parle encore', async () => {
+    const { coupureCliente } = await freshVoiceLive();
+    expect(coupureCliente(vivant), 'une trame il y a 10 s : le Mac est là').toBeNull();
+  });
+
+  it('coupe après 45 s sans aucune trame d’un Mac qui battait', async () => {
+    const { coupureCliente, SERVEUR_MUET_MAX_MS } = await freshVoiceLive();
+    const derniere = T0 + 10_000;
+    expect(
+      coupureCliente({ ...vivant, derniereTrameMs: derniere, maintenantMs: derniere + SERVEUR_MUET_MAX_MS - 1 }),
+      'un creux de réseau court ne coupe rien',
+    ).toBeNull();
+    expect(
+      coupureCliente({ ...vivant, derniereTrameMs: derniere, maintenantMs: derniere + SERVEUR_MUET_MAX_MS }),
+      'trois battements manqués : le micro se ferme ici',
+    ).toBe('voice-lost-server');
+  });
+
+  it('ne prend jamais pour mort un serveur plus ancien, qui ne bat pas', async () => {
+    const { coupureCliente } = await freshVoiceLive();
+    expect(
+      coupureCliente({ ...vivant, battementVu: false, derniereTrameMs: T0, maintenantMs: T0 + 300_000 }),
+      'sans battement vu, le silence du serveur ne prouve rien',
+    ).toBeNull();
+  });
+
+  it('coupe quand l’envoi n’avance plus, même sans battement vu', async () => {
+    const { coupureCliente, TAMPON_MAX_OCTETS } = await freshVoiceLive();
+    expect(coupureCliente({ ...vivant, battementVu: false, tamponOctets: TAMPON_MAX_OCTETS - 1 })).toBeNull();
+    expect(
+      coupureCliente({ ...vivant, battementVu: false, tamponOctets: TAMPON_MAX_OCTETS }),
+      '~23 s de micro que le réseau n’a pas pris',
+    ).toBe('voice-lost-server');
+  });
+
+  it('coupe au plafond local, dix minutes et demie après le début', async () => {
+    const { coupureCliente, DUREE_LOCALE_MAX_MS } = await freshVoiceLive();
+    expect(
+      coupureCliente({ ...vivant, maintenantMs: T0 + DUREE_LOCALE_MAX_MS - 1, derniereTrameMs: T0 + DUREE_LOCALE_MAX_MS - 1 }),
+    ).toBeNull();
+    expect(
+      coupureCliente({ ...vivant, maintenantMs: T0 + DUREE_LOCALE_MAX_MS, derniereTrameMs: T0 + DUREE_LOCALE_MAX_MS }),
+      'la trame « closed » du Mac ne viendra plus',
+    ).toBe('voice-closed-max-duration');
+  });
+
+  it('tient ses seuils contre le battement et la durée maximale du Mac', async () => {
+    const { SERVEUR_MUET_MAX_MS, DUREE_LOCALE_MAX_MS } = await freshVoiceLive();
+    const pont = readFileSync(
+      join(process.cwd(), '..', 'src', 'diapason', 'speech', 'realtime', 'bridge.py'),
+      'utf-8',
+    );
+    const battement = Number(/^BATTEMENT_S = ([\d.]+)$/m.exec(pont)?.[1]);
+    const dureeMax = Number(/^DUREE_MAX_S = ([\d.]+)$/m.exec(pont)?.[1]);
+    expect(battement, 'BATTEMENT_S introuvable dans bridge.py').toBeGreaterThan(0);
+    expect(SERVEUR_MUET_MAX_MS, 'trois battements manqués au moins').toBeGreaterThanOrEqual(3 * battement * 1000);
+    expect(dureeMax, 'DUREE_MAX_S introuvable dans bridge.py').toBeGreaterThan(0);
+    expect(DUREE_LOCALE_MAX_MS, 'le plafond local vient APRÈS celui du Mac').toBeGreaterThan(dureeMax * 1000);
   });
 });

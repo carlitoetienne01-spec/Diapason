@@ -131,6 +131,8 @@ export const MESSAGES = {
       'Voice switched itself off after a long silence: the microphone is closed. Start again to keep talking.',
     'talk.closedMaxDuration':
       'Voice switched itself off: a session lasts ten minutes at most. Start again to keep talking.',
+    'talk.lostServer':
+      'The Mac stopped answering: voice switched itself off and the microphone is closed. Check the connection, then start again.',
     'talk.localNotReady':
       'Local voice needs Ollama running — open the Ollama app, then try again.',
     'talk.localComponentsMissing':
@@ -1698,6 +1700,8 @@ export const MESSAGES = {
       'La voix s’est coupée seule après un long silence : le micro est fermé. Relancez-la pour reprendre.',
     'talk.closedMaxDuration':
       'La voix s’est coupée seule : une séance dure dix minutes au plus. Relancez-la pour reprendre.',
+    'talk.lostServer':
+      'Le Mac ne répond plus : la voix s’est coupée et le micro est fermé. Vérifiez la connexion, puis relancez-la.',
     'talk.localNotReady':
       "La voix locale nécessite Ollama — lancez l'application Ollama, puis réessayez.",
     'talk.localComponentsMissing':

@@ -32,8 +32,23 @@ logger = logging.getLogger(__name__)
 # elle se désengage. Et 120 couvre un tour qui attend la cloche : 45 s
 # d'approbation (VOICE_APPROVAL_WAIT_S) sans un mot, plus la réponse.
 # Un WebSocket perdu sans fermeture (téléphone hors réseau, en poche) ne
-# parle plus : il tombe sous cette même règle, en 120 s au plus.
+# parle plus : la SÉANCE du Mac tombe sous cette même règle, en 120 s au
+# plus. Le MICRO du téléphone, lui, n'en sait rien (26/09/2026,
+# contre-épreuve) : la trame « closed » et la fermeture n'atteignent pas un
+# téléphone hors réseau, et son TCP retransmet jusqu'à quinze minutes. D'où
+# le battement ci-dessous, que le client surveille (`coupureCliente`,
+# frontend/src/lib/voiceLive.ts).
 SILENCE_MAX_S = 120.0
+# Le battement : `{"type": "alive"}` toutes les quinze secondes, pour que le
+# client sache le Mac encore là pendant un silence où rien d'autre ne
+# passe. Le client coupe son micro après 45 s sans aucune trame (trois
+# battements manqués : un creux de réseau de trente secondes ne coupe
+# rien). Plus court, et le fil porterait du bruit pour rien ; plus long, et
+# le micro d'un téléphone perdu resterait ouvert d'autant. Le premier part
+# après quinze secondes, pas avant « ready » : un client ne le voit
+# qu'une fois la séance montée, et n'arme sa garde qu'à ce moment-là — un
+# serveur plus ancien, qui ne bat pas, n'est jamais pris pour un mort.
+BATTEMENT_S = 15.0
 # Dix minutes au plus, quoi qu'il se dise : le même plafond que le mode
 # gestes (_DUREE_MAX_S, gestes_routes.py). Une réponse orale tient en une à
 # trois phrases, ~15 s avec la question : dix minutes, c'est une quarantaine
@@ -101,6 +116,7 @@ class VoiceLiveBridge:
         silence_max_s: Optional[float] = None,
         duree_max_s: Optional[float] = None,
         horloge: Callable[[], float] = time.monotonic,
+        battement_s: Optional[float] = None,
     ) -> None:
         self._client = client_ws
         self._session = session
@@ -112,6 +128,7 @@ class VoiceLiveBridge:
             SILENCE_MAX_S if silence_max_s is None else float(silence_max_s)
         )
         self._duree_max_s = DUREE_MAX_S if duree_max_s is None else float(duree_max_s)
+        self._battement_s = BATTEMENT_S if battement_s is None else float(battement_s)
         self._horloge = horloge
         self._debut = horloge()
         # L'instant jusqu'où quelqu'un parle — dans le FUTUR tant que la
@@ -155,6 +172,15 @@ class VoiceLiveBridge:
                 return MOTIF_SILENCE
             await asyncio.sleep(max(0.01, min(fin_duree, fin_silence) - maintenant))
 
+    async def _battre(self) -> None:
+        """Dit au client, à intervalle fixe, que le Mac est encore là."""
+        while True:
+            await asyncio.sleep(self._battement_s)
+            try:
+                await self._client.send_json({"type": "alive"})
+            except Exception:  # noqa: BLE001 - le client est parti : la garde tranchera
+                return
+
     async def _couper(self, motif: str) -> None:
         self.motif_de_fermeture = motif
         logger.info("voice live: session closed by the server (%s)", motif)
@@ -184,6 +210,7 @@ class VoiceLiveBridge:
                 await self._couper(garde.result())
                 return
             connexion.result()
+            battement = asyncio.create_task(self._battre())
             forward = asyncio.create_task(self._forward_provider_events())
             receive = asyncio.create_task(self._receive_client_messages())
             self._tasks = [forward, receive, garde]
@@ -191,6 +218,9 @@ class VoiceLiveBridge:
                 self._tasks,
                 return_when=asyncio.FIRST_COMPLETED,
             )
+            # Le battement se tait AVANT la trame « closed » : elle doit
+            # rester la dernière chose que le client reçoit.
+            battement.cancel()
             for task in pending:
                 task.cancel()
             if garde in done:
@@ -250,6 +280,7 @@ class VoiceLiveBridge:
 
 
 __all__ = [
+    "BATTEMENT_S",
     "DUREE_MAX_S",
     "MOTIF_DUREE",
     "MOTIF_SILENCE",
