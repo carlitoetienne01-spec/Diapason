@@ -11,7 +11,7 @@ import type { VieHabit } from './types';
 
 // 25/09/2026 : `diapason-succes-habit-reminder-fired` jusque-là ; recopiée par
 // `migrerStockage`, sinon les rappels déjà envoyés aujourd'hui repartaient.
-const FIRED_STORAGE_KEY = 'diapason-vie-habit-reminder-fired';
+export const FIRED_STORAGE_KEY = 'diapason-vie-habit-reminder-fired';
 const HOURLY_START = 10;
 const HOURLY_END = 23;
 const POLL_MS = 60_000;

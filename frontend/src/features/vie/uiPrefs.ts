@@ -7,7 +7,7 @@ import { estTriNotes, type TriNotes } from './triNotes';
 
 // 25/09/2026 : `diapason-succes-ui-prefs` jusque-là ; recopiée une fois à
 // l'amorçage par `migrerStockage`, sinon chaque page repartait à zéro.
-const STORAGE_KEY = 'diapason-vie-ui-prefs';
+export const STORAGE_KEY = 'diapason-vie-ui-prefs';
 
 /**
  * `done` : l'onglet Terminées, à part de la Liste depuis le 17 sept. 2026 —

@@ -1,4 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   BUDGET_OCTETS,
@@ -8,7 +11,9 @@ import {
   creerCacheVie,
   type Stockage,
 } from './cacheVie';
+import { FIRED_STORAGE_KEY } from './habitReminders';
 import { CLES_RENOMMEES, PREFIXE_CACHE_HERITE, migrerStockage } from './migrerStockage';
+import { STORAGE_KEY, loadTasksViewMode } from './uiPrefs';
 
 /**
  * 25/09/2026, étape 8 du plan de la phase 1b : `diapason-succes-*` devient
@@ -168,5 +173,57 @@ describe('migrerStockage', () => {
     );
     expect(persistees.length, 'au moins un des deux caches de lancement reste en mémoire seule').toBeLessThan(2);
     expect(BUDGET_OCTETS, 'le budget du cache neuf ignore les anciennes entrées').toBe(4_200_000);
+  });
+});
+
+/**
+ * Contre-épreuve du 25/09/2026 : quatre mutations restaient vertes. Retirer
+ * l'appel de `main.tsx`, le repousser après le rendu, ou faire lire à
+ * `uiPrefs.ts` / `habitReminders.ts` une clé que `CLES_RENOMMEES` ne garnit
+ * pas — les préférences et les rappels repartaient à zéro sans un rouge.
+ */
+describe('migrerStockage est branchée sur ce que lisent ses consommateurs', () => {
+  it('recopie vers les clés mêmes que lisent uiPrefs et habitReminders', () => {
+    expect(CLES_RENOMMEES.map(([, neuf]) => neuf)).toEqual([STORAGE_KEY, FIRED_STORAGE_KEY]);
+  });
+
+  it('les préférences d’avant se relisent par uiPrefs après la migration', () => {
+    const store = new StockageFactice();
+    store.setItem('diapason-succes-ui-prefs', '{"tasksViewMode":"month"}');
+    vi.stubGlobal('localStorage', store);
+    try {
+      expect(loadTasksViewMode('week'), 'avant la migration : le défaut').toBe('week');
+      migrerStockage(store);
+      expect(loadTasksViewMode('week'), 'après : le choix d’avant').toBe('month');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('main.tsx migre au niveau du module, avant initApiBase et le rendu', () => {
+    const main = readFileSync(join(process.cwd(), 'src/main.tsx'), 'utf-8');
+    const appel = main.search(/^migrerStockage\(stockageDeLOrigine\(\)\);$/m);
+    expect(appel, 'l’appel doit être une instruction de premier niveau, pas différée').toBeGreaterThan(-1);
+    expect(appel, 'avant initApiBase').toBeLessThan(main.indexOf('initApiBase().'));
+    expect(appel, 'avant createRoot').toBeLessThan(main.indexOf('createRoot('));
+  });
+
+  it('libère la place des anciens caches AVANT de recopier', () => {
+    // Un stockage plein à l'unité près : la copie n'y tient que si les
+    // anciens caches sont partis d'abord. Le test du quota de 5 Mo laissait
+    // assez de marge pour que les deux ordres passent.
+    const store = new StockageFactice();
+    store.setItem(`${PREFIXE_CACHE_HERITE}vieux`, 'a'.repeat(1_000));
+    store.setItem('diapason-succes-ui-prefs', PREFS);
+    store.setItem('diapason-succes-habit-reminder-fired', RAPPELS);
+    let occupe = 0;
+    for (const [nom, v] of store.entrees) occupe += nom.length + v.length;
+    store.quotaUnites = occupe;
+
+    const bilan = migrerStockage(store);
+
+    expect(bilan.recopiees, 'les deux copies doivent tenir dans la place libérée').toBe(2);
+    expect(store.getItem('diapason-vie-ui-prefs')).toBe(PREFS);
+    expect(store.getItem('diapason-vie-habit-reminder-fired')).toBe(RAPPELS);
   });
 });
