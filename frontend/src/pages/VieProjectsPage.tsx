@@ -1286,7 +1286,7 @@ export function VieProjectsPage() {
               {selected.description && (
                 <p className="text-sm mt-2 max-w-2xl" style={{ color: 'var(--color-text-secondary)' }}>{selected.description}</p>
               )}
-              <div className="flex flex-wrap gap-3 mt-3 text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
+              <div className="flex flex-wrap items-center gap-3 mt-3 text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
                 <span>{structureLabel}</span>
                 {isTreeFamily && (
                   <button

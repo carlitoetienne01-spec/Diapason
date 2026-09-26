@@ -860,7 +860,8 @@ export function SettingsPage() {
                   try { localStorage.setItem('diapason-memory-enabled', String(next)); } catch {}
                   showSaved();
                 }}
-                className="relative w-11 h-6 rounded-full transition-colors cursor-pointer"
+                data-cible-libre=""
+                className="relative w-11 h-6 rounded-full transition-colors cursor-pointer cible-etendue [--cible-marge:-8px_0]"
                 style={{
                   background: memoryEnabled ? 'var(--color-accent)' : 'var(--color-bg-tertiary)',
                 }}
@@ -977,7 +978,8 @@ export function SettingsPage() {
             <SettingRow label={t('settings.speech.sttLabel')} description={t('settings.speech.sttDescription')}>
               <button
                 onClick={() => { updateSettings({ speechEnabled: !settings.speechEnabled }); showSaved(); }}
-                className="relative w-11 h-6 rounded-full transition-colors cursor-pointer"
+                data-cible-libre=""
+                className="relative w-11 h-6 rounded-full transition-colors cursor-pointer cible-etendue [--cible-marge:-8px_0]"
                 style={{
                   background: settings.speechEnabled ? 'var(--color-accent)' : 'var(--color-bg-tertiary)',
                 }}
@@ -1115,7 +1117,8 @@ export function SettingsPage() {
                 type="button"
                 disabled={!serverCfg}
                 onClick={() => void patchServer('desktop.vision.enabled', !serverCfg?.desktop.vision.enabled)}
-                className="relative w-11 h-6 rounded-full transition-colors cursor-pointer disabled:opacity-40"
+                data-cible-libre=""
+                className="relative w-11 h-6 rounded-full transition-colors cursor-pointer cible-etendue [--cible-marge:-8px_0] disabled:opacity-40"
                 style={{
                   background: serverCfg?.desktop.vision.enabled ? 'var(--color-accent)' : 'var(--color-bg-tertiary)',
                 }}
@@ -1137,7 +1140,8 @@ export function SettingsPage() {
                 type="button"
                 disabled={!serverCfg}
                 onClick={() => void patchServer('dictation.polish', !serverCfg?.dictation.polish)}
-                className="relative w-11 h-6 rounded-full transition-colors cursor-pointer disabled:opacity-40"
+                data-cible-libre=""
+                className="relative w-11 h-6 rounded-full transition-colors cursor-pointer cible-etendue [--cible-marge:-8px_0] disabled:opacity-40"
                 style={{
                   background: serverCfg?.dictation.polish ? 'var(--color-accent)' : 'var(--color-bg-tertiary)',
                 }}
@@ -1181,7 +1185,8 @@ export function SettingsPage() {
                 onClick={() =>
                   void patchServer('dictation.auto_learn', !(serverCfg?.dictation.auto_learn ?? true))
                 }
-                className="relative w-11 h-6 rounded-full transition-colors cursor-pointer disabled:opacity-40"
+                data-cible-libre=""
+                className="relative w-11 h-6 rounded-full transition-colors cursor-pointer cible-etendue [--cible-marge:-8px_0] disabled:opacity-40"
                 style={{
                   background: (serverCfg?.dictation.auto_learn ?? true)
                     ? 'var(--color-accent)'
@@ -1229,7 +1234,8 @@ export function SettingsPage() {
                 onClick={() =>
                   void patchServer('speech.wakeword.text_gate', !serverCfg?.speech.wakeword.text_gate)
                 }
-                className="relative w-11 h-6 rounded-full transition-colors cursor-pointer disabled:opacity-40"
+                data-cible-libre=""
+                className="relative w-11 h-6 rounded-full transition-colors cursor-pointer cible-etendue [--cible-marge:-8px_0] disabled:opacity-40"
                 style={{
                   background: serverCfg?.speech.wakeword.text_gate ? 'var(--color-accent)' : 'var(--color-bg-tertiary)',
                 }}
@@ -1333,7 +1339,8 @@ export function SettingsPage() {
             <SettingRow label={t('settings.updates.autoLabel')} description={t('settings.updates.autoDescription')}>
               <button
                 onClick={() => handleAutoUpdateToggle(!autoUpdateEnabled)}
-                className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors"
+                data-cible-libre=""
+                className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors cible-etendue [--cible-marge:-10px_-2px]"
                 style={{ background: autoUpdateEnabled ? 'var(--color-accent)' : 'var(--color-bg-tertiary)', border: '1px solid var(--color-border)' }}
               >
                 <span

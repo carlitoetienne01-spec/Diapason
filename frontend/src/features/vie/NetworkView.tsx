@@ -1484,6 +1484,11 @@ export function NetworkView({
                         }
                         relierDepuis(task.id);
                       }}
+                      // La poignée est un POINT dessiné (bordure et fond) : portée à
+                      // 40 px par la règle du doigt (index.css), elle devenait un
+                      // disque posé sur le titre du nœud (26/09/2026). Au doigt,
+                      // « Relier » et la vue Liste font le même lien (§82).
+                      data-cible-libre=""
                       className={`absolute right-2 top-1/2 -translate-y-1/2 size-3.5 rounded-full transition-opacity motion-reduce:transition-none focus-visible:opacity-100 max-sm:opacity-100 compact:opacity-100 mobile:opacity-100 disabled:opacity-0 ${
                         isLinkSource ? 'opacity-100 cursor-grabbing' : 'opacity-0 group-hover:opacity-100 cursor-grab'
                       }`}

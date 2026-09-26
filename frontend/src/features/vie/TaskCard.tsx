@@ -251,7 +251,8 @@ function SubtaskRow({
         <button
           type="button"
           onClick={() => void onToggle(task, subtask)}
-          className="size-5 rounded-md flex items-center justify-center cursor-pointer transition-colors"
+          data-cible-libre=""
+          className="relative size-5 rounded-md flex items-center justify-center cursor-pointer transition-colors cible-etendue [--cible-marge:-10px]"
           style={{
             border: `1px solid ${subtask.done ? 'var(--color-accent)' : 'var(--color-border)'}`,
             background: subtask.done ? 'var(--color-accent)' : 'transparent',
@@ -866,7 +867,8 @@ export function TaskCard({
         <button
           type="button"
           onClick={() => void onToggleTask(task)}
-          className="mt-0.5 size-6 rounded-lg flex items-center justify-center shrink-0 cursor-pointer"
+          data-cible-libre=""
+          className="relative mt-0.5 size-6 rounded-lg flex items-center justify-center shrink-0 cursor-pointer cible-etendue"
           style={{
             border: `1px solid ${task.done ? 'var(--color-accent)' : 'var(--color-border)'}`,
             background: task.done ? 'var(--color-accent)' : 'var(--color-bg-secondary)',

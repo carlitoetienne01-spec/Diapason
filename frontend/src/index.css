@@ -48,6 +48,51 @@ html[data-diapason-compact='1'] [data-sonner-toaster] [data-sonner-toast] {
   width: 100%;
 }
 
+/* Le doigt dans le téléphone (mode `mobile`, jamais la largeur). 26/09/2026 :
+ * relevé à 375 px, la Discussion comptait des cibles de 26 × 26 px (le « ⋯ »
+ * d'une discussion, Copier, les puces du compositeur), dessinées pour une
+ * souris ; un doigt en couvre ~45. 40 px de côté au moins, sur tout ce qui se
+ * touche — posé ICI, hors des couches, parce qu'une règle par composant en
+ * aurait oublié des centaines, et parce qu'une utilité `size-6` doit céder.
+ * Le bureau et le mini-panneau (une souris) n'en voient rien. Un contrôle
+ * qui doit garder sa taille (une poignée dans une carte, un nuancier)
+ * porte `data-cible-libre`, avec la raison en commentaire. */
+html[data-diapason-mobile='1']
+  :is(
+    button,
+    a[href],
+    select,
+    summary,
+    [role='button'],
+    [role='checkbox'],
+    [role='switch'],
+    [role='tab'],
+    [role='menuitem'],
+    [role='option'],
+    /* Une case native (13 px) se touche par son étiquette. */
+    label:has(input[type='checkbox'], input[type='radio'])
+  ):not([data-cible-libre]) {
+  min-height: 40px;
+  min-width: 40px;
+}
+html[data-diapason-mobile='1']
+  :is(input:not([type='checkbox'], [type='radio'], [type='range'], [type='hidden'], [type='file']), textarea):not(
+    [data-cible-libre]
+  ) {
+  min-height: 40px;
+}
+/* Un contrôle DESSINÉ — interrupteur, case à cocher, pastille — ne peut pas
+ * grandir : porté à 40 px, l'interrupteur de 44 × 24 devenait une goutte et
+ * la case d'une tâche un carré vide de 40 px (vu le 26/09/2026). Il porte
+ * `data-cible-libre` et `cible-etendue` : sa surface de toucher déborde
+ * autour de lui par un pseudo-élément, sans rien déplacer (`--cible-marge`,
+ * 8 px par défaut ; l'élément doit être positionné). */
+html[data-diapason-mobile='1'] .cible-etendue::after {
+  content: '';
+  position: absolute;
+  inset: var(--cible-marge, -8px);
+}
+
 /*
  * Diapason design tokens.
  * Zinc/slate neutrals, blue accent. Light default, dark via class or system pref.
