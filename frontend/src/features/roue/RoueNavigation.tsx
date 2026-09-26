@@ -56,6 +56,7 @@ import {
   type Cote,
   type Geometrie,
 } from './geometrieRoue';
+import { freresARendreInertes, rendreInertes, reponseAuRetour } from './fermetureRoue';
 import { annoncerLeMenuDeLApp, OUVRIR_MENU_APP } from './menuDeLApp';
 import { PAGES_ROUE, indexDeLaPage } from './pagesRoue';
 import './roue.css';
@@ -251,6 +252,12 @@ export function RoueNavigation() {
     setOuverte(false);
   }, []);
 
+  /** Fermer et rendre le focus au bouton : Échap et le retour d'Android. */
+  const fermerEtRendreLeFocus = useCallback(() => {
+    fermer();
+    boutonRef.current?.focus({ preventScroll: true });
+  }, [fermer]);
+
   const ouvrirPage = useCallback(
     (index: number) => {
       const chemin = PAGES_ROUE[index]?.chemin;
@@ -336,27 +343,15 @@ export function RoueNavigation() {
   // l'écran « Aller à », et un lecteur d'écran y passait en balayant.
   useEffect(() => {
     const moi = racineRef.current;
-    const parent = moi?.parentElement;
-    if (!ouverte || !moi || !parent) return undefined;
-    const autres = [...parent.children].filter(
-      (el): el is HTMLElement => el !== moi && el instanceof HTMLElement && !el.inert,
-    );
-    for (const el of autres) el.inert = true;
-    return () => {
-      for (const el of autres) el.inert = false;
-    };
+    if (!ouverte || !moi) return undefined;
+    return rendreInertes(freresARendreInertes(moi));
   }, [ouverte]);
 
   // Le bouton retour d'Android ferme d'abord la roue (verbe `retour`).
   useEffect(() => {
     if (!ouverte || !pontNatif) return undefined;
-    return pontNatif.surRetour(() => {
-      if (!ouverteRef.current) return false;
-      fermer();
-      boutonRef.current?.focus({ preventScroll: true });
-      return true;
-    });
-  }, [ouverte, fermer]);
+    return pontNatif.surRetour(() => reponseAuRetour(ouverteRef.current, fermerEtRendreLeFocus));
+  }, [ouverte, fermerEtRendreLeFocus]);
 
   // Une navigation venue d'ailleurs (le maillage, la voix) ferme la roue.
   const cheminOuvert = useRef(pathname);
@@ -493,8 +488,7 @@ export function RoueNavigation() {
   const surTouche = (e: KeyboardEventReact<HTMLDivElement>) => {
     if (e.key === 'Escape') {
       e.preventDefault();
-      fermer();
-      boutonRef.current?.focus({ preventScroll: true });
+      fermerEtRendreLeFocus();
       return;
     }
     if (mode !== 'roue') return;
