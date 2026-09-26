@@ -108,7 +108,9 @@ Les cinq règles valent telles quelles ; le téléphone en ajoute cinq (6 à 9, 
     (`.hud-backdrop`), quadrillage du terminal sans découpes
     (`useSurfaceVitree` n'inscrit rien). Un composant qui redessine un
     canevas ou une scène en continu s'arrête sous `estMobile` : la pluie du
-    terminal, l'orbe de la voix au repos (`orbeFigee.ts`). Mesuré au banc
+    terminal, l'orbe de la voix au repos (`orbeFigee.ts`) ; un relief 3D
+    (`perspective`, `preserve-3d`, `will-change`) y est posé à plat — les
+    dossiers des Notes (`NoteFolderVisual.tsx`). Mesuré au banc
     (×4) : 63 flous aux Notes → 0, la page de 49 à 60 images/s. Une
     surface nouvelle n'ajoute ni flou ni ombre au
     téléphone ; ce fichier les retire de toute façon, mais un flou posé en
