@@ -411,7 +411,7 @@ export function PilesPhotos({
               }}
             >
       <div className="flex items-center justify-between gap-3 px-4 py-3 shrink-0 flex-wrap" style={{ borderBottom: '1px solid var(--color-border)' }}>
-        <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
+        <div className="flex items-center gap-2 text-xs shrink-0" style={{ color: 'var(--color-text-tertiary)' }}>
           <Camera size={14} style={{ color: 'var(--color-accent)' }} />
           <span className="font-medium tracking-[0.12em] uppercase" style={{ color: 'var(--color-text-secondary)' }}>
             Photos
@@ -429,16 +429,22 @@ export function PilesPhotos({
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        {/* 26/09/2026 : à 375 px, le champ (176 px fixes), « Nouvelle pile »
+            et ✕ demandaient ~350 px sur 311 : ✕ sortait du cadre, coupé par
+            lui — la fenêtre ne se fermait plus qu'avec Échap, absent d'un
+            téléphone. Le groupe passe sous le titre quand il ne tient pas à
+            côté (le champ garde 8rem), « Nouvelle pile » garde son icône sous
+            sm (règle 5), et ✕ ne rétrécit jamais. */}
+        <div className="flex items-center gap-2 min-w-0 flex-auto justify-end">
           {totalPhotos > 0 && (
-            <label className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs" style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-tertiary)' }}>
+            <label className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs min-w-32 flex-1 max-w-44" style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-tertiary)' }}>
               {rechercheEnVol ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
               <input
                 value={requete}
                 onChange={(e) => setRequete(e.target.value)}
                 placeholder="Chercher dans les photos…"
                 aria-label="Chercher dans les photos (légendes, noms, texte lu)"
-                className="bg-transparent outline-none w-44"
+                className="bg-transparent outline-none w-full min-w-0"
                 style={{ color: 'var(--color-text)' }}
                 onKeyDown={(e) => {
                   if (e.key === 'Escape') {
@@ -458,14 +464,14 @@ export function PilesPhotos({
           <button
             type="button"
             onClick={() => setNouvelleEnCours(true)}
-            className="flex items-center gap-1 text-xs cursor-pointer rounded-lg px-2 py-1"
+            className="flex items-center gap-1 text-xs cursor-pointer rounded-lg px-2 py-1 shrink-0"
             style={{ color: 'var(--color-accent)' }}
             aria-label="Nouvelle pile"
           >
             <Plus size={13} />
-            Nouvelle pile
+            <span className="hidden sm:inline">Nouvelle pile</span>
           </button>
-          <button type="button" onClick={fermerPopup} aria-label="Fermer" title="Fermer (Échap)" className="rounded-lg p-2 cursor-pointer" style={{ color: 'var(--color-text-tertiary)', background: 'var(--color-surface)' }}>
+          <button type="button" onClick={fermerPopup} aria-label="Fermer" title="Fermer (Échap)" className="rounded-lg p-2 cursor-pointer shrink-0" style={{ color: 'var(--color-text-tertiary)', background: 'var(--color-surface)' }}>
             <X size={16} />
           </button>
         </div>
