@@ -7,6 +7,8 @@ import { CommandPalette } from './components/CommandPalette';
 import { SetupScreen } from './components/SetupScreen';
 import { Toaster } from './components/ui/sonner';
 import { estCompact } from './lib/compact';
+import { demanderAuTelephone, estMobile } from './lib/natif';
+import { lireChargeThemeNatif } from './lib/themeNatif';
 import { useAppStore, isLightTerminalSkin } from './lib/store';
 import { ContexteVueHost } from './features/mesh/ContexteVueHost';
 import { ModeGestesProvider } from './features/gestes/ModeGestesContexte';
@@ -206,6 +208,25 @@ export default function App() {
           }),
         )
         .catch(() => {});
+    }
+    // Et à la coquille du téléphone, qui peint la barre d'état et ses écrans
+    // natifs (26/09/2026). Sans réponse, rien ne casse : la coquille garde
+    // son dernier thème connu.
+    if (estMobile) {
+      const skin = settings.terminalSkin ?? 'phosphor';
+      const envoyer = () =>
+        void demanderAuTelephone('theme', lireChargeThemeNatif(settings.theme, skin)).catch(() => {});
+      envoyer();
+      // En « système », l'apparence suit Android : la barre doit suivre aussi.
+      if (settings.theme === 'system') {
+        try {
+          const requete = window.matchMedia('(prefers-color-scheme: dark)');
+          requete.addEventListener('change', envoyer);
+          return () => requete.removeEventListener('change', envoyer);
+        } catch {
+          // Pas de matchMedia : le thème envoyé ci-dessus reste le dernier.
+        }
+      }
     }
   }, [settings.theme, settings.terminalSkin]);
 
