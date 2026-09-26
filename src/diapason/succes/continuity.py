@@ -671,6 +671,13 @@ class SuccesContinuityStore(SuccesWorkspaceStore):
             replay = self._replayed_entity(conn, op_id, request, self._load_quote)
             if replay is not None:
                 return replay
+            # Le modèle de create_template : un identifiant déjà pris, même par
+            # une citation supprimée, est refusé en SuccesError. L'INSERT nu
+            # levait une IntegrityError que personne ne rattrape (25/09/2026).
+            if conn.execute(
+                "SELECT 1 FROM succes_quotes WHERE id=?", (quote_id,)
+            ).fetchone():
+                raise SuccesError("Une citation avec cet identifiant existe déjà.")
             conn.execute(
                 "INSERT INTO succes_quotes"
                 "(id,text,author,category,updated_at_ms,deleted_at_ms) "
@@ -968,8 +975,21 @@ class SuccesContinuityStore(SuccesWorkspaceStore):
             if not isinstance(raw, Mapping):
                 continue
             quote_id = str(raw.get("id") or "")
+            # 25/09/2026 : `_load_quote` ignore les lignes supprimées. Une
+            # citation importée puis supprimée semblait donc absente, et ce
+            # rejeu — lancé par le CONSTRUCTEUR à chaque démarrage — la
+            # recréait sur une clé primaire déjà prise : IntegrityError dans
+            # get_store(), et toutes les routes du domaine en 500 au
+            # redémarrage qui suit la suppression. La pierre tombale compte
+            # comme une existence : supprimée veut dire supprimée.
             with self._connect() as conn:
-                exists = self._load_quote(conn, quote_id) if quote_id else None
+                exists = (
+                    conn.execute(
+                        "SELECT 1 FROM succes_quotes WHERE id=?", (quote_id,)
+                    ).fetchone()
+                    if quote_id
+                    else None
+                )
             if exists:
                 continue
             try:

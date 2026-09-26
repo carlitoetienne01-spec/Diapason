@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -258,3 +259,88 @@ def test_dia_routine_and_sensitive_tools_are_separated(tmp_path):
 def test_current_date_is_accepted_in_year_review(tmp_path):
     db = store(tmp_path)
     assert db.year_review(date.today().year)["year"] == date.today().year
+
+
+class TestUneCitationImporteePuisSupprimeeNeFaitPasTomberLeDemarrage:
+    """Plan de la phase 3, étape 1 (docs/development/diapason-mobile.md).
+
+    Le constructeur rejoue chaque import archivé
+    (`materialize_continuity_archives`). `_load_quote` ignore les lignes
+    supprimées, si bien que la citation importée puis supprimée semblait
+    absente, et `create_quote` faisait un INSERT simple sur une clé primaire
+    déjà prise. L'IntegrityError n'est pas une SuccesError : rien ne la
+    rattrapait, `get_store()` levait, et toutes les routes /v1/succes
+    répondaient 500 — au redémarrage launchd qui suit la suppression, bien
+    après un import réussi. Déduit le 25/09/2026 ; ce test l'a reproduit.
+    """
+
+    _INSTANTANE = {
+        "todos": [],
+        "projects": [],
+        "quotes": [{"id": "citation-importee", "text": "Continue"}],
+    }
+
+    def test_rouvrir_la_base_ne_leve_pas(self, tmp_path):
+        from diapason.succes.sync import SuccesSyncStore
+
+        chemin = tmp_path / "succes.db"
+        premier = SuccesSyncStore(chemin)
+        premier.import_legacy_snapshot(self._INSTANTANE)
+        premier.delete_quote("citation-importee")
+
+        rouvert = SuccesSyncStore(chemin)  # ce que fait get_store() au démarrage
+
+        assert rouvert.list_quotes() == [], (
+            "la citation supprimée ne doit pas ressusciter au redémarrage"
+        )
+        with rouvert._connect() as conn:
+            ligne = conn.execute(
+                "SELECT deleted_at_ms FROM succes_quotes WHERE id=?",
+                ("citation-importee",),
+            ).fetchone()
+        assert ligne is not None and ligne["deleted_at_ms"] is not None, (
+            "la pierre tombale doit rester : c'est elle qui dit « supprimée » "
+            "aux pairs de synchronisation"
+        )
+
+    def test_les_routes_repondent_apres_le_redemarrage(self, tmp_path, monkeypatch):
+        """Le symptôme tel que l'utilisateur l'aurait vu : 500 partout."""
+        from diapason.succes.sync import SuccesSyncStore
+
+        monkeypatch.setenv("DIAPASON_HOME", str(tmp_path))
+        avant = SuccesSyncStore()
+        avant.import_legacy_snapshot(self._INSTANTANE)
+        avant.delete_quote("citation-importee")
+
+        app = FastAPI()
+        app.include_router(router)
+        set_store_for_tests(None)  # le singleton se reconstruit, comme au boot
+        try:
+            client = TestClient(app, raise_server_exceptions=False)
+            reponse = client.get("/v1/succes/quotes")
+        finally:
+            set_store_for_tests(None)
+        assert reponse.status_code == 200, (
+            f"/v1/succes/quotes rend {reponse.status_code} après redémarrage"
+        )
+
+    def test_reimporter_ne_ressuscite_pas_la_citation(self, tmp_path):
+        """Le même instantané importé une seconde fois ne compte pas la
+        citation supprimée comme importée."""
+        db = store(tmp_path)
+        db.import_legacy_snapshot(self._INSTANTANE)
+        db.delete_quote("citation-importee")
+        resume = db._materialize_continuity_snapshot(self._INSTANTANE)
+        assert resume["quotesImported"] == 0, "une citation supprimée reste supprimée"
+        assert db.list_quotes() == []
+
+    def test_un_identifiant_pris_est_une_erreur_du_domaine(self, tmp_path):
+        """Comme create_template : une SuccesError, que les routes traduisent
+        et que le rejeu rattrape — pas une IntegrityError qui traverse tout."""
+        from diapason.succes.store import SuccesError
+
+        db = store(tmp_path)
+        db.create_quote({"id": "q-1", "text": "Un"})
+        db.delete_quote("q-1")
+        with pytest.raises(SuccesError):
+            db.create_quote({"id": "q-1", "text": "Deux"})
