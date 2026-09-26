@@ -42,10 +42,10 @@ import { openTalkToDiapason } from '../../components/TalkToDiapasonHost';
 import {
   chargeBordRoue,
   cibleAimantation,
-  commenceAuBord,
+  commenceDansLaBande,
+  decisionDuBord,
   dureeAimantation,
   geometrieRoue,
-  glisseOuvreLaRoue,
   indexAllume,
   issueDuRelache,
   placerElement,
@@ -458,31 +458,66 @@ export function RoueNavigation() {
     else ouvrir();
   };
 
-  // La bande du bord : glisser vers l'intérieur ouvre, puis tourne.
+  // Le glissé depuis le bord : glisser vers l'intérieur ouvre, puis tourne.
+  // Écouté sur la fenêtre, en PASSIF, sans rien poser sur la page
+  // (geometrieRoue.ts, `decisionDuBord`) : un départ vertical fait défiler
+  // la page. Des événements tactiles, pas de pointeur : dès que le navigateur
+  // prend le glissé pour un défilement, il annule le pointeur
+  // (`pointercancel` après 4 mouvements au banc du 26/09/2026) mais continue
+  // d'envoyer chaque `touchmove` — 25 sur 28, et la page ne défile pas, le
+  // geste étant parti à l'horizontale.
   const bordGeste = useRef<{ id: number; x: number; y: number; ouvert: boolean } | null>(null);
-  const surBordBas = (e: PointerEventReact<HTMLDivElement>) => {
-    if (ouverteRef.current || !commenceAuBord(e.clientX, window.innerWidth, cote)) return;
-    bordGeste.current = { id: e.pointerId, x: e.clientX, y: e.clientY, ouvert: false };
-    e.currentTarget.setPointerCapture(e.pointerId);
-  };
-  const surBordMouvement = (e: PointerEventReact<HTMLDivElement>) => {
-    const b = bordGeste.current;
-    if (!b || b.id !== e.pointerId) return;
-    if (!b.ouvert && glisseOuvreLaRoue(e.clientX - b.x, e.clientY - b.y, cote)) {
-      b.ouvert = true;
-      ouvrir();
-      // La rotation part d'ICI : le chemin horizontal ne tourne rien.
-      commencer({ pointerId: e.pointerId, clientX: e.clientX, clientY: e.clientY }, true);
-      return;
-    }
-    if (b.ouvert) suivre(e);
-  };
-  const surBordHaut = (e: PointerEventReact<HTMLDivElement>) => {
-    const b = bordGeste.current;
-    if (!b || b.id !== e.pointerId) return;
-    if (b.ouvert) relacher(e);
-    bordGeste.current = null;
-  };
+  const suiteDuBord = useRef({ ouvrir, commencer, suivre, relacher, cote });
+  suiteDuBord.current = { ouvrir, commencer, suivre, relacher, cote };
+  useEffect(() => {
+    const doigt = (e: TouchEvent, id: number) => [...e.changedTouches].find((t) => t.identifier === id);
+    const debut = (e: TouchEvent) => {
+      const t = e.changedTouches[0];
+      if (ouverteRef.current || e.touches.length !== 1 || !t) return;
+      const { cote: c } = suiteDuBord.current;
+      if (!commenceDansLaBande(t.clientX, t.clientY, window.innerWidth, window.innerHeight, c)) return;
+      bordGeste.current = { id: t.identifier, x: t.clientX, y: t.clientY, ouvert: false };
+    };
+    const mouvement = (e: TouchEvent) => {
+      const b = bordGeste.current;
+      const t = b && doigt(e, b.id);
+      if (!b || !t) return;
+      const suite = suiteDuBord.current;
+      if (b.ouvert) {
+        suite.suivre({ pointerId: b.id, clientY: t.clientY });
+        return;
+      }
+      const decision = decisionDuBord(t.clientX - b.x, t.clientY - b.y, suite.cote);
+      if (decision === 'laisser') {
+        bordGeste.current = null;
+      } else if (decision === 'ouvrir') {
+        b.ouvert = true;
+        suite.ouvrir();
+        // La rotation part d'ICI : le chemin horizontal ne tourne rien.
+        suite.commencer({ pointerId: b.id, clientX: t.clientX, clientY: t.clientY }, true);
+      }
+    };
+    const fin = (e: TouchEvent) => {
+      const b = bordGeste.current;
+      if (!b || !doigt(e, b.id)) return;
+      bordGeste.current = null;
+      // Un glissé repris par le système (touchcancel) ne choisit rien : la
+      // roue reste ouverte, rien ne s'ouvre à la place du pouce.
+      if (b.ouvert && e.type === 'touchend') suiteDuBord.current.relacher({ pointerId: b.id });
+      else if (b.ouvert) gesteRef.current = null;
+    };
+    const options = { passive: true } as const;
+    window.addEventListener('touchstart', debut, options);
+    window.addEventListener('touchmove', mouvement, options);
+    window.addEventListener('touchend', fin, options);
+    window.addEventListener('touchcancel', fin, options);
+    return () => {
+      window.removeEventListener('touchstart', debut);
+      window.removeEventListener('touchmove', mouvement);
+      window.removeEventListener('touchend', fin);
+      window.removeEventListener('touchcancel', fin);
+    };
+  }, []);
 
   // ── Le clavier ─────────────────────────────────────────────────────
   const surTouche = (e: KeyboardEventReact<HTMLDivElement>) => {
@@ -525,18 +560,6 @@ export function RoueNavigation() {
 
   return (
     <div ref={racineRef} data-roue="" style={{ display: 'contents' }}>
-      {/* Toujours montée : le glissé qui ouvre la roue continue de la
-          tourner, et un pointeur capturé par un élément démonté se perd. */}
-      <div
-        className="roue-bord"
-        data-cote={cote}
-        aria-hidden="true"
-        onPointerDown={surBordBas}
-        onPointerMove={surBordMouvement}
-        onPointerUp={surBordHaut}
-        onPointerCancel={surBordHaut}
-      />
-
       <div
         className="roue-ecran"
         data-ouverte={ouverte ? '' : undefined}

@@ -236,6 +236,41 @@ export function commenceAuBord(x: number, largeur: number, cote: Cote): boolean 
   return cote === 'droite' ? x >= largeur - BORD_PX : x <= BORD_PX;
 }
 
+/** La hauteur de la bande, depuis le bas : 200 px, les 200 dp qu'Android
+ *  accorde au plus par bord (verbe `bordRoue`) ; plus haut, le glissé reste
+ *  le « retour » du système. */
+export const BANDE_BORD_PX = 200;
+
+/** Le départ d'un glissé qui peut ouvrir la roue : au bord, dans les 200 px du bas. */
+export function commenceDansLaBande(
+  x: number,
+  y: number,
+  largeur: number,
+  hauteur: number,
+  cote: Cote,
+): boolean {
+  return commenceAuBord(x, largeur, cote) && y >= hauteur - BANDE_BORD_PX;
+}
+
+/**
+ * Que faire d'un glissé parti de la bande, à chaque mouvement du doigt.
+ * 26/09/2026, contre-épreuve : la bande était un élément fixe de 16 × 200 px
+ * posé PAR-DESSUS la page (`touch-action: none`) ; un glissé vertical qui y
+ * commençait ne faisait plus défiler la page (scrollTop 0 sur 12 des 17
+ * pages) et le bord droit d'un bouton pleine largeur ne se touchait plus.
+ * Plus rien n'est posé sur la page : on écoute, sans jamais retenir, et un
+ * départ vertical reste un défilement.
+ */
+export function decisionDuBord(dx: number, dy: number, cote: Cote): 'ouvrir' | 'attendre' | 'laisser' {
+  if (glisseOuvreLaRoue(dx, dy, cote)) return 'ouvrir';
+  const versLInterieur = cote === 'droite' ? -dx : dx;
+  // Le doigt est parti ailleurs que vers l'intérieur : c'est un défilement
+  // (ou un retour du système), plus jamais une ouverture.
+  if (Math.abs(dy) >= TOUCHER_PX && Math.abs(dy) >= versLInterieur) return 'laisser';
+  if (versLInterieur <= -TOUCHER_PX) return 'laisser';
+  return 'attendre';
+}
+
 /**
  * Un glissé parti du bord ouvre-t-il la roue ? Vers l'intérieur, d'au moins
  * 12 px, et plus horizontal que vertical — un pouce qui fait défiler une

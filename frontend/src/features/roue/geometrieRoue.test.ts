@@ -11,7 +11,10 @@ import {
   RESSORT_MAX,
   chargeBordRoue,
   cibleAimantation,
+  BANDE_BORD_PX,
   commenceAuBord,
+  commenceDansLaBande,
+  decisionDuBord,
   dureeAimantation,
   geometrieRoue,
   glisseOuvreLaRoue,
@@ -188,6 +191,31 @@ describe('Le glissé depuis le bord, en un seul geste', () => {
     expect(issueDuRelache({ continu: true, deplacementPx: 40 })).toBe('ouvrir');
     expect(issueDuRelache({ continu: true, deplacementPx: 2 }), 'ouverte pour regarder').toBe('garder');
     expect(issueDuRelache({ continu: false, deplacementPx: 200 }), 'dans la roue ouverte, le toucher ouvre').toBe('garder');
+  });
+});
+
+describe('Le bord écoute sans rien poser sur la page', () => {
+  // 26/09/2026, contre-épreuve : une bande fixe de 16 × 200 px posée sur la
+  // page empêchait de la faire défiler au pouce depuis le bord (scrollTop 0).
+  it('un glissé vertical parti du bord reste un défilement', () => {
+    expect(decisionDuBord(0, -10, 'droite'), 'le pouce monte : la page défile').toBe('laisser');
+    expect(decisionDuBord(-3, -40, 'droite'), 'un peu vers l’intérieur, surtout vers le haut').toBe('laisser');
+    expect(decisionDuBord(0, 30, 'gauche')).toBe('laisser');
+  });
+
+  it('vers l’intérieur, la roue s’ouvre ; un tremblement attend', () => {
+    expect(decisionDuBord(-20, 4, 'droite')).toBe('ouvrir');
+    expect(decisionDuBord(20, 4, 'gauche')).toBe('ouvrir');
+    expect(decisionDuBord(-4, 2, 'droite'), 'rien de décidé sous 8 px').toBe('attendre');
+    expect(decisionDuBord(12, 0, 'droite'), 'vers l’extérieur : jamais').toBe('laisser');
+  });
+
+  it('seuls les 200 px du bas ouvrent : plus haut, c’est le retour d’Android', () => {
+    expect(BANDE_BORD_PX).toBe(200);
+    expect(commenceDansLaBande(370, 700, 375, 812, 'droite')).toBe(true);
+    expect(commenceDansLaBande(370, 400, 375, 812, 'droite'), 'à 400 px du haut').toBe(false);
+    expect(commenceDansLaBande(340, 700, 375, 812, 'droite'), 'hors du bord').toBe(false);
+    expect(commenceDansLaBande(5, 700, 375, 812, 'gauche')).toBe(true);
   });
 });
 
