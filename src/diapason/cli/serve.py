@@ -74,6 +74,30 @@ def sonder_diapason(host: str, port: int) -> str | None:
     return None
 
 
+def migrer_la_base_de_vie(console: Console | None = None):
+    """Migre succes.db → vie.db avant toute construction de magasin.
+
+    Ne lève jamais : une migration reportée garde succes.db pour cette
+    exécution (et le dit), deux bases pleines font répondre 503 aux routes de
+    vie. Dans les deux cas, le reste du serveur démarre.
+    """
+    from diapason.core.paths import get_data_dir
+    from diapason.vie import routes as routes_vie
+    from diapason.vie.emplacement import migrer_base_vie
+
+    try:
+        resultat = migrer_base_vie(get_data_dir())
+    except Exception:  # noqa: BLE001 - le serveur démarre, la vie reste sur succes.db
+        logger.exception("vie : migration de la base impossible")
+        return None
+    # Un magasin construit avant cette ligne (import précoce, test) garderait
+    # l'ancien chemin : on le jette, le premier appel le reconstruira.
+    routes_vie.set_store_for_tests(None)
+    if resultat.etat in ("reportee", "deux_bases") and console is not None:
+        console.print(f"[yellow]Base de vie : {resultat.detail}[/yellow]")
+    return resultat
+
+
 def attendre_le_port(
     host: str,
     port: int,
@@ -375,6 +399,13 @@ def serve(
     # cinquante millisecondes de `lsof`, pas après trente secondes de
     # chargement. Voir la docstring d'attendre_le_port pour les 837 cycles.
     attendre_le_port(bind_host, bind_port, console=console)
+
+    # La base de vie (succes.db → vie.db, 25/09/2026). ICI et nulle part
+    # ailleurs : le port vient d'être rendu, donc l'ancien serveur est mort et
+    # ne recréera pas de succes.db vide derrière la migration ; et rien n'a
+    # encore construit de magasin qui garderait l'ancien chemin. `tick`,
+    # le briefing et la CLI lisent seulement (vie/emplacement.py).
+    migrer_la_base_de_vie(console)
 
     # Set up engine
     register_builtin_models()

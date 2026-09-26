@@ -247,7 +247,15 @@ def _legacy_succes_device_id() -> str | None:
     installations get the key fingerprint, which is the better identifier;
     this is purely a continuity bridge and is read best-effort.
     """
-    db_path = get_config_dir() / "succes.db"
+    try:
+        # vie.db since 25/09/2026, succes.db until `diapason serve` migrates
+        # it: reading only the old name would lose the continuity the day
+        # the file is renamed, and mint a second identity for this machine.
+        from diapason.vie.emplacement import chemin_base_vie
+
+        db_path = chemin_base_vie(get_config_dir(), migrer=False)
+    except Exception:  # noqa: BLE001 - continuity is a nicety, never a blocker
+        return None
     if not db_path.exists():
         return None
     try:
@@ -257,7 +265,9 @@ def _legacy_succes_device_id() -> str | None:
         # gère QUE la transaction : sans lui, chaque appel fuit un descripteur
         # de fichier, définitivement. Pas de `, conn` ici : l'URI est en
         # mode=ro, il n'y a aucune écriture à committer.
-        with closing(sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)) as conn:
+        with closing(
+            sqlite3.connect(f"{db_path.absolute().as_uri()}?mode=ro", uri=True)
+        ) as conn:
             row = conn.execute(
                 "SELECT value FROM succes_meta WHERE key='device_id'"
             ).fetchone()

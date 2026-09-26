@@ -8,6 +8,7 @@ from typing import Any
 from diapason.core.registry import ToolRegistry
 from diapason.core.types import ToolResult
 from diapason.tools._stubs import BaseTool, ToolSpec
+from diapason.tools._vie_magasin import MagasinParesseux
 from diapason.vie.dates import resolve_date_expression
 from diapason.vie.store import VieError
 from diapason.vie.workspace import NOTE_CONTENT_MAX, VieWorkspaceStore
@@ -41,14 +42,15 @@ def _resolve_date(value: Any, *, optional: bool = True) -> str:
 
 
 @ToolRegistry.register("succes_workspace")
-class VieWorkspaceTool(BaseTool):
+class VieWorkspaceTool(MagasinParesseux, BaseTool):
     """Routine workspace actions. Destructive operations are intentionally absent."""
 
     tool_id = "succes_workspace"
     is_local = True
 
     def __init__(self, store: VieWorkspaceStore | None = None) -> None:
-        self._store = store or VieWorkspaceStore()
+        self._magasin = store
+        self._fabrique = VieWorkspaceStore
 
     @property
     def spec(self) -> ToolSpec:
@@ -227,14 +229,15 @@ class VieWorkspaceTool(BaseTool):
 
 
 @ToolRegistry.register("succes_delete_item")
-class VieDeleteItemTool(BaseTool):
+class VieDeleteItemTool(MagasinParesseux, BaseTool):
     """Delete one exact phase-two entity after native user approval."""
 
     tool_id = "succes_delete_item"
     is_local = True
 
     def __init__(self, store: VieWorkspaceStore | None = None) -> None:
-        self._store = store or VieWorkspaceStore()
+        self._magasin = store
+        self._fabrique = VieWorkspaceStore
 
     @property
     def spec(self) -> ToolSpec:

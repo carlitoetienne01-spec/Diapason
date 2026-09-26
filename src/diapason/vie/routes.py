@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from diapason.vie.continuity import VieContinuityStore
 from diapason.vie.dates import normalize_time, resolve_date_expression
+from diapason.vie.emplacement import DeuxBasesVie
 from diapason.vie.notes_resume import resumer_note
 from diapason.vie.store import (
     VieError,
@@ -144,7 +145,13 @@ def get_store() -> VieStore:
     global _store
     with _store_lock:
         if _store is None:
-            _store = VieSyncStore()
+            try:
+                _store = VieSyncStore()
+            except DeuxBasesVie as exc:
+                # 25/09/2026 : deux bases pleines. Choisir l'une masquerait
+                # l'autre sans un mot ; le 503 le dit à chaque écran, jusqu'à
+                # ce que l'utilisateur en mette une de côté.
+                raise HTTPException(status_code=503, detail=str(exc)) from exc
         return _store
 
 

@@ -157,3 +157,25 @@ class TestContinuity:
         assert identity.device_id == "mac-deadbeefdeadbeef"
         # …and it is still a real key pair, not a bare string.
         assert len(identity.public_key) == 32
+
+    def test_the_renamed_vie_db_is_read_too(self, home):
+        """25/09/2026: succes.db becomes vie.db when the server migrates it.
+
+        Reading only the old name would, on a machine whose key was never
+        created before the migration, mint a second identity and split the
+        history in two.
+        """
+        root, module = home
+        import sqlite3
+
+        with sqlite3.connect(Path(root) / "vie.db") as conn:
+            conn.execute("CREATE TABLE succes_meta (key TEXT PRIMARY KEY, value TEXT)")
+            conn.execute(
+                "INSERT INTO succes_meta VALUES ('device_id', 'mac-feedfacefeedface')"
+            )
+            conn.commit()
+
+        identity = module.device_identity()
+        assert identity.device_id == "mac-feedfacefeedface", (
+            "the id recorded in vie.db must be adopted"
+        )

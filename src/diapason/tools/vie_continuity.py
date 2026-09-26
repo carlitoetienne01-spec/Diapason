@@ -8,6 +8,7 @@ from typing import Any
 from diapason.core.registry import ToolRegistry
 from diapason.core.types import ToolResult
 from diapason.tools._stubs import BaseTool, ToolSpec
+from diapason.tools._vie_magasin import MagasinParesseux
 from diapason.vie.continuity import VieContinuityStore
 from diapason.vie.dates import resolve_date_expression
 from diapason.vie.store import VieError
@@ -29,14 +30,15 @@ def _date(value: Any) -> str:
 
 
 @ToolRegistry.register("succes_continuity")
-class VieContinuityTool(BaseTool):
+class VieContinuityTool(MagasinParesseux, BaseTool):
     """Routine recurrence and review actions; deletion is deliberately separate."""
 
     tool_id = "succes_continuity"
     is_local = True
 
     def __init__(self, store: VieContinuityStore | None = None) -> None:
-        self._store = store or VieContinuityStore()
+        self._magasin = store
+        self._fabrique = VieContinuityStore
 
     @property
     def spec(self) -> ToolSpec:
@@ -201,12 +203,13 @@ class VieContinuityTool(BaseTool):
 
 
 @ToolRegistry.register("succes_delete_continuity")
-class VieDeleteContinuityTool(BaseTool):
+class VieDeleteContinuityTool(MagasinParesseux, BaseTool):
     tool_id = "succes_delete_continuity"
     is_local = True
 
     def __init__(self, store: VieContinuityStore | None = None) -> None:
-        self._store = store or VieContinuityStore()
+        self._magasin = store
+        self._fabrique = VieContinuityStore
 
     @property
     def spec(self) -> ToolSpec:

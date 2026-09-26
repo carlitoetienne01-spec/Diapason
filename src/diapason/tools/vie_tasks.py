@@ -7,6 +7,7 @@ from typing import Any, Mapping
 from diapason.core.registry import ToolRegistry
 from diapason.core.types import ToolResult
 from diapason.tools._stubs import BaseTool, ToolSpec
+from diapason.tools._vie_magasin import MagasinParesseux
 from diapason.vie.dates import normalize_time, resolve_date_expression
 from diapason.vie.reseau import cle_titre
 from diapason.vie.store import VieError, VieStore
@@ -24,7 +25,7 @@ def _citer(titres: list[str]) -> str:
 
 
 @ToolRegistry.register("succes_tasks")
-class VieTasksTool(BaseTool):
+class VieTasksTool(MagasinParesseux, BaseTool):
     """Routine, reversible task operations. Deletion is intentionally absent."""
 
     tool_id = "succes_tasks"
@@ -34,7 +35,8 @@ class VieTasksTool(BaseTool):
         # Le magasin complet par défaut (18 sept. 2026) : les arêtes du
         # réseau y vivent, et `VieWorkspaceStore` est un `VieStore` —
         # tout ce qui marchait marche encore.
-        self._store = store or VieWorkspaceStore()
+        self._magasin = store
+        self._fabrique = VieWorkspaceStore
 
     @property
     def spec(self) -> ToolSpec:
@@ -425,14 +427,15 @@ class VieTasksTool(BaseTool):
 
 
 @ToolRegistry.register("succes_delete_task")
-class VieDeleteTaskTool(BaseTool):
+class VieDeleteTaskTool(MagasinParesseux, BaseTool):
     """Single-task deletion, always routed through Diapason approval."""
 
     tool_id = "succes_delete_task"
     is_local = True
 
     def __init__(self, store: VieStore | None = None) -> None:
-        self._store = store or VieStore()
+        self._magasin = store
+        self._fabrique = VieStore
 
     @property
     def spec(self) -> ToolSpec:

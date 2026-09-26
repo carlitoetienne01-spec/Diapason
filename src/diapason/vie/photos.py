@@ -27,6 +27,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Mapping
 
+from diapason.vie.emplacement import dossier_photos_pour
 from diapason.vie.finances import VieFinancesStore
 from diapason.vie.store import VieError, VieNotFound, now_ms
 
@@ -248,11 +249,17 @@ def _data_url(path: Path, mime: str) -> str:
 
 
 class ViePhotosStore(VieFinancesStore):
-    """Piles et photos, rangées sous `<données>/succes-photos/<projet>/`."""
+    """Piles et photos, rangées sous `<données>/vie-photos/<projet>/`.
+
+    Les chemins s'écrivent RELATIFS au dossier de données depuis le
+    25/09/2026 : les 62 photos d'avant portaient un chemin absolu contenant
+    `/succes-photos/`, et renommer le dossier les aurait toutes rendues
+    vides. Un chemin absolu encore en base se lit tel quel.
+    """
 
     def __init__(self, db_path: str | Path | None = None) -> None:
         super().__init__(db_path)
-        self.photos_dir = self.db_path.parent / "succes-photos"
+        self.photos_dir = dossier_photos_pour(self.db_path)
         with self._connect() as conn:
             conn.executescript(_PHOTOS_SCHEMA)
             self._ensure_photo_columns(conn)
@@ -315,8 +322,16 @@ class ViePhotosStore(VieFinancesStore):
         if self._load_project(conn, project_id) is None:
             raise VieNotFound("Ce projet n'existe pas ou a été supprimé.")
 
-    @staticmethod
-    def _photo_dict(row: sqlite3.Row, *, thumb: bool) -> dict[str, Any]:
+    def _sur_disque(self, chemin: str) -> Path:
+        """Le fichier d'une photo : absolu tel quel, relatif sous les données."""
+        fichier = Path(chemin)
+        return fichier if fichier.is_absolute() else self.db_path.parent / fichier
+
+    def _en_base(self, fichier: Path) -> str:
+        """Ce qu'on écrit en base : le chemin relatif, en barres obliques."""
+        return fichier.relative_to(self.db_path.parent).as_posix()
+
+    def _photo_dict(self, row: sqlite3.Row, *, thumb: bool) -> dict[str, Any]:
         photo = {
             "id": row["id"],
             "pileId": row["pile_id"],
@@ -338,7 +353,8 @@ class ViePhotosStore(VieFinancesStore):
             "updatedAtMs": int(row["updated_at_ms"]),
         }
         if thumb:
-            photo["thumb"] = _data_url(Path(row["thumb_path"]), "image/jpeg")
+            apercu = self._sur_disque(row["thumb_path"])
+            photo["thumb"] = _data_url(apercu, "image/jpeg")
         return photo
 
     def _photos_de_pile(
@@ -429,7 +445,7 @@ class ViePhotosStore(VieFinancesStore):
         with self._connect() as conn:
             row = self._photo_row(conn, photo_id)
         try:
-            data = Path(row["file_path"]).read_bytes()
+            data = self._sur_disque(row["file_path"]).read_bytes()
         except OSError as exc:
             raise VieNotFound(
                 "Le fichier de cette photo n'est plus sur le disque."
@@ -524,7 +540,12 @@ class ViePhotosStore(VieFinancesStore):
             self._pile_row(conn, pile_id)
             rows = self._photos_de_pile(conn, pile_id)
             for row in rows:
-                chemins.extend((Path(row["file_path"]), Path(row["thumb_path"])))
+                chemins.extend(
+                    (
+                        self._sur_disque(row["file_path"]),
+                        self._sur_disque(row["thumb_path"]),
+                    )
+                )
             conn.execute(
                 "UPDATE succes_photos SET deleted_at_ms=?, updated_at_ms=? "
                 "WHERE pile_id=? AND deleted_at_ms IS NULL",
@@ -620,8 +641,8 @@ class ViePhotosStore(VieFinancesStore):
                     caption,
                     task_id,
                     int(position),
-                    str(file_path),
-                    str(thumb_path),
+                    self._en_base(file_path),
+                    self._en_base(thumb_path),
                     stamp,
                     stamp,
                 ),
@@ -663,7 +684,7 @@ class ViePhotosStore(VieFinancesStore):
                 )
                 if mime_depuis_signature(apercu) != "image/jpeg":
                     raise VieError("L'aperçu doit être un JPEG.")
-                Path(photo["thumb_path"]).write_bytes(apercu)
+                self._sur_disque(photo["thumb_path"]).write_bytes(apercu)
                 fields["updated_at_ms"] = stamp
             if "pileId" in data:
                 cible = self._pile_row(conn, str(data["pileId"]))
@@ -811,7 +832,10 @@ class ViePhotosStore(VieFinancesStore):
                 "WHERE id=? AND cover_photo_id=?",
                 (stamp, photo["pile_id"], photo_id),
             )
-            chemins = [Path(photo["file_path"]), Path(photo["thumb_path"])]
+            chemins = [
+                self._sur_disque(photo["file_path"]),
+                self._sur_disque(photo["thumb_path"]),
+            ]
         self._effacer(chemins)
 
     @staticmethod

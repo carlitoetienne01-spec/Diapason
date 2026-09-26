@@ -210,9 +210,20 @@ class VieStore:
     """Thread-safe facade using one short-lived SQLite connection per action."""
 
     def __init__(self, db_path: str | Path | None = None) -> None:
-        self.db_path = Path(db_path or (get_data_dir() / "succes.db"))
+        if db_path is None:
+            # 25/09/2026 : vie.db, ou succes.db tant que `diapason serve` ne
+            # l'a pas migrée — jamais une création à côté d'une base pleine.
+            from diapason.vie.emplacement import chemin_base_vie
+
+            db_path = chemin_base_vie(get_data_dir(), migrer=False)
+        self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
+        # Une base qui existe s'ouvre sans droit de création (`mode=rw`) : si
+        # `diapason serve` la renomme sous un processus déjà ouvert, sqlite
+        # recréerait sinon un fichier vide au vieux nom, et les écritures se
+        # couperaient en deux bases sans une erreur (25/09/2026).
+        self._existe = self.db_path.exists()
         with self._connect() as conn:
             conn.executescript(_SCHEMA)
             operation_columns = {
@@ -339,7 +350,22 @@ class VieStore:
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
-        conn = sqlite3.connect(self.db_path, timeout=10, check_same_thread=False)
+        mode = "rw" if self._existe else "rwc"
+        try:
+            conn = sqlite3.connect(
+                f"{self.db_path.absolute().as_uri()}?mode={mode}",
+                uri=True,
+                timeout=10,
+                check_same_thread=False,
+            )
+        except sqlite3.OperationalError as exc:
+            if self._existe and not self.db_path.exists():
+                raise sqlite3.OperationalError(
+                    f"{self.db_path.name} a disparu depuis l'ouverture de ce "
+                    "processus (renommée en vie.db par le serveur ?) : relance "
+                    "la commande."
+                ) from exc
+            raise
         # La configuration entre dans le try : un PRAGMA qui lève avant lui
         # laisserait la connexion orpheline, sans personne pour la fermer.
         try:
@@ -347,6 +373,15 @@ class VieStore:
             conn.execute("PRAGMA foreign_keys = ON")
             conn.execute("PRAGMA journal_mode = WAL")
             conn.execute("PRAGMA busy_timeout = 5000")
+            if self._existe and not self.db_path.exists():
+                # Ouverte juste avant le renommage, bloquée par la migration,
+                # et reprise sur le fichier déplacé : son journal WAL porterait
+                # l'ancien nom, à côté de celui du serveur.
+                raise sqlite3.OperationalError(
+                    f"{self.db_path.name} a été renommée pendant l'ouverture : "
+                    "relance la commande."
+                )
+            self._existe = True
             yield conn
         finally:
             conn.close()

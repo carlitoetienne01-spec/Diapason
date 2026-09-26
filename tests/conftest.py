@@ -76,6 +76,37 @@ def _allow_mocked_outbound_paths(
 
 
 @pytest.fixture(autouse=True)
+def _la_migration_de_vie_reste_dans_les_dossiers_temporaires(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Aucun test ne migre le vrai ~/.diapason (25/09/2026).
+
+    ``diapason serve`` migre succes.db → vie.db au démarrage, et trois
+    fichiers de tests invoquent ``serve`` (test_cli, test_serve_port_tenu,
+    test_serve_single_build) sans DIAPASON_HOME : sans cette garde, lancer
+    la suite renommait la vraie base de Carlito, déplaçait ses photos, et
+    une CI sur ce Mac l'aurait fait à chaque poussée. Hors d'un dossier
+    temporaire, la migration est remplacée par un constat sans effet.
+    """
+    import tempfile
+
+    from diapason.vie import emplacement
+
+    vraie = emplacement.migrer_base_vie
+    racine_temp = Path(tempfile.gettempdir()).resolve()
+
+    def gardee(data_dir):
+        dossier = Path(data_dir).resolve()
+        if dossier == racine_temp or racine_temp not in dossier.parents:
+            return emplacement.Migration(
+                "ignoree_en_test", dossier / emplacement.NOM_BASE
+            )
+        return vraie(data_dir)
+
+    monkeypatch.setattr(emplacement, "migrer_base_vie", gardee)
+
+
+@pytest.fixture(autouse=True)
 def _clean_registries() -> None:
     """Ensure each test starts with empty registries and a fresh event bus."""
     ModelRegistry.clear()
