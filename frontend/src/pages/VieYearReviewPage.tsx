@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, Download, Loader2, Trophy } from 'lucide-rea
 import { toast } from 'sonner';
 
 import { downloadVieExport, fetchVieYearReview } from '../features/vie/api';
+import { annonceDEnregistrement } from '../lib/enregistrerFichier';
 import type { VieYearReview } from '../features/vie/types';
 import { useAppStore } from '../lib/store';
 import { useRefreshOnFocus } from '../features/vie/useRefreshOnFocus';
@@ -78,7 +79,8 @@ export function VieYearReviewPage() {
       // Un nom, ou null si la personne a renoncé dans le sélecteur du
       // téléphone : pas de « téléchargé » sans fichier (26/09/2026).
       const nom = await downloadVieExport();
-      if (nom) toast.success('Export JSON téléchargé', { description: nom });
+      const annonce = annonceDEnregistrement(nom);
+      if (annonce) toast.success('Export JSON enregistré', annonce);
     } catch (error) {
       toast.error("L'export n'a pas pu être créé.", { description: error instanceof Error ? error.message : String(error) });
     } finally {

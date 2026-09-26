@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { enregistrerHorsBureau, lireReponseEnregistrer, type Environnement } from './enregistrerFichier';
+import {
+  annonceDEnregistrement,
+  enregistrerHorsBureau,
+  lireReponseEnregistrer,
+  type Environnement,
+} from './enregistrerFichier';
 import type { ReponseNatif } from './natif';
 
 function environnement(mobile: boolean, reponse?: ReponseNatif | Error) {
@@ -66,14 +71,28 @@ describe('Un export ne se dit réussi que sur la réponse de la coquille', () =>
 });
 
 describe('lireReponseEnregistrer', () => {
-  it('garde le nom proposé quand la coquille n’en rend pas', () => {
-    expect(lireReponseEnregistrer({ type: 'reponse', id: 'b1', ok: true }, 'a.pdf')).toBe('a.pdf');
+  it('ne compose pas de nom quand la coquille n’en rend pas', () => {
+    // Échec évité (26/09/2026) : le nom PROPOSÉ était annoncé, alors
+    // qu'Android renomme un doublon « diapason_2026 (1).json » (§100 : le
+    // nom vient du récepteur). Enregistré, mais sans nom.
+    expect(lireReponseEnregistrer({ type: 'reponse', id: 'b1', ok: true })).toBe('');
     expect(
-      lireReponseEnregistrer({ type: 'reponse', id: 'b1', ok: true, donnees: { nom: '  ' } }, 'a.pdf'),
-    ).toBe('a.pdf');
+      lireReponseEnregistrer({ type: 'reponse', id: 'b1', ok: true, donnees: { nom: '  ' } }),
+    ).toBe('');
+    expect(
+      lireReponseEnregistrer({ type: 'reponse', id: 'b1', ok: true, donnees: { nom: 'a (1).pdf' } }),
+    ).toBe('a (1).pdf');
   });
 
   it('dit un échec générique quand la coquille refuse sans phrase', () => {
-    expect(() => lireReponseEnregistrer({ type: 'reponse', id: 'b1', ok: false }, 'a.pdf')).toThrow();
+    expect(() => lireReponseEnregistrer({ type: 'reponse', id: 'b1', ok: false })).toThrow();
+  });
+});
+
+describe('annonceDEnregistrement', () => {
+  it('se tait sur un renoncement, annonce sinon — avec le nom s’il y en a un', () => {
+    expect(annonceDEnregistrement(null)).toBeNull();
+    expect(annonceDEnregistrement('')).toEqual({});
+    expect(annonceDEnregistrement('a.json')).toEqual({ description: 'a.json' });
   });
 });

@@ -37,9 +37,13 @@ export function telechargerDansLeNavigateur(blob: Blob, nom: string): void {
   window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
-function environnementCourant(pont: PontNatif | null = pontNatif): Environnement {
+/** L'environnement réel ; exporté pour qu'un test éprouve son câblage. */
+export function environnementCourant(
+  pont: PontNatif | null = pontNatif,
+  mobile: boolean = estMobile,
+): Environnement {
   return {
-    mobile: estMobile && pont !== null,
+    mobile: mobile && pont !== null,
     demander: (verbe, donnees) =>
       pont ? pont.demander(verbe, donnees) : Promise.reject(new Error(traduire('natif.absent'))),
     telecharger: telechargerDansLeNavigateur,
@@ -49,14 +53,17 @@ function environnementCourant(pont: PontNatif | null = pontNatif): Environnement
 /**
  * Ce que la coquille a répondu à `enregistrer`, en un nom ou `null`.
  *
- * - `ok` : le nom qu'elle dit avoir écrit (à défaut, celui qu'on a proposé) ;
+ * - `ok` : le nom qu'elle dit avoir écrit ; sans nom, `''` — « enregistré »
+ *   sans nom, plutôt qu'un nom composé ici (26/09/2026 : Android renomme
+ *   un doublon « diapason_2026 (1).json », et on affichait le nom proposé,
+ *   pas celui du récepteur — §100) ;
  * - `annule` : la personne a renoncé dans le sélecteur — `null`, sans erreur ;
  * - tout autre refus : une erreur qui porte la phrase de la coquille.
  */
-export function lireReponseEnregistrer(reponse: ReponseNatif, nomPropose: string): string | null {
+export function lireReponseEnregistrer(reponse: ReponseNatif): string | null {
   if (reponse.ok) {
     const nom = (reponse.donnees as { nom?: unknown } | undefined)?.nom;
-    return typeof nom === 'string' && nom.trim() ? nom : nomPropose;
+    return typeof nom === 'string' && nom.trim() ? nom : '';
   }
   if (reponse.erreur === 'annule') return null;
   throw new Error(reponse.erreur || traduire('natif.enregistrementEchoue'));
@@ -85,5 +92,17 @@ export async function enregistrerHorsBureau(
     mime: blob.type || 'application/octet-stream',
     base64,
   });
-  return lireReponseEnregistrer(reponse, nom);
+  return lireReponseEnregistrer(reponse);
+}
+
+/**
+ * Annoncer un enregistrement, ou se taire : `null` quand la personne a
+ * renoncé ; sinon la description du toast (le nom rendu, s'il y en a un).
+ *
+ * 26/09/2026 : chaque page décidait seule (`if (nom) toast…`) ; qu'une
+ * seule l'oublie, et « exporté » s'affichait sur un renoncement.
+ */
+export function annonceDEnregistrement(nom: string | null): { description?: string } | null {
+  if (nom === null) return null;
+  return nom ? { description: nom } : {};
 }

@@ -52,7 +52,7 @@ import { isAutoUpdateDisabled, setAutoUpdateDisabled } from '../components/Deskt
 import { ZOOM_MAX, ZOOM_MIN, normaliserZoom, zoomEnPourcent, zoomSuivant } from '../lib/zoom';
 import { loadDictationStats, type DictationStats } from '../lib/dictationStats';
 import { fetchVoiceLiveHealth } from '../lib/voiceLive';
-import { enregistrerHorsBureau } from '../lib/enregistrerFichier';
+import { annonceDEnregistrement, enregistrerHorsBureau } from '../lib/enregistrerFichier';
 import { toast } from 'sonner';
 import { useTranslation } from '../i18n/useTranslation';
 import { LOCALES, LOCALE_NAMES, type Locale } from '../i18n/locale';
@@ -461,7 +461,7 @@ export function SettingsPage() {
         blob,
         `diapason-export-${new Date().toISOString().slice(0, 10)}.json`,
       );
-      if (nom) showSaved();
+      if (annonceDEnregistrement(nom)) showSaved();
     } catch (e: any) {
       toast.error(e?.message || t('common.saveFailed'));
     }

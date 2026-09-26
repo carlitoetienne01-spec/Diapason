@@ -67,6 +67,7 @@ import {
 } from './photos';
 import { fichiersImages, preparerPhoto } from './photosClient';
 import { exporterPdf } from './photosExport';
+import { annonceDEnregistrement } from '../../lib/enregistrerFichier';
 import type { ViePhoto, ViePhotoPile, VieTask } from './types';
 
 interface Props {
@@ -1253,7 +1254,8 @@ function PileOuverte({
       const chemin = await exporterPdf(cibles, titre, nomFichierPdf(titre), (fait, total) =>
         setAction({ nom: 'Export PDF', fait, total }),
       );
-      if (chemin) toast.success('PDF exporté', { description: chemin });
+      const annonce = annonceDEnregistrement(chemin);
+      if (annonce) toast.success('PDF exporté', annonce);
     } catch (error) {
       toast.error("L'export a échoué.", {
         description: error instanceof Error ? error.message : String(error),
