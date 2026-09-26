@@ -329,6 +329,26 @@ class TestLesRefus:
         assert reponse.status_code == 403
         assert "fuite" not in reponse.text
 
+    def test_un_chemin_inconnu_rend_404_sans_atteindre_l_app(self, telephone):
+        reponse = telephone.get("/v1/nulle-part")
+        assert reponse.status_code == 404
+        assert "n'existe pas" in reponse.json()["detail"], reponse.text
+
+    def test_une_methode_que_la_route_ne_sert_pas_rend_405(self, telephone):
+        reponse = telephone.delete("/v1/models", headers={"Origin": ICI})
+        assert reponse.status_code == 405, reponse.text
+
+    def test_un_corps_trop_gros_est_refuse_avant_d_etre_lu(self, monde):
+        """Une route sans session ne fait pas lire des mégaoctets à un inconnu."""
+        app, _ = _vraie_app()
+        client = TestClient(monde.passerelle(app), base_url=ICI)
+        reponse = client.post(
+            "/v1/appareil/session",
+            content=b"x" * (17 * 1024),
+            headers={"Content-Type": "application/json"},
+        )
+        assert reponse.status_code == 413
+
     def test_une_route_de_vie_inventee_n_herite_pas_de_ses_voisines(self, monde):
         app, _ = _vraie_app()
 
@@ -394,6 +414,31 @@ class TestLesRefus:
         assert "clé locale" in refus.value.reason, refus.value.reason
 
 
+class TestLesVraisFluxAvecUneSession:
+    """Jusqu'ici, les WebSockets n'étaient éprouvés avec session que sur
+    l'app témoin, qui n'appelle jamais websocket_authorized : l'exemption du
+    marqueur d'appareil pouvait disparaître sans qu'un test échoue, et la
+    Discussion du téléphone être fermée en 1008 (contre-épreuve du
+    26/09/2026, mutant M36)."""
+
+    def test_le_flux_du_chat_repond_au_telephone(self, monde):
+        app, _ = _vraie_app()
+        client = TestClient(monde.passerelle(app), base_url=ICI)
+        jeton = _ouvrir_une_session(client, monde)
+        with client.websocket_connect("/v1/chat/stream", headers=_ws(jeton)) as ws:
+            ws.send_text("pas du json")
+            assert ws.receive_json() == {"type": "error", "detail": "Invalid JSON"}
+
+    def test_le_flux_des_agents_accepte_le_telephone(self, monde):
+        app, _ = _vraie_app()
+        client = TestClient(monde.passerelle(app), base_url=ICI)
+        jeton = _ouvrir_une_session(client, monde)
+        # Refusé, le handler fermerait AVANT l'accept : websocket_connect
+        # lèverait ici même.
+        with client.websocket_connect("/v1/agents/events", headers=_ws(jeton)) as ws:
+            ws.close()
+
+
 class TestLOrigine:
     def test_une_ecriture_d_une_autre_origine_est_refusee(self, telephone):
         reponse = telephone.put(
@@ -452,12 +497,38 @@ class TestLesPortesSansSession:
         assert "session d'appareil" not in reponse.text
 
     def test_une_page_tierce_ne_frappe_pas_aux_portes(self, monde):
+        """Sur une porte qui RÉUSSIRAIT sans le contrôle : la version d'avant
+        postait {} sur /v1/mesh/commands/poll, que la porte refuse elle-même
+        en 403 faute de signature — le 403 attendu arrivait avec ou sans
+        contrôle d'Origin (contre-épreuve du 26/09/2026)."""
+        app, _ = _vraie_app()
+        client = TestClient(monde.passerelle(app), base_url=ICI)
+        assert client.get("/health").status_code == 200, "sans Origin : permis"
+        reponse = client.get("/health", headers={"Origin": "https://exemple.com"})
+        assert reponse.status_code == 403
+        assert "Origine" in reponse.json()["detail"]
+
+    def test_une_page_tierce_ne_pose_pas_de_cookie(self, monde):
+        app, _ = _vraie_app()
+        client = TestClient(monde.passerelle(app), base_url=ICI)
+        ticket = client.post("/v1/appareil/session", json=monde.demande_signee())
+        reponse = client.post(
+            "/v1/appareil/ouvrir",
+            data={"ticket": ticket.json()["ticket"]},
+            headers={"Origin": "https://exemple.com"},
+            follow_redirects=False,
+        )
+        assert reponse.status_code == 403
+        assert COOKIE_APPAREIL not in reponse.headers.get("set-cookie", "")
+
+    def test_l_origine_nulle_n_ouvre_pas_de_session(self, monde):
+        """L'exception « null » ne vaut que pour /ouvrir (loadRequest)."""
         app, _ = _vraie_app()
         client = TestClient(monde.passerelle(app), base_url=ICI)
         reponse = client.post(
-            "/v1/mesh/commands/poll",
-            json={},
-            headers={"Origin": "https://exemple.com"},
+            "/v1/appareil/session",
+            json=monde.demande_signee(),
+            headers={"Origin": "null"},
         )
         assert reponse.status_code == 403
 
@@ -892,6 +963,239 @@ class TestLaRevocation:
                 ws.send_text(str(rang))
                 assert ws.receive_text() == f"écho:{rang}"
         assert app.state.vu["scope"]["diapason.appareil"] == PHONE
+
+
+class TestLIntervalleDeProduction:
+    def test_trente_secondes_au_plus(self):
+        """Décidé au plan : la révocation coupe un WebSocket en 30 s au plus.
+        Les tests de coupure injectent 50 ms ; celui-ci lit la valeur que la
+        passerelle reçoit quand personne ne lui en donne."""
+        from diapason.server.passerelle_tailnet import INTERVALLE_DE_CONTROLE_S
+
+        assert INTERVALLE_DE_CONTROLE_S <= 30
+        passerelle = PasserelleTailnet(FastAPI(), adresse="")
+        assert passerelle._intervalle_s == INTERVALLE_DE_CONTROLE_S
+
+
+def _pilote_asgi(passerelle, scope: dict, *, apres_premier_morceau=None):
+    """Pilote la passerelle en ASGI direct et rend (morceaux, durée).
+
+    TestClient met toute la réponse en tampon : un flux coupé ou non s'y lit
+    pareil. Ici, chaque ``http.response.body`` arrive à son heure."""
+    import asyncio
+
+    async def scenario():
+        morceaux: list[bytes] = []
+        fin = asyncio.Event()
+        corps_envoye = False
+
+        async def recevoir():
+            nonlocal corps_envoye
+            if not corps_envoye:
+                corps_envoye = True
+                return {"type": "http.request", "body": b"", "more_body": False}
+            await fin.wait()
+            return {"type": "http.disconnect"}
+
+        async def envoyer(message):
+            if message["type"] == "http.response.body":
+                morceaux.append(message.get("body", b""))
+                if len(morceaux) == 1 and apres_premier_morceau:
+                    apres_premier_morceau()
+                if not message.get("more_body"):
+                    fin.set()
+
+        debut = time.monotonic()
+        try:
+            await asyncio.wait_for(passerelle(scope, recevoir, envoyer), 6)
+        finally:
+            fin.set()
+        return b"".join(morceaux), time.monotonic() - debut
+
+    return asyncio.run(scenario())
+
+
+def _portee_http(chemin: str, jeton: str) -> dict:
+    return {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "GET",
+        "scheme": "http",
+        "path": chemin,
+        "raw_path": chemin.encode(),
+        "query_string": b"",
+        "root_path": "",
+        "headers": [
+            (b"host", b"testserver"),
+            (b"cookie", f"{COOKIE_APPAREIL}={jeton}".encode()),
+        ],
+        "client": ("127.0.0.1", 50000),
+        "server": ("127.0.0.1", 8002),
+    }
+
+
+class TestUnFluxHttpEstCoupeAussi:
+    def test_la_revocation_coupe_une_reponse_en_flux(self, monde):
+        """Le SSE du chat est une réponse HTTP qui dure : sans la surveillance,
+        un téléphone révoqué garderait sa réponse jusqu'au bout."""
+        import asyncio
+
+        from starlette.responses import StreamingResponse
+
+        app = FastAPI()
+
+        @app.get("/v1/models")
+        async def _flux():
+            async def morceaux():
+                debut = time.monotonic()
+                while time.monotonic() - debut < 4:
+                    yield b"tic\n"
+                    await asyncio.sleep(0.02)
+                yield b"FIN-NATURELLE\n"
+
+            return StreamingResponse(morceaux())
+
+        passerelle = monde.passerelle(app, intervalle_s=0.05)
+        client = TestClient(passerelle, base_url=ICI)
+        jeton = _ouvrir_une_session(client, monde)
+        corps, duree = _pilote_asgi(
+            passerelle,
+            _portee_http("/v1/models", jeton),
+            apres_premier_morceau=lambda: monde.registry.revoke(PHONE),
+        )
+        assert b"tic" in corps
+        assert b"FIN-NATURELLE" not in corps, "le flux a survécu à la révocation"
+        assert duree < 2, f"la coupure a pris {duree:.2f} s"
+
+
+def _trou_maximal(passerelle, requete) -> float:
+    """Le plus long silence d'un cœur qui bat toutes les 10 ms pendant
+    *requete* — démarré AVANT elle, pour voir la boucle geler."""
+    import asyncio
+
+    from httpx import ASGITransport, AsyncClient
+
+    async def scenario():
+        instants: list[float] = []
+        arret = asyncio.Event()
+
+        async def coeur():
+            # Un battement AUSSI au réveil qui suit l'arrêt : une requête qui
+            # ne suspend jamais (ASGITransport) finit avant que le cœur ne se
+            # réveille, et sans ce dernier instant le gel ne se mesurerait pas.
+            while True:
+                instants.append(time.monotonic())
+                if arret.is_set():
+                    return
+                await asyncio.sleep(0.01)
+
+        battre = asyncio.ensure_future(coeur())
+        await asyncio.sleep(0.05)
+        async with AsyncClient(
+            transport=ASGITransport(app=passerelle), base_url=ICI
+        ) as client:
+            await requete(client)
+        arret.set()
+        await battre
+        return max(b - a for a, b in zip(instants, instants[1:]))
+
+    return asyncio.run(scenario())
+
+
+_LENT_S = 0.5
+_TROU_TOLERE_S = 0.3
+
+
+def _ralentir(objet, nom: str) -> None:
+    lente = getattr(objet, nom)
+
+    def appel(*args, **kwargs):
+        time.sleep(_LENT_S)
+        return lente(*args, **kwargs)
+
+    setattr(objet, nom, appel)
+
+
+class TestLaBoucleResteLibre:
+    """CLAUDE.md §5 : une route async qui appelle du bloquant gèle TOUT —
+    le flux du chat, la voix, la cloche. verify_session écrit sur mesh.db
+    (la dernière activité) ; les quatre asyncio.to_thread de la passerelle
+    pouvaient être retirés sans qu'un test le voie (mutants M67 à M70)."""
+
+    def test_pendant_la_verification_de_session(self, monde):
+        _ralentir(monde.sessions, "verify_session")
+        app, _ = _vraie_app()
+
+        async def requete(client):
+            await client.get(
+                "/v1/models", headers={"Cookie": f"{COOKIE_APPAREIL}=inconnu"}
+            )
+
+        trou = _trou_maximal(monde.passerelle(app), requete)
+        assert trou < _TROU_TOLERE_S, f"la boucle a gelé {trou:.2f} s"
+
+    def test_pendant_l_echange_du_ticket(self, monde):
+        _ralentir(monde.sessions, "redeem_ticket")
+        app, _ = _vraie_app()
+
+        async def requete(client):
+            await client.post("/v1/appareil/ouvrir", data={"ticket": "t"})
+
+        trou = _trou_maximal(monde.passerelle(app), requete)
+        assert trou < _TROU_TOLERE_S, f"la boucle a gelé {trou:.2f} s"
+
+    def test_pendant_la_verification_de_l_enveloppe(self, monde):
+        _ralentir(monde.sessions, "issue_ticket")
+        app, _ = _vraie_app()
+        demande = monde.demande_signee()
+
+        async def requete(client):
+            reponse = await client.post("/v1/appareil/session", json=demande)
+            assert reponse.status_code == 200, reponse.text
+
+        trou = _trou_maximal(monde.passerelle(app), requete)
+        assert trou < _TROU_TOLERE_S, f"la boucle a gelé {trou:.2f} s"
+
+    def test_pendant_la_surveillance_d_un_flux(self, monde):
+        import asyncio
+
+        from starlette.responses import StreamingResponse
+
+        app = FastAPI()
+
+        @app.get("/v1/models")
+        async def _flux():
+            async def morceaux():
+                for _ in range(40):
+                    yield b"."
+                    await asyncio.sleep(0.02)
+
+            return StreamingResponse(morceaux())
+
+        passerelle = monde.passerelle(app, intervalle_s=0.05)
+        jeton = _ouvrir_une_session(TestClient(passerelle, base_url=ICI), monde)
+        # La première vérification (à l'entrée) reste rapide ; ce sont les
+        # suivantes, celles de la surveillance, qui traînent.
+        verifier = monde.sessions.verify_session
+        appels = {"n": 0}
+
+        def lente(j):
+            appels["n"] += 1
+            if appels["n"] > 1:
+                time.sleep(_LENT_S)
+            return verifier(j)
+
+        monde.sessions.verify_session = lente
+
+        async def requete(client):
+            await client.get(
+                "/v1/models", headers={"Cookie": f"{COOKIE_APPAREIL}={jeton}"}
+            )
+
+        trou = _trou_maximal(passerelle, requete)
+        assert appels["n"] > 1, "la surveillance n'a pas tourné"
+        assert trou < _TROU_TOLERE_S, f"la boucle a gelé {trou:.2f} s"
 
 
 class TestLeCycleDeVie:

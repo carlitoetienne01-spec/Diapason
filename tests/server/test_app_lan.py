@@ -343,6 +343,11 @@ class TestLesTroisSocketsDemarrent:
         assert tailnet.proxy_headers is False
         assert isinstance(tailnet.app, PasserelleTailnet)
         assert tailnet.app.app is app, "la passerelle doit envelopper l'app principale"
+        # « La révocation coupe les WebSockets en 30 s au plus » : tous les
+        # tests de coupure injectent 50 ms ; seul celui-ci lit l'intervalle
+        # que la production reçoit (contre-épreuve du 26/09/2026 : 3 600 s
+        # passaient inaperçues).
+        assert tailnet.app._intervalle_s <= 30, tailnet.app._intervalle_s
         # Les sockets d'avant ne changent pas de forme.
         assert (prises[0].lifespan, prises[0].proxy_headers) == ("auto", True)
 
