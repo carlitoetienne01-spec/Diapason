@@ -454,7 +454,7 @@ export function ViePlannerPage() {
                 <button
                   type="button"
                   onClick={() => setQuoteModalOpen(true)}
-                  className="shrink-0 size-6 rounded-lg flex items-center justify-center cursor-pointer transition-opacity max-sm:opacity-100 compact:opacity-100 opacity-30 group-hover:opacity-100 focus-visible:opacity-100"
+                  className="shrink-0 size-6 rounded-lg flex items-center justify-center cursor-pointer transition-opacity max-sm:opacity-100 compact:opacity-100 mobile:opacity-100 opacity-30 group-hover:opacity-100 focus-visible:opacity-100"
                   style={{ color: 'var(--color-text-tertiary)' }}
                   title="Mots du jour"
                   aria-label="Ouvrir les mots du jour"

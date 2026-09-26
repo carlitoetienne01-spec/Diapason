@@ -1678,7 +1678,7 @@ function PileOuverte({
                         e.stopPropagation();
                         basculer(photo.id);
                       }}
-                      className={`absolute bottom-1.5 left-1.5 rounded-md p-0.5 transition-opacity ${cochee || selection.size > 0 ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                      className={`absolute bottom-1.5 left-1.5 rounded-md p-0.5 transition-opacity ${cochee || selection.size > 0 ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 max-sm:opacity-100 compact:opacity-100 mobile:opacity-100'}`}
                       style={{ background: cochee ? 'var(--color-accent)' : 'rgba(0,0,0,0.55)', color: '#fff' }}
                     >
                       {cochee ? <CheckSquare size={14} /> : <Square size={14} />}
@@ -1695,7 +1695,7 @@ function PileOuverte({
                     )}
                     {photo.caption && (
                       <span
-                        className="absolute inset-x-0 bottom-0 px-2 py-1 text-[11px] text-left truncate opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="absolute inset-x-0 bottom-0 px-2 py-1 text-[11px] text-left truncate opacity-0 group-hover:opacity-100 max-sm:opacity-100 compact:opacity-100 mobile:opacity-100 transition-opacity"
                         style={{ background: 'rgba(0,0,0,0.6)', color: '#fff' }}
                       >
                         {photo.caption}

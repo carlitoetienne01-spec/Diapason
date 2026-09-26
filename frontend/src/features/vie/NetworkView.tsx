@@ -1484,7 +1484,7 @@ export function NetworkView({
                         }
                         relierDepuis(task.id);
                       }}
-                      className={`absolute right-2 top-1/2 -translate-y-1/2 size-3.5 rounded-full transition-opacity motion-reduce:transition-none focus-visible:opacity-100 max-sm:opacity-100 compact:opacity-100 disabled:opacity-0 ${
+                      className={`absolute right-2 top-1/2 -translate-y-1/2 size-3.5 rounded-full transition-opacity motion-reduce:transition-none focus-visible:opacity-100 max-sm:opacity-100 compact:opacity-100 mobile:opacity-100 disabled:opacity-0 ${
                         isLinkSource ? 'opacity-100 cursor-grabbing' : 'opacity-0 group-hover:opacity-100 cursor-grab'
                       }`}
                       style={{

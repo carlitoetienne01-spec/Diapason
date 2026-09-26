@@ -272,7 +272,7 @@ function LigneTerminee({
         </div>
         {/* Révélés au survol, toujours visibles sous sm, au tactile et dans
             le mini-panneau (un NSPanel non activant ne livre pas le survol). */}
-        <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 max-sm:opacity-100 compact:opacity-100 transition-opacity">
+        <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 max-sm:opacity-100 compact:opacity-100 mobile:opacity-100 transition-opacity">
           <button
             type="button"
             disabled={saving}

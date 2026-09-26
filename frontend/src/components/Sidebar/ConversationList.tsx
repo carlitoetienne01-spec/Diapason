@@ -284,7 +284,9 @@ export function ConversationList({ searchQuery }: Props) {
               openMenuAt(conv.id, rect.right, rect.bottom + 4);
             }}
             className={`p-1.5 mr-1 rounded transition-opacity cursor-pointer ${
-              menuOpenHere ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+              menuOpenHere
+                ? 'opacity-100'
+                : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 max-sm:opacity-100 compact:opacity-100 mobile:opacity-100'
             }`}
             style={{ color: 'var(--color-text-tertiary)' }}
             onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--color-text)')}

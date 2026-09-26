@@ -140,7 +140,7 @@ function CopyMessageButton({ content, rendu }: {
   return (
     <button
       onClick={handleCopy}
-      className="p-1 rounded opacity-0 group-hover:opacity-100 focus-visible:opacity-100 compact:opacity-100 transition-opacity cursor-pointer"
+      className="p-1 rounded opacity-0 group-hover:opacity-100 focus-visible:opacity-100 max-sm:opacity-100 compact:opacity-100 mobile:opacity-100 transition-opacity cursor-pointer"
       style={{ color: 'var(--color-text-tertiary)' }}
       title={t('chat.message.copy')}
       aria-label={t('chat.message.copy')}
@@ -172,7 +172,7 @@ function VerifierEnLigneButton({ messageId }: { messageId: string }) {
     <button
       onClick={demander}
       disabled={isStreaming}
-      className="inline-flex items-center gap-1 text-[11px] px-1.5 py-px rounded-full opacity-0 group-hover:opacity-100 focus-visible:opacity-100 compact:opacity-100 transition-opacity cursor-pointer disabled:cursor-default disabled:opacity-40"
+      className="inline-flex items-center gap-1 text-[11px] px-1.5 py-px rounded-full opacity-0 group-hover:opacity-100 focus-visible:opacity-100 max-sm:opacity-100 compact:opacity-100 mobile:opacity-100 transition-opacity cursor-pointer disabled:cursor-default disabled:opacity-40"
       style={{ color: 'var(--color-accent)', border: '1px solid currentColor' }}
       title={t('chat.verification.verifierEnLigne')}
       aria-label={t('chat.verification.verifierEnLigne')}

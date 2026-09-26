@@ -122,7 +122,8 @@ function CodeBlock({ code }: { code: string }) {
       <pre className="whitespace-pre-wrap break-all">{code}</pre>
       <button
         onClick={handleCopy}
-        className="absolute top-2 right-2 p-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+        className="absolute top-2 right-2 p-1.5 rounded-md opacity-0 group-hover:opacity-100 focus-visible:opacity-100 max-sm:opacity-100 compact:opacity-100 mobile:opacity-100 transition-opacity cursor-pointer"
+        aria-label={t('common.copy')}
         style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-tertiary)' }}
         title={t('common.copy')}
       >

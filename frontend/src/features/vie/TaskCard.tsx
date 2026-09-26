@@ -283,7 +283,7 @@ function SubtaskRow({
             <button
               type="button"
               onClick={() => void remove()}
-              className="p-1 rounded cursor-pointer opacity-55 hover:opacity-100 max-sm:opacity-100 compact:opacity-100 transition-opacity"
+              className="p-1 rounded cursor-pointer opacity-55 hover:opacity-100 max-sm:opacity-100 compact:opacity-100 mobile:opacity-100 transition-opacity"
               style={{ color: 'var(--color-error)' }}
               aria-label="Supprimer la sous-tâche"
               title="Supprimer"
@@ -294,7 +294,7 @@ function SubtaskRow({
           <button
             type="button"
             onClick={() => setAdding((value) => !value)}
-            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 max-sm:opacity-100 compact:opacity-100 p-1 rounded cursor-pointer transition-opacity"
+            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 max-sm:opacity-100 compact:opacity-100 mobile:opacity-100 p-1 rounded cursor-pointer transition-opacity"
             style={{ color: 'var(--color-text-tertiary)' }}
             title="Ajouter une étape à l'intérieur"
             aria-label="Ajouter une étape à l'intérieur"
