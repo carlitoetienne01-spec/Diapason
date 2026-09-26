@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
 import { cheminHerite, PAGES_VIE, ROUTES_VIE } from './routesVie';
@@ -39,6 +42,50 @@ describe('ROUTES_VIE', () => {
     expect(new Set(ROUTES_VIE).size, 'aucune page en double').toBe(ROUTES_VIE.length);
     for (const route of ROUTES_VIE) {
       expect(route.startsWith('/vie/'), route).toBe(true);
+    }
+  });
+});
+
+/**
+ * Étape 10 : la réglette native (`reglette.html`) et les noms de la pastille
+ * du mini-panneau (`__diapNoms`, lib.rs) sont écrits hors de React, et
+ * compilés dans l'app. Aucun des deux ne passe par `tsc` : une route qui ne
+ * suit pas le renommage n'y casse rien de visible au build, elle ouvre un
+ * module vide ou fait dire « Diapason » à la pastille au lieu du nom de la
+ * page. Ce test les lit comme du texte et les confronte à la liste d'App.tsx.
+ */
+describe('la réglette et le mini-panneau suivent les routes d’App.tsx', () => {
+  // vitest tourne depuis `frontend/`, comme le cliquet d'appelsApi.test.ts.
+  const reglette = readFileSync(join(process.cwd(), 'src-tauri/src/reglette.html'), 'utf-8');
+  const librs = readFileSync(join(process.cwd(), 'src-tauri/src/lib.rs'), 'utf-8');
+
+  const modules = [...reglette.matchAll(/\{route:'([^']+)'/g)]
+    .map((m) => m[1])
+    .filter((route) => route !== '/');
+  const ligneNoms = librs.split('\n').find((ligne) => ligne.includes('var __diapNoms='));
+  const noms = [...(ligneNoms ?? '').matchAll(/'(\/[^']*)':'[^']+'/g)].map((m) => m[1]);
+
+  it('les deux fichiers ont bien été lus', () => {
+    expect(modules.length, 'la réglette a huit modules').toBe(8);
+    expect(ligneNoms, '__diapNoms est introuvable dans lib.rs').toBeDefined();
+  });
+
+  it('chaque module de la réglette ouvre une page qu’App.tsx sert', () => {
+    for (const route of modules) {
+      expect(ROUTES_VIE, `réglette : ${route}`).toContain(route);
+    }
+  });
+
+  it('chaque module a son nom pour la pastille du mini-panneau', () => {
+    for (const route of modules) {
+      expect(noms, `__diapNoms ne nomme pas ${route}`).toContain(route);
+    }
+  });
+
+  it('chaque nom de __diapNoms désigne une page servie, ou une redirection vers elle', () => {
+    for (const route of noms.filter((r) => r !== '/')) {
+      const servie = route.startsWith('/succes/') ? cheminHerite(route) : route;
+      expect(ROUTES_VIE, `__diapNoms : ${route}`).toContain(servie);
     }
   });
 });

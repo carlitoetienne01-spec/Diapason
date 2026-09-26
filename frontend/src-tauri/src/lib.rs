@@ -5104,6 +5104,11 @@ mod native_reglette {
         let (t, s) = theme_courant();
         let theme = js_escape(&t);
         let skin = js_escape(&s);
+        // `__diapNoms` : 25/09/2026, les pages passent sous /vie/*. Sans ces
+        // clés, la pastille du mini-panneau réduit disait « Diapason » au lieu
+        // du nom de la page. Les clés /succes/* restent tant que le bundle
+        // redirige /succes/* (features/vie/routesVie.ts) : une page déjà
+        // ouverte sous l'ancien chemin garde son nom.
         let src = format!(
             "try{{sessionStorage.setItem('diapason-api-key','{key}');}}catch(e){{}}\n\
              try{{var _s={{}};try{{_s=JSON.parse(localStorage.getItem('diapason-settings')||'{{}}')}}catch(e){{}}_s.theme='{theme}';_s.terminalSkin='{skin}';localStorage.setItem('diapason-settings',JSON.stringify(_s));}}catch(e){{}}\n\
@@ -5114,7 +5119,7 @@ mod native_reglette {
              window.__diapApplyTheme=function(th,sk){{try{{var r=document.documentElement;r.classList.remove('dark','light','terminal');if(th==='dark')r.classList.add('dark');else if(th==='light')r.classList.add('light');else if(th==='terminal'){{r.classList.add(sk==='ardechine'?'light':'dark','terminal');r.setAttribute('data-terminal-skin',sk);}}else{{r.classList.add(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');}}if(th!=='terminal')r.removeAttribute('data-terminal-skin');var q={{}};try{{q=JSON.parse(localStorage.getItem('diapason-settings')||'{{}}')}}catch(e){{}}q.theme=th;q.terminalSkin=sk;localStorage.setItem('diapason-settings',JSON.stringify(q));}}catch(e){{}}}};\n\
              function __diapFermer(){{try{{window.webkit.messageHandlers.reglette.postMessage('closemini');}}catch(e){{}}}}\n\
              document.addEventListener('keydown',function(e){{if(e.key!=='Escape'||e.defaultPrevented)return;setTimeout(function(){{if(!e.defaultPrevented)__diapFermer();}},0);}});\n\
-             var __diapNoms={{'/':'Discussion','/succes/dashboard':'Tableau de bord','/succes/planner':'Planificateur','/succes/tasks':'Tâches','/succes/projects':'Projets','/succes/finances':'Finances','/succes/habits':'Habitudes','/succes/notes':'Notes','/succes/year-review':'Bilan'}};\n\
+             var __diapNoms={{'/':'Discussion','/vie/dashboard':'Tableau de bord','/vie/planner':'Planificateur','/vie/tasks':'Tâches','/vie/projects':'Projets','/vie/finances':'Finances','/vie/habits':'Habitudes','/vie/notes':'Notes','/vie/year-review':'Bilan','/succes/dashboard':'Tableau de bord','/succes/planner':'Planificateur','/succes/tasks':'Tâches','/succes/projects':'Projets','/succes/finances':'Finances','/succes/habits':'Habitudes','/succes/notes':'Notes','/succes/year-review':'Bilan'}};\n\
              window.__diapReduit=function(v){{var c=document.getElementById('__diapChip');if(!c)return;if(v){{var n=document.getElementById('__diapChipNom');if(n){{var dt=(location.pathname==='/'&&document.title&&document.title!=='Diapason')?document.title:'';n.textContent=dt||__diapNoms[location.pathname]||'Diapason';}}c.style.display='flex';}}else{{c.style.display='none';}}}};\n\
              window.addEventListener('DOMContentLoaded',function(){{\n\
                var bar=document.createElement('div');bar.id='__diapBar';\n\
