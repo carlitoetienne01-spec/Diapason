@@ -55,6 +55,15 @@ html[data-diapason-mobile='1'] :is(.shadow-md, .shadow-lg, .shadow-xl, .shadow-2
 html[data-diapason-mobile='1'] :is(.composer-glass, .carte-vitree, .cadre-vitre) {
   box-shadow: none !important;
 }
+/* Les menus du compositeur et les confirmations gardent une ombre courte
+ * (8 px de flou) pour se détacher de la page. 26/09/2026, contre-épreuve :
+ * « plus de grandes ombres » n'était vrai qu'au repos — ouverts, les menus
+ * « Demander », du modèle et « Aller à une discussion » portaient 32 px
+ * (`.composer-glass-menu`), et chaque confirmation de suppression 60 px en
+ * style en ligne (ConfirmDialog.tsx), qu'aucun jeton n'atteignait. */
+html[data-diapason-mobile='1'] :is(.composer-glass-menu, .confirmation-panneau) {
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.12) !important;
+}
 
 /* ── 3. Aucune animation de fond ─────────────────────────────────────
  * Le décor « HUD » (deux halos, une grille qui dérive en boucle sur 60 s et

@@ -76,7 +76,9 @@ function ConfirmModal({
     >
       <div
         onClick={(event) => event.stopPropagation()}
-        className="w-full max-w-sm rounded-2xl p-5"
+        // `confirmation-panneau` : au téléphone, telephonePlat.css ramène
+        // cette ombre de 60 px à 8 (26/09/2026) ; le Mac garde la sienne.
+        className="confirmation-panneau w-full max-w-sm rounded-2xl p-5"
         style={{
           background: 'color-mix(in srgb, var(--color-surface) 92%, transparent)',
           border: '1px solid var(--color-border)',
