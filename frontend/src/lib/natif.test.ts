@@ -54,7 +54,7 @@ describe('Aucun verbe ne rend un secret au JavaScript', () => {
     // ou `jeton` le rendrait lisible par toute page chargée dans la WebView.
     // Ajouter un verbe doit être une décision, donc un test à changer.
     expect([...VERBES_SORTANTS]).toEqual(['theme', 'enregistrer', 'ouvrirExterne']);
-    expect([...VERBES_ENTRANTS]).toEqual(['retour']);
+    expect([...VERBES_ENTRANTS]).toEqual(['retour', 'naviguer']);
   });
 
   it('refuse un verbe hors de la liste sans rien poster', async () => {
@@ -177,6 +177,56 @@ describe('Le retour Android demande d’abord au bundle', () => {
     const pont = new PontNatif(canal);
     pont.recevoir({ type: 'demande', id: 'n1', verbe: 'donneMoiLaCle' });
     expect(envoyes).toEqual([{ type: 'reponse', id: 'n1', ok: false, erreur: 'verbeInconnu' }]);
+  });
+});
+
+describe('La coquille demande un écran (naviguer, phase 3 étape 9)', () => {
+  // 26/09/2026 : au téléphone, une commande du maillage arrive à la coquille,
+  // qui demande l'écran ici. La réponse est ce que l'appareil qui a demandé
+  // lira : elle ne doit dire « ouvert » que ce qui l'est.
+  const attendreLeCanal = () => new Promise((r) => setTimeout(r, 0));
+
+  it('répond ce que le navigateur rend, une fois qu’il l’a rendu', async () => {
+    const { canal, envoyes } = canalEspion();
+    const pont = new PontNatif(canal);
+    let finir: (v: unknown) => void = () => undefined;
+    pont.surNaviguer(() => new Promise((r) => (finir = r)));
+    pont.recevoir({ type: 'demande', id: 'n1', verbe: 'naviguer', donnees: { path: '/vie/tasks' } });
+    await attendreLeCanal();
+    expect(envoyes, 'rien avant que la page soit affichée').toEqual([]);
+    finir({ path: '/vie/tasks', selection: null });
+    await attendreLeCanal();
+    expect(envoyes).toEqual([
+      { type: 'reponse', id: 'n1', ok: true, donnees: { path: '/vie/tasks', selection: null } },
+    ]);
+  });
+
+  it('rend la phrase de l’échec telle quelle', async () => {
+    const { canal, envoyes } = canalEspion();
+    const pont = new PontNatif(canal);
+    pont.surNaviguer(async () => {
+      throw new Error('L’écran n’a pas fini de s’afficher sur le téléphone.');
+    });
+    pont.recevoir({ type: 'demande', id: 'n1', verbe: 'naviguer', donnees: {} });
+    await attendreLeCanal();
+    expect(envoyes).toEqual([
+      {
+        type: 'reponse',
+        id: 'n1',
+        ok: false,
+        erreur: 'L’écran n’a pas fini de s’afficher sur le téléphone.',
+      },
+    ]);
+  });
+
+  it('sans navigateur inscrit, dit « pas prêt » au lieu de laisser attendre', async () => {
+    const { canal, envoyes } = canalEspion();
+    const pont = new PontNatif(canal);
+    const retirer = pont.surNaviguer(async () => ({}));
+    retirer();
+    pont.recevoir({ type: 'demande', id: 'n1', verbe: 'naviguer', donnees: {} });
+    await attendreLeCanal();
+    expect(envoyes).toEqual([{ type: 'reponse', id: 'n1', ok: false, erreur: 'pasPret' }]);
   });
 });
 

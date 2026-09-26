@@ -17,6 +17,8 @@ import { VoyantGestes } from './features/gestes/VoyantGestes';
 import { fetchModels, fetchServerInfo, fetchSavings, isTauri } from './lib/api';
 import { ConfirmProvider } from './components/ConfirmDialog';
 import { MeshHost } from './components/MeshHost';
+import { NavigationDuTelephone } from './components/NavigationDuTelephone';
+import { pagesAffichees } from './lib/pagesAffichees';
 import { TalkToDiapasonHost } from './components/TalkToDiapasonHost';
 import { track, hashId } from './lib/analytics';
 import { demarrerSyncConversations } from './lib/convSync';
@@ -119,6 +121,17 @@ const PAGES_VIE_ELEMENTS: Record<PageVie, ReactElement> = {
   'year-review': <VieYearReviewPage />,
   sync: <VieSyncPage />,
 };
+
+/**
+ * Signale la page une fois MONTÉE — l'effet ne part qu'après que React l'a
+ * posée dans le document, jamais pour une page restée derrière son
+ * `Suspense`. C'est ce qu'attend `naviguer` avant d'acquitter au téléphone
+ * (lib/pagesAffichees.ts, 26/09/2026).
+ */
+function PageAffichee({ chemin, children }: { chemin: string; children: ReactElement }) {
+  useEffect(() => pagesAffichees.signalerMontee(chemin), [chemin]);
+  return children;
+}
 
 /** `/succes/*` → `/vie/*`, requête et ancre comprises (voir `cibleHeritee`). */
 function RedirectionHeritee() {
@@ -467,7 +480,13 @@ export default function App() {
             <Route path="agents" element={<AgentsPage />} />
             <Route path="logs" element={<LogsPage />} />
             {PAGES_VIE.map((page) => (
-              <Route key={page} path={`vie/${page}`} element={PAGES_VIE_ELEMENTS[page]} />
+              <Route
+                key={page}
+                path={`vie/${page}`}
+                element={
+                  <PageAffichee chemin={`/vie/${page}`}>{PAGES_VIE_ELEMENTS[page]}</PageAffichee>
+                }
+              />
             ))}
             <Route path="vie/templates" element={<Navigate to="/vie/tasks" replace />} />
             <Route path="succes" element={<RedirectionHeritee />} />
@@ -486,6 +505,9 @@ export default function App() {
       {/* Seule la fenêtre du Mac vide la boîte du maillage et publie sa vue
           (lib/hotesDuMac.ts, 26/09/2026). */}
       {HOTES.boiteDuMaillage && <MeshHost />}
+      {/* Au téléphone, c'est la coquille qui reçoit les commandes du maillage
+          et demande l'écran ici (verbe « naviguer », 26/09/2026). */}
+      {estMobile && <NavigationDuTelephone />}
       {HOTES.contexteDeLaVue && <ContexteVueHost />}
       <VoyantGestes />
       {commandPaletteOpen && <CommandPalette />}

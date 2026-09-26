@@ -1,7 +1,10 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
 import { ROUTES_VIE } from '../vie/routesVie';
-import { MESH_ROUTE_TODAY, resolveSuccessRoute } from './routes';
+import { MESH_PATHS, MESH_ROUTE_TODAY, readShellNavigation, resolveSuccessRoute } from './routes';
 
 describe('resolveSuccessRoute', () => {
   it('sends today to the day view, not the statistics screen', () => {
@@ -112,6 +115,72 @@ describe('les deux schémas du maillage', () => {
       'succes://today',
     ]) {
       expect(resolveSuccessRoute(route), `${route} doit rester refusée`).toBeNull();
+    }
+  });
+});
+
+type Vecteur = {
+  route: string;
+  path: string | null;
+  selection?: { kind: string; id: string };
+};
+
+const VECTEURS = (
+  JSON.parse(readFileSync(join(__dirname, 'vecteurs_routes.json'), 'utf8')) as {
+    vecteurs: Vecteur[];
+  }
+).vecteurs;
+
+describe('les vecteurs communs des routes (phase 3, étape 9)', () => {
+  // 26/09/2026 : au téléphone, c'est la coquille Flutter qui traduit la route
+  // (mesh_routes.dart) avant de demander « naviguer » au bundle. Une table mal
+  // portée ferait acquitter une navigation vers une page qui n'affiche pas la
+  // cible — un faux SUCCESS côté émetteur. Même fichier, relu par
+  // mesh_routes_test.dart et par tests/contract/test_routes_du_maillage.py.
+  it('portent au moins une route refusée et une sélection', () => {
+    expect(VECTEURS.some((v) => v.path === null)).toBe(true);
+    expect(VECTEURS.some((v) => v.selection)).toBe(true);
+  });
+
+  for (const v of VECTEURS) {
+    it(`${JSON.stringify(v.route)} → ${v.path ?? 'refusée'}`, () => {
+      const attendu =
+        v.path === null ? null : v.selection ? { path: v.path, selection: v.selection } : { path: v.path };
+      expect(resolveSuccessRoute(v.route)).toEqual(attendu);
+    });
+  }
+});
+
+describe('ce que le bundle accepte de la coquille', () => {
+  it('chaque cible des vecteurs, telle que la coquille la demande', () => {
+    for (const v of VECTEURS) {
+      if (v.path === null) continue;
+      const demande = v.selection ? { path: v.path, selection: v.selection } : { path: v.path };
+      expect(readShellNavigation(demande), v.route).toEqual(demande);
+    }
+  });
+
+  it('seulement les écrans de la table', () => {
+    expect([...MESH_PATHS].sort()).toEqual([
+      '/vie/habits',
+      '/vie/notes',
+      '/vie/planner',
+      '/vie/projects',
+      '/vie/tasks',
+    ]);
+    for (const demande of [
+      { path: '/settings' },
+      { path: '/vie/finances' },
+      { path: '/vie/tasks/../settings' },
+      { path: 'https://example.com/vie/tasks' },
+      { path: '/vie/tasks', selection: { kind: 'project', id: 'p-1' } },
+      { path: '/vie/projects', selection: { kind: 'note', id: 'n-1' } },
+      { path: '/vie/notes', selection: { kind: 'note', id: '' } },
+      { path: '/vie/notes', selection: 'n-1' },
+      null,
+      'vie://tasks',
+    ]) {
+      expect(readShellNavigation(demande), JSON.stringify(demande)).toBeNull();
     }
   });
 });

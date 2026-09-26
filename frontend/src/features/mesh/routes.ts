@@ -96,3 +96,35 @@ export function resolveSuccessRoute(route: string): MeshNavTarget | null {
   }
   return { path };
 }
+
+/**
+ * Every screen a mesh route can open, once each. The phone shell may ask the
+ * bundle to show one of these and nothing else.
+ */
+export const MESH_PATHS: readonly string[] = [...new Set(Object.values(PATHS))];
+
+const SELECTION_OF_PATH: Record<string, MeshSelectionKind> = Object.fromEntries(
+  Object.entries(SELECTABLE).map(([kind, selection]) => [PATHS[kind], selection]),
+);
+
+/**
+ * A `naviguer` request from the phone shell, checked against this table.
+ *
+ * 26/09/2026 (phase 3, step 9): on the phone the mesh command reaches the
+ * Flutter shell, not the Python inbox, and the shell translates the route
+ * itself (`mesh_routes.dart`, held to `vecteurs_routes.json`). The bundle
+ * still refuses a path it would never have produced — any page could post on
+ * the channel before the shell's origin check existed, and a path outside the
+ * table would open a screen the sender never named.
+ */
+export function readShellNavigation(donnees: unknown): MeshNavTarget | null {
+  if (!donnees || typeof donnees !== 'object') return null;
+  const { path, selection } = donnees as { path?: unknown; selection?: unknown };
+  if (typeof path !== 'string' || !MESH_PATHS.includes(path)) return null;
+  if (selection === undefined || selection === null) return { path };
+  if (typeof selection !== 'object') return null;
+  const { kind, id } = selection as { kind?: unknown; id?: unknown };
+  const expected = SELECTION_OF_PATH[path];
+  if (!expected || kind !== expected || typeof id !== 'string' || !id) return null;
+  return { path, selection: { kind: expected, id } };
+}

@@ -1,0 +1,97 @@
+{
+  "_": "Vecteurs communs des routes du maillage (26/09/2026, phase 3 étape 9). Une route du maillage et l'écran que chaque récepteur en tire : routes.ts (la fenêtre et le bundle du téléphone), mesh_routes.dart (la coquille, qui traduit avant de demander « naviguer » au bundle) et mesh/executor.py (qui refuse ce que les deux autres refusent). Écrit à la main, c'est la spécification ; la copie de diapason_mobile/test/mesh/vecteurs_routes.json doit être IDENTIQUE (tests/contract/test_routes_du_maillage.py).",
+  "vecteurs": [
+    {
+      "route": "success://today",
+      "path": "/vie/planner"
+    },
+    {
+      "route": "vie://today",
+      "path": "/vie/planner"
+    },
+    {
+      "route": "success://tasks",
+      "path": "/vie/tasks"
+    },
+    {
+      "route": "vie://tasks/t-42",
+      "path": "/vie/tasks"
+    },
+    {
+      "route": "success://habits/h-7",
+      "path": "/vie/habits"
+    },
+    {
+      "route": "success://projects",
+      "path": "/vie/projects"
+    },
+    {
+      "route": "vie://projects/p-1",
+      "path": "/vie/projects",
+      "selection": {
+        "kind": "project",
+        "id": "p-1"
+      }
+    },
+    {
+      "route": "success://notes/n%20espace",
+      "path": "/vie/notes",
+      "selection": {
+        "kind": "note",
+        "id": "n espace"
+      }
+    },
+    {
+      "route": "  SUCCESS://TODAY/  ",
+      "path": "/vie/planner"
+    },
+    {
+      "route": "VIE://Notes/N-9",
+      "path": "/vie/notes",
+      "selection": {
+        "kind": "note",
+        "id": "N-9"
+      }
+    },
+    {
+      "route": "success://settings",
+      "path": null
+    },
+    {
+      "route": "vie://reglages",
+      "path": null
+    },
+    {
+      "route": "success://notes/%",
+      "path": null
+    },
+    {
+      "route": "success://projects/%E0%A4%A",
+      "path": null
+    },
+    {
+      "route": "success://tasks/../../etc/passwd",
+      "path": null
+    },
+    {
+      "route": "success://today?x=1",
+      "path": null
+    },
+    {
+      "route": "diapason://research/42",
+      "path": null
+    },
+    {
+      "route": "https://example.com",
+      "path": null
+    },
+    {
+      "route": "ſuccess://tasks",
+      "path": null
+    },
+    {
+      "route": "",
+      "path": null
+    }
+  ]
+}

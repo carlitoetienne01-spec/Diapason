@@ -154,7 +154,8 @@ def _no_shell() -> dict[str, Any]:
 
 # The screens a `success://` or `vie://` route may name — the keys of `PATHS` in
 # `frontend/src/features/mesh/routes.ts`, which is what the shell below us
-# actually opens, and of `_views` in the mobile client's `mesh_routes.dart`.
+# actually opens, and of `_chemins` in the mobile client's `mesh_routes.dart`
+# (the React paths the phone shell asks its bundle for since 26/09/2026).
 # `tests/contract/test_routes_du_maillage.py` reads both files and fails the
 # moment one of the three drifts.
 #
