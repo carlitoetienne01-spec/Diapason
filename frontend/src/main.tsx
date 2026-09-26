@@ -6,6 +6,10 @@ import { BrowserRouter } from 'react-router';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import App from './App';
 import { initApiBase } from './lib/api';
+// Le pont du téléphone se lit AVANT le premier rendu : il pose
+// `data-diapason-mobile` sur <html> et installe `diapasonNatifRecevoir`, que
+// la coquille peut appeler dès le chargement (retour Android) — 26/09/2026.
+import './lib/natif';
 import { migrerStockage, stockageDeLOrigine } from './features/vie/migrerStockage';
 import { initAnalytics } from './lib/analytics';
 // Les treize polices du menu des notes, embarquées EN LOCAL.

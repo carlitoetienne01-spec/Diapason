@@ -37,3 +37,22 @@ export function detectLocale(
   }
   return DEFAULT_LOCALE;
 }
+
+/**
+ * La langue de l'interface, lue HORS de React.
+ *
+ * 26/09/2026 : le pont natif et les fonctions d'`api.ts` lèvent des erreurs
+ * que l'interface affiche telles quelles, sans passer par `useTranslation`.
+ * Elles étaient écrites en anglais en dur (« … in the desktop app only. »),
+ * donc affichées en anglais à qui avait choisi le français. `<html lang>` est
+ * posé par `TranslationProvider` au premier rendu : c'est la même source que
+ * l'interface, sans dépendre de React ni du catalogue.
+ */
+export function localeDuDocument(
+  lang: string | null = typeof document === 'undefined'
+    ? null
+    : document.documentElement.getAttribute('lang'),
+  languages?: readonly string[],
+): Locale {
+  return isLocale(lang) ? lang : detectLocale(languages);
+}

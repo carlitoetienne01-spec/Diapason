@@ -1,5 +1,5 @@
 import { MESSAGES } from './messages';
-import { DEFAULT_LOCALE, type Locale } from './locale';
+import { DEFAULT_LOCALE, localeDuDocument, type Locale } from './locale';
 
 /**
  * The translation function, and nothing else.
@@ -69,4 +69,14 @@ export function translate(locale: Locale, key: MessageKey, vars?: Vars): string 
  */
 export function isMessageKey(value: string): value is MessageKey {
   return Object.prototype.hasOwnProperty.call(MESSAGES.en, value);
+}
+
+/**
+ * `translate` dans la langue affichée — pour le code qui n'a pas de `t`.
+ *
+ * Une erreur levée par une fonction de `lib/` finit dans un toast ou un
+ * encadré sans être retraduite : elle doit donc naître dans la bonne langue.
+ */
+export function traduire(key: MessageKey, vars?: Vars): string {
+  return translate(localeDuDocument(), key, vars);
 }
