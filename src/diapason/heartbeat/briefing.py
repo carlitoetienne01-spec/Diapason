@@ -225,15 +225,30 @@ def briefing_du_jour(
     prenom: str = "",
     evenements: Iterable[Mapping[str, Any]] = (),
 ) -> Briefing:
-    """Lit Succès et compose.
+    """Lit les tâches et habitudes de Diapason, et compose.
 
-    Ne lève jamais : un briefing muet vaut mieux qu'une trace d'exception.
+    Ne lève jamais : un briefing qui dit pourquoi il manque vaut mieux qu'une
+    trace d'exception.
     """
     jour = jour or date.today()
     if store is None:
+        from diapason.vie.store import VieError
         from diapason.vie.workspace import VieWorkspaceStore
 
-        store = VieWorkspaceStore()
+        # 25/09/2026 : le magasin était construit hors de tout try. Entre la
+        # pose du code et le kickstart du serveur (seul à migrer succes.db),
+        # la commande de 7 h finissait sur une trace BaseVieNonMigree, sans
+        # briefing ni ligne dans briefings.md. On dit la raison à la place ;
+        # rien_a_signaler=False, pour que --silencieux ne la taise pas.
+        try:
+            store = VieWorkspaceStore()
+        except VieError as exc:
+            logger.warning("briefing : données indisponibles : %s", exc)
+            return Briefing(
+                titre="Briefing indisponible",
+                corps=f"Briefing indisponible : {exc}",
+                rien_a_signaler=False,
+            )
     try:
         du_jour = store.list_tasks(scheduled_date=jour.isoformat())
     except Exception:  # noqa: BLE001

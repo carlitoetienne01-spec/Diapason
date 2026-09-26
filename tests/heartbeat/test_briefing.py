@@ -148,3 +148,64 @@ class TestSections:
 
     def test_sans_prenom_la_salutation_reste_correcte(self):
         assert composer(jour=JOUR).corps.startswith("Bonjour. Nous sommes")
+
+
+class TestLaBaseNonMigree:
+    """Plan 1b, étape 6 : seul ``diapason serve`` migre succes.db.
+
+    Le 25/09/2026, ``diapason heartbeat briefing`` (launchd, 7 h) construisait
+    son magasin HORS de son premier try : entre la pose du code et le
+    kickstart du serveur, la commande finissait sur une trace
+    ``BaseVieNonMigree`` — ni briefing, ni ligne dans briefings.md — alors que
+    sa docstring promet « ne lève jamais »."""
+
+    @pytest.fixture
+    def base_heritee(self, tmp_path, monkeypatch):
+        import sqlite3
+        from contextlib import closing
+
+        with closing(sqlite3.connect(tmp_path / "succes.db")) as conn:
+            conn.execute("CREATE TABLE succes_tasks (id TEXT PRIMARY KEY)")
+            conn.commit()
+        monkeypatch.setenv("DIAPASON_HOME", str(tmp_path))
+        return tmp_path
+
+    def _tables(self, dossier):
+        import sqlite3
+        from contextlib import closing
+
+        with closing(sqlite3.connect(dossier / "succes.db")) as conn:
+            return sorted(
+                r[0]
+                for r in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                )
+            )
+
+    def test_le_briefing_dit_pourquoi_il_manque_au_lieu_de_lever(self, base_heritee):
+        from diapason.heartbeat.briefing import briefing_du_jour
+
+        b = briefing_du_jour(jour=JOUR)
+
+        assert "relance le serveur" in b.corps, b.corps
+        assert not b.rien_a_signaler, (
+            "une base illisible n'est pas une journée vide : --silencieux "
+            "ne doit pas la taire"
+        )
+        assert self._tables(base_heritee) == ["succes_tasks"], (
+            "le refus ne crée aucune table vie_* à côté"
+        )
+        assert not (base_heritee / "vie.db").exists(), "aucune vie.db ne naît"
+
+    def test_la_commande_journalise_et_sort_proprement(self, base_heritee):
+        from click.testing import CliRunner
+
+        from diapason.cli.heartbeat_cmd import heartbeat
+
+        sortie = CliRunner().invoke(
+            heartbeat, ["briefing", "--silencieux", "--sans-notification"]
+        )
+
+        assert sortie.exit_code == 0, (sortie.output, sortie.exception)
+        journal = (base_heritee / "briefings.md").read_text(encoding="utf-8")
+        assert "relance le serveur" in journal, "le journal garde la raison"
