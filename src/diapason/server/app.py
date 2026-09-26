@@ -494,6 +494,15 @@ def create_app(
             "https://tauri.localhost",
         ]
     )
+    # 26/09/2026 : le JSON de l'API partait brut — 365 834 octets pour la
+    # liste des tâches, relue par Tâches, Planificateur et Projets, à 10 Mbit/s
+    # au téléphone. Ajouté EN PREMIER, donc le plus intérieur : les
+    # BaseHTTPMiddleware ajoutés plus bas redécoupent toute réponse en flux,
+    # et vue d'au-dessus d'eux aucune ne serait plus « complète ».
+    from diapason.server.compression_api import CompressionDesReponses
+
+    app.add_middleware(CompressionDesReponses)
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=_origins,

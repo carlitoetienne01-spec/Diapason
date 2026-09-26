@@ -29,7 +29,9 @@ Trois règles, et elles tiennent ensemble :
    de 1,4 Mo en brotli 11 prendrait plus d'une seconde sur la boucle.
 
 Les réponses de l'API ne passent jamais par ici : ``/v1/*`` n'est ni monté
-ni rattrapé par ce module (voir ``passerelle_tailnet._ESPACES_D_API``).
+ni rattrapé par ce module (voir ``passerelle_tailnet._ESPACES_D_API``). Leur
+compression vit dans ``server/compression_api.py``, qui ne touche qu'au
+corps, jamais au cache.
 """
 
 from __future__ import annotations
