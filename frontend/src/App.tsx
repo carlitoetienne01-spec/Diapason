@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState, useCallback, useRef, type ReactElement } from 'react';
+import { Suspense, useEffect, useState, useCallback, useRef, type ReactElement } from 'react';
 import { estDansUneZoneDeSaisie, laissePasserLeRaccourci } from './lib/saisie';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router';
 import { Layout } from './components/Layout';
@@ -20,6 +20,8 @@ import { MeshHost } from './components/MeshHost';
 import { NavigationDuTelephone } from './components/NavigationDuTelephone';
 import { PartageDuTelephone } from './components/PartageDuTelephone';
 import { pagesAffichees } from './lib/pagesAffichees';
+import { pageParesseuse } from './lib/pageParesseuse';
+import { optionsDuNavigateur, planifierPrechargement } from './lib/prechargerPages';
 import { TalkToDiapasonHost } from './components/TalkToDiapasonHost';
 import { track, hashId } from './lib/analytics';
 import { demarrerSyncConversations } from './lib/convSync';
@@ -57,54 +59,47 @@ function sensDuRaccourci(e: KeyboardEvent): SensVoisine | null {
   return null;
 }
 
-const DashboardPage = lazy(() =>
-  import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })),
-);
-const SettingsPage = lazy(() =>
-  import('./pages/SettingsPage').then((module) => ({ default: module.SettingsPage })),
-);
-const GetStartedPage = lazy(() =>
-  import('./pages/GetStartedPage').then((module) => ({ default: module.GetStartedPage })),
-);
-const AgentsPage = lazy(() =>
-  import('./pages/AgentsPage').then((module) => ({ default: module.AgentsPage })),
-);
-const DataSourcesPage = lazy(() =>
-  import('./pages/DataSourcesPage').then((module) => ({ default: module.DataSourcesPage })),
-);
-const LogsPage = lazy(() =>
-  import('./pages/LogsPage').then((module) => ({ default: module.LogsPage })),
-);
-const ViePlannerPage = lazy(() =>
-  import('./pages/ViePlannerPage').then((module) => ({ default: module.ViePlannerPage })),
-);
-const VieDashboardPage = lazy(() =>
-  import('./pages/VieDashboardPage').then((module) => ({ default: module.VieDashboardPage })),
-);
-const VieTasksPage = lazy(() =>
-  import('./pages/VieTasksPage').then((module) => ({ default: module.VieTasksPage })),
-);
-const VieProjectsPage = lazy(() =>
-  import('./pages/VieProjectsPage').then((module) => ({ default: module.VieProjectsPage })),
-);
-const VieHabitsPage = lazy(() =>
-  import('./pages/VieHabitsPage').then((module) => ({ default: module.VieHabitsPage })),
-);
-const VieFinancesPage = lazy(() =>
-  import('./pages/VieFinancesPage').then((module) => ({ default: module.VieFinancesPage })),
-);
-const VieNotesPage = lazy(() =>
-  import('./pages/VieNotesPage').then((module) => ({ default: module.VieNotesPage })),
-);
-const VieYearReviewPage = lazy(() =>
-  import('./pages/VieYearReviewPage').then((module) => ({ default: module.VieYearReviewPage })),
-);
-const VieSyncPage = lazy(() =>
-  import('./pages/VieSyncPage').then((module) => ({ default: module.VieSyncPage })),
-);
-const DevicesPage = lazy(() =>
-  import('./pages/DevicesPage').then((module) => ({ default: module.DevicesPage })),
-);
+// 26/09/2026, chantier de la fluidité (lot 2) : chaque page sait se
+// précharger (lib/pageParesseuse.tsx) — voir `PAGES_A_PRECHARGER`.
+const DashboardPage = pageParesseuse(() => import('./pages/DashboardPage').then((m) => m.DashboardPage));
+const SettingsPage = pageParesseuse(() => import('./pages/SettingsPage').then((m) => m.SettingsPage));
+const GetStartedPage = pageParesseuse(() => import('./pages/GetStartedPage').then((m) => m.GetStartedPage));
+const AgentsPage = pageParesseuse(() => import('./pages/AgentsPage').then((m) => m.AgentsPage));
+const DataSourcesPage = pageParesseuse(() => import('./pages/DataSourcesPage').then((m) => m.DataSourcesPage));
+const LogsPage = pageParesseuse(() => import('./pages/LogsPage').then((m) => m.LogsPage));
+const ViePlannerPage = pageParesseuse(() => import('./pages/ViePlannerPage').then((m) => m.ViePlannerPage));
+const VieDashboardPage = pageParesseuse(() => import('./pages/VieDashboardPage').then((m) => m.VieDashboardPage));
+const VieTasksPage = pageParesseuse(() => import('./pages/VieTasksPage').then((m) => m.VieTasksPage));
+const VieProjectsPage = pageParesseuse(() => import('./pages/VieProjectsPage').then((m) => m.VieProjectsPage));
+const VieHabitsPage = pageParesseuse(() => import('./pages/VieHabitsPage').then((m) => m.VieHabitsPage));
+const VieFinancesPage = pageParesseuse(() => import('./pages/VieFinancesPage').then((m) => m.VieFinancesPage));
+const VieNotesPage = pageParesseuse(() => import('./pages/VieNotesPage').then((m) => m.VieNotesPage));
+const VieYearReviewPage = pageParesseuse(() => import('./pages/VieYearReviewPage').then((m) => m.VieYearReviewPage));
+const VieSyncPage = pageParesseuse(() => import('./pages/VieSyncPage').then((m) => m.VieSyncPage));
+const DevicesPage = pageParesseuse(() => import('./pages/DevicesPage').then((m) => m.DevicesPage));
+
+/**
+ * Au téléphone, les pages préchargées pendant les creux, dans l'ordre :
+ * les onglets (Tâches, Planificateur, Notes), puis ce que « Plus » ouvre.
+ * Au banc du 26/09/2026 (4G simulée, processeur ×4), la première visite
+ * des Tâches attendait 400 ms ses 12 morceaux avant de demander ses
+ * données. Toutes les pages y sont : aucune n'emporte Plotly, Mermaid ni
+ * Three, qui restent chargés à l'usage par les visuels du chat et la voix.
+ */
+const PAGES_A_PRECHARGER: readonly (() => Promise<unknown>)[] = [
+  VieTasksPage, ViePlannerPage, VieNotesPage,
+  VieProjectsPage, VieFinancesPage, VieHabitsPage, VieYearReviewPage, VieDashboardPage,
+  SettingsPage, DevicesPage, DashboardPage, VieSyncPage, AgentsPage, LogsPage,
+  DataSourcesPage, GetStartedPage,
+].map((page) => page.precharger);
+
+/**
+ * Après l'événement `load`, le temps que les lectures `/v1` du démarrage
+ * finissent : au banc, les neuf partent avec la Discussion et se terminent
+ * 280 ms après elle (1 461 → 1 735 ms, 4G simulée). Précharger avant, c'est
+ * leur voler le lien.
+ */
+const PRECHARGEMENT_APRES_LOAD_MS = 500;
 
 /**
  * Une page par entrée de `PAGES_VIE` : le `Record` refuse une page oubliée
@@ -274,6 +269,27 @@ export default function App() {
     const interval = setInterval(importOverlay, 5000);
     return () => clearInterval(interval);
   }, [importOverlay]);
+
+  // Au téléphone, les pages se préchargent pendant les creux, une fois
+  // l'ouverture passée (lib/prechargerPages.ts, 26/09/2026). Le Mac lit ses
+  // morceaux sur le disque : rien à y gagner, rien n'y change.
+  useEffect(() => {
+    if (!estMobile) return;
+    let prechargement: { annuler: () => void } | null = null;
+    let minuteur: number | undefined;
+    const lancer = () => {
+      minuteur = window.setTimeout(() => {
+        prechargement = planifierPrechargement(PAGES_A_PRECHARGER, optionsDuNavigateur());
+      }, PRECHARGEMENT_APRES_LOAD_MS);
+    };
+    if (document.readyState === 'complete') lancer();
+    else window.addEventListener('load', lancer, { once: true });
+    return () => {
+      window.removeEventListener('load', lancer);
+      window.clearTimeout(minuteur);
+      prechargement?.annuler();
+    };
+  }, []);
 
   // Fetch models on mount
   useEffect(() => {
