@@ -90,6 +90,14 @@ Les cinq règles valent telles quelles ; le téléphone en ajoute quatre.
    Système de la Discussion ne s'ouvre au premier lancement que là où il
    est une colonne (`lib/panneauSysteme.ts`). Un choix mémorisé reste un
    choix.
+10. **Une grille sans colonnes déclarées n'est pas bornée** — partout, pas seulement au téléphone (26/09/2026).
+    `grid gap-*` seul crée une colonne `auto`, qui prend la largeur
+    « contenu » de ses enfants : un titre en `truncate` (donc `nowrap`) ou
+    des cases carrées aussi hautes que leur contenu la font déborder, et
+    `min-w-0` sur l'enfant n'y change rien. Une grille qui empile des
+    blocs pleine largeur porte `grid-cols-[minmax(0,1fr)]`. Vu avec la
+    police d'affichage de l'Ardéchine : le Mois des Tâches à R=350 pour
+    320 px, les Notes à 819/334.
 
 Pour vérifier une page au téléphone sans téléphone, le banc injecte un faux
 canal `DiapasonNatif` avant le bundle (une page de la même origine qui
@@ -113,4 +121,4 @@ horizontal, 17 pages sur 17) : c'est le rendu du bundle, pas encore la
 vraie WKWebView non activante du mini-panneau, qui reste due pour les neuf.
 Le même jour, les mêmes pages ont été vues à 375 px avec le pont simulé
 (`diapason-mobile.md`, étape 5).
-Un module nouveau se conforme aux neuf règles dès sa naissance.
+Un module nouveau se conforme aux dix règles dès sa naissance.
