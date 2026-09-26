@@ -203,6 +203,23 @@ class TestJumelerSousLeModeLocal:
             )
         assert vu.get("url"), "la requête n'est jamais partie"
 
+    def test_une_adresse_du_nat_des_operateurs_reste_refusee(self, monkeypatch):
+        """26/09/2026 : 100.64.0.0/10 n'est le tailnet que si le noyau l'y
+        route. Sinon c'est le NAT d'un opérateur, et jumeler par là, c'est
+        jumeler par Internet."""
+        import pytest
+
+        from diapason.core.local_mode import LocalOnlyError
+        from diapason.mesh import join as module
+        from diapason.mesh import transport
+
+        monkeypatch.setattr("diapason.core.local_mode.local_only", lambda: True)
+        monkeypatch.setattr(
+            transport, "_source_address_for", lambda _ip: "192.168.0.104"
+        )
+        with pytest.raises(LocalOnlyError):
+            module._poster("http://100.100.1.1:8001/v1/mesh/pairings/redeem", {})
+
     def test_une_adresse_publique_reste_refusee(self, monkeypatch):
         """Jumeler par Internet est exactement ce que `local_only` doit
         empêcher — l'exemption ne va pas plus loin que le réseau local."""

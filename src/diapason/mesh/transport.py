@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import ipaddress
 import logging
+import socket
 from typing import Any, Mapping
 from urllib.parse import urlparse
 
@@ -68,14 +69,49 @@ class RemoteRefusal(TransportError):
 # were bound for the Internet. Tailscale's IPv6 range (fd7a:115c:a1e0::/48)
 # needs nothing: it sits inside fc00::/7, which Python already calls private.
 #
-# The same /10 is also carrier-grade NAT. That is acceptable here because
-# this is only HALF of the exemption: the device must also be TRUSTED, and
-# every command it receives is signed and addressed to it.
+# The same /10 is also carrier-grade NAT (RFC 6598), and an address alone
+# cannot tell the two apart. The kernel can: Tailscale installs a route for
+# each PEER through its own interface, so a packet to a tailnet peer leaves
+# from our own 100.64/10 address, and a packet to any other 100.x leaves
+# from the LAN address towards the provider. Seen on atelier, 26/09/2026:
+# the phone (100.74.116.36) is reached from 100.90.245.46, while
+# 100.100.1.1 leaves from 192.168.0.104 via en0. The first version of this
+# block accepted the whole /10, and join.py, which reads the same
+# function, let a pairing go out over a carrier's NAT under local_only.
+# What remains: a machine whose OWN interface sits in a carrier's /10 (no
+# router in between) would still pass.
 _TAILNET_V4 = ipaddress.ip_network("100.64.0.0/10")
+
+
+def _source_address_for(ip: ipaddress.IPv4Address) -> str | None:
+    """The local address the kernel would send from to reach *ip*.
+
+    A UDP ``connect`` only consults the routing table: no packet leaves.
+    None when there is no route at all.
+    """
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+            probe.connect((str(ip), 9))
+            return str(probe.getsockname()[0])
+    except OSError:
+        return None
+
+
+def _routed_through_tailnet(ip: ipaddress.IPv4Address) -> bool:
+    source = _source_address_for(ip)
+    if not source:
+        return False
+    try:
+        return ipaddress.ip_address(source) in _TAILNET_V4
+    except ValueError:
+        return False
 
 
 def address_is_private(address: str) -> bool:
     """True for loopback, RFC1918 and the tailnet — the user's own networks.
+
+    A 100.64.0.0/10 address counts only when the kernel routes it through
+    the tailnet interface; otherwise it is a carrier's NAT, i.e. elsewhere.
 
     A hostname we cannot resolve to a private literal is treated as public:
     a destination we cannot vouch for is not one we quietly trust.
@@ -97,7 +133,7 @@ def address_is_private(address: str) -> bool:
     except ValueError:
         return False
     if ip.version == 4 and ip in _TAILNET_V4:
-        return True
+        return _routed_through_tailnet(ip)
     return bool(ip.is_loopback or ip.is_private) and not ip.is_link_local
 
 
