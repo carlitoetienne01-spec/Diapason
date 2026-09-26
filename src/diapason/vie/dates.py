@@ -1,4 +1,4 @@
-"""Deterministic date resolution shared by the Succès API and DIA tools."""
+"""Deterministic date resolution shared by the vie API and DIA tools."""
 
 from __future__ import annotations
 

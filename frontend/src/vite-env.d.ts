@@ -13,6 +13,6 @@ interface ImportMeta {
 declare const __APP_VERSION__: string;
 
 // Injected by vite.config.ts: the package version followed by the build
-// instant, new on every build and every Vite start. The Succès client cache
+// instant, new on every build and every Vite start. The vie client cache (cacheVie.ts)
 // stamps its entries with it and discards what another build wrote.
 declare const __BUILD_STAMP__: string;

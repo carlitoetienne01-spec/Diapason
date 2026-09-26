@@ -1,4 +1,4 @@
-"""Transactional SQLite persistence for Succès.
+"""Transactional SQLite persistence for the vie domain.
 
 The schema is local-first but sync-ready: every mutation appends an immutable
 operation, deletes are tombstones, and updates use millisecond LWW clocks.
@@ -50,7 +50,7 @@ class VieError(ValueError):
 
 
 class VieNotFound(VieError):
-    """Requested Succès entity was not found."""
+    """Requested vie entity was not found."""
 
 
 class VieNoteConflict(VieError):

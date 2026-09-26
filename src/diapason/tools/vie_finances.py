@@ -1,4 +1,4 @@
-"""DIA tools for private Succès finances — read cashflow and log money."""
+"""DIA tools for private Diapason finances — read cashflow and log money."""
 
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ def _store() -> VieFinancesStore:
 
 @ToolRegistry.register("vie_finances")
 class VieFinancesTool(BaseTool):
-    """Inspect and record personal finances in the local Succès ledger."""
+    """Inspect and record personal finances in the local vie ledger."""
 
     tool_id = "vie_finances"
     is_local = True

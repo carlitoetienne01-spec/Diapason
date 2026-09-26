@@ -18,7 +18,7 @@ const smoothstep = (t: number) => t * t * (3 - 2 * t);
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 
 /**
- * The shared glass recipe, so the Succès button and the nav lens are cut from
+ * The shared glass recipe, so the Diapason group button and the nav lens are cut from
  * the same material. `lit` is the pressed/active variant.
  */
 export function glassSurface(lit: boolean): React.CSSProperties {

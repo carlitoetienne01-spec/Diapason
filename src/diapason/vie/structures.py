@@ -1,4 +1,4 @@
-"""Les cinq formes qu'un projet Succès peut prendre, et leurs règles.
+"""Les cinq formes qu'un projet peut prendre, et leurs règles.
 
 Un projet n'est pas toujours une liste. Selon la forme choisie, les mêmes
 tâches se pensent autrement :

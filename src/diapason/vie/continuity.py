@@ -1,4 +1,4 @@
-"""Recurring plans, quotes and year review for the native Succès domain.
+"""Recurring plans, quotes and year review for the vie domain.
 
 This module translates the remaining Life OS business rules into Diapason's
 existing SQLite/operation-log architecture.  It deliberately stays local;
@@ -87,7 +87,7 @@ def _timestamp_iso(value: int) -> str:
 
 
 class VieContinuityStore(VieWorkspaceStore):
-    """Succès store completed with recurrence and retrospective services."""
+    """Vie store completed with recurrence and retrospective services."""
 
     def __init__(self, db_path: str | Path | None = None) -> None:
         super().__init__(db_path)

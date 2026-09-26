@@ -1,4 +1,4 @@
-/** Local UI preferences for Succès (view modes, collapsed trees). */
+/** Local UI preferences for the vie pages (view modes, collapsed trees). */
 
 import { normaliserEchelle } from './echelleTexte';
 import { TAILLE_PAGE_DEFAUT, bornerPage, estTaillePage, type TaillePage } from './pagination';

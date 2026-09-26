@@ -1,4 +1,4 @@
-"""Closed, typed Succès task tools available to DIA."""
+"""Closed, typed vie task tools available to DIA."""
 
 from __future__ import annotations
 

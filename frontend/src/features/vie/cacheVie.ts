@@ -1,5 +1,5 @@
 /**
- * Le cache client des pages Succès — « montrer la dernière réponse du
+ * Le cache client des pages du domaine vie — « montrer la dernière réponse du
  * serveur, puis relire derrière » (stale-while-revalidate).
  *
  * Carlito, 18 sept. 2026 : « les tâches prennent beaucoup de temps pour se

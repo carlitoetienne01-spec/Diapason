@@ -1,4 +1,4 @@
-"""Les routes des piles de photos d'un projet Succès.
+"""Les routes des piles de photos d'un projet (domaine vie).
 
 Les corps voyagent en JSON base64, jamais en multipart : la fenêtre Tauri
 (WKWebView) échoue sur un `Blob` ou un `ArrayBuffer` avec un « Load failed »
@@ -82,7 +82,7 @@ class ExportBody(BaseModel):
 
 
 def register_photos_routes(router: APIRouter, *, get_store, domain_error) -> None:
-    """Poser les routes des photos sur le routeur de Succès."""
+    """Poser les routes des photos sur le routeur de vie."""
 
     def _photos() -> ViePhotosStore:
         store = get_store()

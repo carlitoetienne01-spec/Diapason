@@ -1,4 +1,4 @@
-"""DIA tools for Succès recurrences, quotes and retrospective insights."""
+"""DIA tools for vie recurrences, quotes and retrospective insights."""
 
 from __future__ import annotations
 

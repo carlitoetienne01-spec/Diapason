@@ -2,10 +2,10 @@
 
 The registry answers the three questions the domain cannot (spec §5): which
 devices exist, what each one is, and whether it may still be listened to.
-Succès remains the single source of truth for tasks and notes — nothing
+The vie domain remains the single source of truth for tasks and notes — nothing
 here duplicates business data.
 
-Pairing mirrors the mechanism Succès already proved in production: a
+Pairing mirrors the mechanism vie sync (ex-Succès) already proved in production: a
 one-time invitation token, hashed at rest, short TTL, redeemed exactly once.
 What the mesh adds is the exchange of PUBLIC KEYS, which is what later lets
 a command be verified rather than merely accepted.
@@ -42,7 +42,7 @@ class MeshError(RuntimeError):
     """A mesh operation the user must see explained, in French."""
 
 
-PAIRING_TTL_MS = 10 * 60 * 1000  # ten minutes, as Succès already uses
+PAIRING_TTL_MS = 10 * 60 * 1000  # ten minutes, as vie sync already uses
 
 TRUST_UNTRUSTED = "UNTRUSTED"
 TRUST_PENDING = "PENDING"
@@ -88,7 +88,7 @@ def now_ms() -> int:
 
 
 def _token_hash(token: str) -> str:
-    """Tokens live hashed, exactly as Succès stores its pairing secrets."""
+    """Tokens live hashed, exactly as vie sync stores its pairing secrets."""
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 

@@ -9,10 +9,10 @@ import type {
 } from './types';
 
 /**
- * Same wrapper as Succès, with one deliberate difference: network failures
+ * Same wrapper as the vie client (`features/vie/api.ts`), with one deliberate difference: network failures
  * are retried only for reads.
  *
- * The Succès version retries any request four times, which is right for
+ * The vie version retries any request four times, which is right for
  * idempotent CRUD and wrong here — a dropped response on POST /pairings
  * would mint up to four live invitations, each of which lets a device in.
  * A retry that can hand out extra keys is not a retry.

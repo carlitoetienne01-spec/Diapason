@@ -1,4 +1,4 @@
-"""Projects, habits and notes for the native Succès workspace.
+"""Projects, habits and notes for the vie workspace.
 
 The phase-two entities use the same local-first operation log as tasks.  They
 stay on the Mac, keep tombstones for later replication, and materialize data

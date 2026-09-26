@@ -1,4 +1,4 @@
-"""HTTP routes for the Succès Finances module."""
+"""HTTP routes for the vie Finances module."""
 
 from __future__ import annotations
 

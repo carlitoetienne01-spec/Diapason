@@ -1,4 +1,4 @@
-"""DIA tools for private Succès projects, habits and notes."""
+"""DIA tools for private Diapason projects, habits and notes."""
 
 from __future__ import annotations
 

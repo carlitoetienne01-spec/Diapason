@@ -1,7 +1,7 @@
-"""Personal finances for the native Succès domain — local-first CAD budgeting.
+"""Personal finances for the vie domain — local-first CAD budgeting.
 
 Accounts, categories, transactions, subscriptions, budgets and savings goals
-live beside habits/notes in succes.db. Money is stored as integer cents.
+live beside habits/notes in vie.db. Money is stored as integer cents.
 Remote sync is wired later; mutations still go through the operation log.
 """
 

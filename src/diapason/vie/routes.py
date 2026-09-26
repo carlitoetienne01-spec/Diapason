@@ -1,4 +1,4 @@
-"""Authenticated REST API for the native Succès module."""
+"""Authenticated REST API for the vie domain."""
 
 from __future__ import annotations
 

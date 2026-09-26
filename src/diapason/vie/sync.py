@@ -1,4 +1,4 @@
-"""Secure, local-first replication for the native Succès workspace.
+"""Secure, local-first replication for the vie workspace.
 
 The transport is deliberately separate from the data model: the Mac keeps
 working offline, every mutation remains in the immutable operation log, and a

@@ -1,4 +1,4 @@
-"""HTTPS relay helpers for Succès multi-device sync.
+"""HTTPS relay helpers for vie multi-device sync.
 
 The Mac stays the source of truth. A guest device (another Diapason instance)
 talks to a user-chosen base URL that reaches the host — LAN, Tailscale,

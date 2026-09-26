@@ -1,4 +1,4 @@
-"""Les piles de photos d'un projet Succès.
+"""Les piles de photos d'un projet (domaine vie).
 
 Une pile est une catégorie (« Python », « Ottawa ») ; une photo appartient à
 une pile, porte une légende et peut pointer vers une tâche du projet. Les
