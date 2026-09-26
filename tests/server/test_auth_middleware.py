@@ -89,6 +89,14 @@ def _make_app(
     async def conversations():
         return {"conversations": [], "deleted": []}
 
+    @app.get("/v1/approvals/pending")
+    async def approvals_pending():
+        return {"actions": [], "count": 0}
+
+    @app.post("/v1/approvals/{action_id}/approve")
+    async def approve(action_id: str):
+        return {"status": "approved", "id": action_id}
+
     return app
 
 
@@ -269,6 +277,32 @@ class TestAuthMiddleware:
         assert client.get("/v1/conversations").status_code == 401, (
             "sans clé, le mur d'authentification doit rester fermé"
         )
+
+    def test_la_cloche_sondee_chaque_seconde_ne_vide_pas_le_seau(self):
+        """Phase 5 du plan mobile (26/09/2026) : la cloche relit la liste
+        chaque seconde tant qu'une demande attend — 60 par minute, le seau
+        commun entier. Au banc d'émulateur, la notification touchée ouvrait
+        la cloche sur un 429. La lecture n'est jamais limitée, et jamais
+        sans la clé ; la décision, elle, garde le seau."""
+        client = TestClient(
+            _make_app("oj_sk_test123", requests_per_minute=10, burst_size=10)
+        )
+        headers = {"Authorization": "Bearer oj_sk_test123"}
+        codes = [
+            client.get("/v1/approvals/pending", headers=headers).status_code
+            for _ in range(60)
+        ]
+        assert codes.count(429) == 0, (
+            f"{codes.count(429)} réponses 429 sur la liste des approbations"
+        )
+        assert client.get("/v1/approvals/pending").status_code == 401, (
+            "sans clé, le mur d'authentification doit rester fermé"
+        )
+        decisions = [
+            client.post("/v1/approvals/a1/approve", headers=headers).status_code
+            for _ in range(60)
+        ]
+        assert 429 in decisions, "approuver doit rester limité"
 
     @pytest.mark.parametrize("prefixe", PREFIXES_VIE)
     def test_vie_sync_pair_and_exchange_skip_api_key(self, client, prefixe):
