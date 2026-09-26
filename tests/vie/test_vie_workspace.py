@@ -50,7 +50,7 @@ def test_habit_logs_keep_false_values_and_compute_streak(tmp_path) -> None:
     assert reopened["done"] is False
     with sqlite3.connect(store.db_path) as conn:
         value = conn.execute(
-            "SELECT done FROM succes_habit_logs WHERE habit_id=? AND log_date=?",
+            "SELECT done FROM vie_habit_logs WHERE habit_id=? AND log_date=?",
             (habit["id"], "2026-08-14"),
         ).fetchone()[0]
     assert value == 0
@@ -362,7 +362,7 @@ def test_une_base_ancienne_est_remplie_a_l_ouverture(tmp_path) -> None:
     conn = sqlite3.connect(chemin)
     conn.executescript(
         """
-        CREATE TABLE succes_notes (
+        CREATE TABLE vie_notes (
             id TEXT PRIMARY KEY,
             title TEXT NOT NULL,
             content TEXT NOT NULL DEFAULT '',
@@ -385,7 +385,7 @@ def test_une_base_ancienne_est_remplie_a_l_ouverture(tmp_path) -> None:
         ("n-reading", "reading"),
     ):
         conn.execute(
-            """INSERT INTO succes_notes
+            """INSERT INTO vie_notes
                (id,title,content,created_at,updated_at,updated_at_ms,page_format)
                VALUES (?,?,'',?,?,?,?)""",
             (note_id, note_id, "2026-08-01", "2026-08-01", 1, page_format),
@@ -405,7 +405,7 @@ def test_une_base_ancienne_est_remplie_a_l_ouverture(tmp_path) -> None:
     verif = sqlite3.connect(chemin)
     ligne = verif.execute(
         "SELECT page_size,page_orientation,page_margins"
-        " FROM succes_notes WHERE id='n-narrow'"
+        " FROM vie_notes WHERE id='n-narrow'"
     ).fetchone()
     verif.close()
     assert ligne == ("executive", "portrait", "moderees"), (
@@ -481,7 +481,7 @@ class TestLeMarqueurDeLecture:
         chemin = tmp_path / "notes.db"
         VieWorkspaceStore(chemin).create_note({"title": "Écrite avant"})
         with sqlite3.connect(chemin) as conn:
-            conn.execute("ALTER TABLE succes_notes DROP COLUMN reading_mark")
+            conn.execute("ALTER TABLE vie_notes DROP COLUMN reading_mark")
 
         store = VieWorkspaceStore(chemin)
         notes = store.list_notes()
@@ -550,7 +550,7 @@ class TestLeCarnetDeTache:
         chemin = tmp_path / "succes.db"
         VieStore(chemin).create_task({"title": "Écrite avant le carnet"})
         with sqlite3.connect(chemin) as conn:
-            conn.execute("ALTER TABLE succes_tasks DROP COLUMN journal")
+            conn.execute("ALTER TABLE vie_tasks DROP COLUMN journal")
 
         store = VieStore(chemin)
         taches = store.list_tasks()

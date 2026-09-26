@@ -1,10 +1,16 @@
 """succes.db devient vie.db — sans ses photos, rien n'aurait tenu.
 
-25/09/2026, étape 5 du plan de la phase 1b (docs/development/
-diapason-mobile.md). Chaque test tourne dans un dossier de données
+25/09/2026, étapes 5 et 6 du plan de la phase 1b (docs/development/
+diapason-mobile.md) : le fichier, les photos, puis les 26 tables succes_*
+qui deviennent vie_*. Chaque test tourne dans un dossier de données
 temporaire : la vraie base de Carlito (311 Mo, 62 photos) ne se touche
 qu'au redémarrage du serveur, jamais depuis un test (voir la garde de
 tests/conftest.py).
+
+Une base « héritée » est fabriquée par le code d'aujourd'hui puis
+vieillie (tables et index rendus à leurs noms succes_*) ;
+``schema_succes_avant_vie.sql``, dumpé du code d'avant, prouve que la
+fabrique rend exactement le schéma que ce code écrivait.
 """
 
 from __future__ import annotations
@@ -29,11 +35,14 @@ from diapason.vie.emplacement import (
     DOSSIER_PHOTOS_HERITE,
     NOM_BASE,
     NOM_BASE_HERITE,
+    BaseVieNonMigree,
     DeuxBasesVie,
     chemin_base_vie,
     migrer_base_vie,
 )
+from diapason.vie.store import VERSION_SCHEMA
 from diapason.vie.sync import VieSyncStore
+from diapason.vie.workspace import VieWorkspaceStore
 
 JPEG = b"\xff\xd8\xff\xe0" + b"\x00" * 64 + b"\xff\xd9"
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
@@ -43,20 +52,80 @@ def _b64(data: bytes) -> str:
     return base64.b64encode(data).decode()
 
 
+SCHEMA_AVANT = Path(__file__).with_name("schema_succes_avant_vie.sql")
+
+
+def _tables(conn: sqlite3.Connection) -> list[str]:
+    return [
+        row[0]
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' "
+            "AND name NOT LIKE 'sqlite%' ORDER BY name"
+        )
+    ]
+
+
 def _comptes(chemin: Path) -> dict[str, int]:
+    """Lignes par table, sous le nom SANS préfixe : succes_tasks et vie_tasks
+    se comparent comme « tasks »."""
     with closing(sqlite3.connect(chemin)) as conn:
         return {
-            table: conn.execute(f"SELECT count(*) FROM {table}").fetchone()[0]  # noqa: S608
-            for table in ("succes_tasks", "succes_notes", "succes_photos")
+            table.split("_", 1)[1]: conn.execute(
+                f"SELECT count(*) FROM {table}"  # noqa: S608 - nom tiré de sqlite_master
+            ).fetchone()[0]
+            for table in _tables(conn)
         }
 
 
+def _schema(conn: sqlite3.Connection) -> set[tuple[str, str, str, str]]:
+    """sqlite_master sans ses guillemets ni ses blancs, pour comparer."""
+    return {
+        (
+            genre,
+            nom,
+            table,
+            " ".join((sql or "").replace('"', "").split()),
+        )
+        for genre, nom, table, sql in conn.execute(
+            "SELECT type, name, tbl_name, sql FROM sqlite_master "
+            "WHERE name != 'sqlite_sequence'"
+        )
+    }
+
+
+def vieillir(chemin: Path) -> None:
+    """Rend à une base d'aujourd'hui les noms du code d'avant l'étape 6."""
+    with closing(sqlite3.connect(chemin)) as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        for table in _tables(conn):
+            if table.startswith("vie_"):
+                conn.execute(f'ALTER TABLE "{table}" RENAME TO "succes_{table[4:]}"')
+        for nom, sql in conn.execute(
+            "SELECT name, sql FROM sqlite_master WHERE type='index' "
+            "AND sql IS NOT NULL AND instr(name, 'vie_') > 0"
+        ).fetchall():
+            conn.execute(f'DROP INDEX "{nom}"')
+            ancien = nom.replace("vie_", "succes_", 1)
+            conn.execute(sql.replace(nom, ancien, 1))
+        # La dernière classe construite par le serveur (VieSyncStore) posait 4.
+        conn.execute("PRAGMA user_version = 4")
+        conn.execute("COMMIT")
+
+
 def _remplir(chemin: Path, *, taches: int = 3) -> VieSyncStore:
+    """Une base aux tables d'aujourd'hui (vie_*), quel que soit son nom."""
     magasin = VieSyncStore(chemin)
     for i in range(taches):
         magasin.create_task({"title": f"Tâche {i}", "date": "2026-09-25"})
     magasin.create_note({"title": "Note", "content": "texte"})
     return magasin
+
+
+def _remplir_heritee(chemin: Path, *, taches: int = 3) -> Path:
+    """Une base telle que le code d'avant le 25/09/2026 la laissait."""
+    _remplir(chemin, taches=taches)
+    vieillir(chemin)
+    return chemin
 
 
 def _fichiers(dossier: Path) -> list[str]:
@@ -74,7 +143,7 @@ class TestLaResolutionSansMigration:
     """Tout ouvrant sauf `diapason serve` : lire, jamais déplacer ni créer."""
 
     def test_seule_succes_db_est_rendue_et_rien_n_est_cree(self, donnees):
-        _remplir(donnees / NOM_BASE_HERITE)
+        _remplir_heritee(donnees / NOM_BASE_HERITE)
         avant = _fichiers(donnees)
         chemin = chemin_base_vie(donnees, migrer=False)
         assert chemin == donnees / NOM_BASE_HERITE, (
@@ -89,11 +158,12 @@ class TestLaResolutionSansMigration:
         assert not (donnees / NOM_BASE_HERITE).exists(), "aucune succes.db neuve"
         assert magasin.photos_dir == donnees / DOSSIER_PHOTOS
 
-    def test_un_magasin_par_defaut_ouvre_succes_db_non_migree(
+    def test_un_magasin_par_defaut_ouvre_succes_db_aux_tables_renommees(
         self, donnees, monkeypatch
     ):
-        """Le tick de 900 s avant le redémarrage du serveur : il lit l'ancienne
-        base au lieu de créer une vie.db vide à côté de la pleine."""
+        """Le tick de 900 s, sur une succes.db dont les tables sont déjà
+        vie_* (le serveur n'a pas pu la déplacer) : il la lit au lieu de
+        créer une vie.db vide à côté de la pleine."""
         _remplir(donnees / NOM_BASE_HERITE, taches=2)
         monkeypatch.setenv("DIAPASON_HOME", str(donnees))
         magasin = VieSyncStore()
@@ -105,7 +175,7 @@ class TestLaResolutionSansMigration:
 
 class TestLaMigration:
     def test_le_fichier_change_de_nom_et_garde_ses_comptes(self, donnees):
-        _remplir(donnees / NOM_BASE_HERITE, taches=5)
+        _remplir_heritee(donnees / NOM_BASE_HERITE, taches=5)
         avant = _comptes(donnees / NOM_BASE_HERITE)
 
         resultat = migrer_base_vie(donnees)
@@ -126,8 +196,9 @@ class TestLaMigration:
         dans succes.db-wal. Renommer le seul fichier principal les perdait."""
         atelier = tmp_path / "atelier"
         atelier.mkdir()
-        _remplir(atelier / NOM_BASE_HERITE, taches=1)
+        _remplir_heritee(atelier / NOM_BASE_HERITE, taches=1)
         conn = sqlite3.connect(atelier / NOM_BASE_HERITE)
+        conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA wal_autocheckpoint=0")
         conn.execute(
             "UPDATE succes_tasks SET title='écrite dans le WAL' WHERE title='Tâche 0'"
@@ -144,11 +215,11 @@ class TestLaMigration:
         assert migrer_base_vie(donnees).etat == "migree"
 
         with closing(sqlite3.connect(donnees / NOM_BASE)) as lecture:
-            titres = [r[0] for r in lecture.execute("SELECT title FROM succes_tasks")]
+            titres = [r[0] for r in lecture.execute("SELECT title FROM vie_tasks")]
         assert titres == ["écrite dans le WAL"], f"transaction du WAL perdue : {titres}"
 
     def test_une_seconde_connexion_reporte_la_migration(self, donnees):
-        _remplir(donnees / NOM_BASE_HERITE)
+        _remplir_heritee(donnees / NOM_BASE_HERITE)
         avant = _comptes(donnees / NOM_BASE_HERITE)
         autre = sqlite3.connect(donnees / NOM_BASE_HERITE)
         autre.execute("PRAGMA journal_mode=WAL")
@@ -166,7 +237,7 @@ class TestLaMigration:
         ), "pas de sauvegarde pour une migration qui n'a pas eu lieu"
 
     def test_la_migration_est_idempotente(self, donnees):
-        _remplir(donnees / NOM_BASE_HERITE)
+        _remplir_heritee(donnees / NOM_BASE_HERITE)
         premiere = migrer_base_vie(donnees)
         apres = _comptes(donnees / NOM_BASE)
         seconde = migrer_base_vie(donnees)
@@ -181,7 +252,7 @@ class TestLaMigration:
 
     def test_deux_processus_ne_migrent_qu_une_fois(self, donnees):
         """Un kickstart pendant un démarrage à la main : deux `serve`."""
-        _remplir(donnees / NOM_BASE_HERITE)
+        _remplir_heritee(donnees / NOM_BASE_HERITE)
         contexte = multiprocessing.get_context("spawn")
         with contexte.Pool(2) as pool:
             etats = sorted(pool.map(_migrer_dans_un_processus, [str(donnees)] * 2))
@@ -207,7 +278,7 @@ class TestLesDeuxBases:
     def test_deux_bases_pleines_rendent_503_et_rien_ne_bouge(
         self, donnees, monkeypatch
     ):
-        _remplir(donnees / NOM_BASE_HERITE, taches=2)
+        _remplir_heritee(donnees / NOM_BASE_HERITE, taches=2)
         _remplir(donnees / NOM_BASE, taches=3)
         avant = _fichiers(donnees)
         comptes = (_comptes(donnees / NOM_BASE_HERITE), _comptes(donnees / NOM_BASE))
@@ -239,7 +310,7 @@ class TestLesDeuxBases:
         entière, et le modèle lit la raison."""
         from diapason.tools.vie_tasks import VieTasksTool
 
-        _remplir(donnees / NOM_BASE_HERITE, taches=1)
+        _remplir_heritee(donnees / NOM_BASE_HERITE, taches=1)
         _remplir(donnees / NOM_BASE, taches=1)
         monkeypatch.setenv("DIAPASON_HOME", str(donnees))
         outil = VieTasksTool()  # ne doit pas lever
@@ -250,7 +321,7 @@ class TestLesDeuxBases:
     def test_une_base_vide_recreee_part_dans_les_sauvegardes(self, donnees):
         """Le fantôme : une succes.db recréée vide par un vieux processus
         après la migration. Elle part dans backups/, la pleine reste seule."""
-        _remplir(donnees / NOM_BASE_HERITE, taches=4)
+        _remplir_heritee(donnees / NOM_BASE_HERITE, taches=4)
         assert migrer_base_vie(donnees).etat == "migree"
         VieSyncStore(donnees / NOM_BASE_HERITE)  # recréée vide
         avant = _comptes(donnees / NOM_BASE)
@@ -284,12 +355,13 @@ class TestLesPhotos:
         # Les 62 photos du 25/09/2026 : chemins ABSOLUS, comme avant ce jour.
         with closing(sqlite3.connect(donnees / NOM_BASE_HERITE)) as conn, conn:
             for ligne in conn.execute(
-                "SELECT id, file_path, thumb_path FROM succes_photos"
+                "SELECT id, file_path, thumb_path FROM vie_photos"
             ).fetchall():
                 conn.execute(
-                    "UPDATE succes_photos SET file_path=?, thumb_path=? WHERE id=?",
+                    "UPDATE vie_photos SET file_path=?, thumb_path=? WHERE id=?",
                     (str(donnees / ligne[1]), str(donnees / ligne[2]), ligne[0]),
                 )
+        vieillir(donnees / NOM_BASE_HERITE)
         return magasin, ids
 
     def test_trois_photos_a_chemins_absolus_se_lisent_apres_migration(self, donnees):
@@ -312,7 +384,7 @@ class TestLesPhotos:
         with closing(sqlite3.connect(donnees / NOM_BASE)) as conn:
             chemins = [
                 c
-                for r in conn.execute("SELECT file_path, thumb_path FROM succes_photos")
+                for r in conn.execute("SELECT file_path, thumb_path FROM vie_photos")
                 for c in r
             ]
         assert all(c.startswith(f"{DOSSIER_PHOTOS}/") for c in chemins), chemins
@@ -327,7 +399,7 @@ class TestLesPhotos:
         )
         with closing(sqlite3.connect(donnees / NOM_BASE)) as conn:
             fichier = conn.execute(
-                "SELECT file_path FROM succes_photos WHERE id=?", (photo["id"],)
+                "SELECT file_path FROM vie_photos WHERE id=?", (photo["id"],)
             ).fetchone()[0]
         assert fichier == f"{DOSSIER_PHOTOS}/{projet['id']}/{photo['id']}.png"
 
@@ -356,6 +428,280 @@ class TestLesPhotos:
         suite = emplacement.migrer_base_vie(donnees)
         assert suite.photos == 3, suite
         assert magasin.photo_content(ids[0])["dataBase64"]
+
+
+def _base_riche(chemin: Path) -> None:
+    """Une ligne dans chacune des tables qu'un usage ordinaire remplit
+    (25 sur 26 : succes_settings n'est écrite par aucun chemin du code)."""
+    magasin = _remplir(chemin, taches=4)
+    projet = magasin.create_project({"name": "Réseau", "structure": "network"})
+    a = magasin.create_task({"title": "A", "projectId": projet["id"]})
+    b = magasin.create_task({"title": "B", "projectId": projet["id"]})
+    magasin.add_subtask(a["id"], "sous-tâche")
+    magasin.create_task_edge(projet["id"], a["id"], b["id"])
+    magasin.delete_task(magasin.create_task({"title": "Pierre tombale"})["id"])
+    magasin.create_template(
+        {
+            "id": "sport",
+            "title": "Sport",
+            "frequency": "weekly",
+            "weeklyDays": [1, 3],
+            "startDate": "2026-08-01",
+            "endDate": "2026-08-31",
+        }
+    )
+    habitude = magasin.create_habit(
+        {"name": "Lire", "frequency": "daily", "startDate": "2026-09-01"}
+    )
+    magasin.set_habit_done(habitude["id"], done=True, log_date="2026-09-20")
+    magasin.create_note({"title": "Classée", "content": "x", "category": "Idées"})
+    magasin.order_note_categories(["Idées"])
+    magasin.create_quote({"id": "q", "text": "Avance"})
+    compte = magasin.create_account({"name": "Chèques", "type": "checking"})
+    magasin.create_transaction(
+        {
+            "accountId": compte["id"],
+            "type": "expense",
+            "amount": "12",
+            "date": "2026-09-20",
+        }
+    )
+    magasin.create_subscription(
+        {"name": "Abo", "amount": "9", "cadence": "monthly", "nextDate": "2026-10-01"}
+    )
+    magasin.upsert_budget({"scope": "global", "limit": "500", "yearMonth": "2026-09"})
+    magasin.create_goal({"name": "Épargne", "target": "1000"})
+    pile = magasin.create_photo_pile(projet["id"], "Pile")
+    magasin.add_photo(
+        pile["id"],
+        {"fileName": "a.png", "dataBase64": _b64(PNG), "thumbBase64": _b64(JPEG)},
+    )
+    magasin.import_legacy_snapshot(
+        {"tasks": [{"id": "legacy1", "title": "Ancienne", "date": "2026-09-01"}]}
+    )
+    invitation = magasin.create_pairing("Téléphone")
+    pair = magasin.redeem_pairing(invitation["pairingToken"])
+    operation = {
+        "opId": "op-r1",
+        "deviceId": "phone-a",
+        "entity": "tasks",
+        "entityId": "task_r1",
+        "timestampMs": 1_700_000_000_000,
+    }
+    magasin.apply_remote_operations(
+        pair["peerId"],
+        [{**operation, "kind": "upsert", "payload": {"id": "task_r1", "title": "D"}}],
+    )
+    magasin.apply_remote_operations(
+        pair["peerId"],
+        [
+            {
+                **operation,
+                "opId": "op-r2",
+                "kind": "delete",
+                "timestampMs": 1_700_000_000_500,
+                "payload": {"id": "task_r1"},
+            }
+        ],
+    )
+
+
+def _sequence(chemin: Path) -> list[tuple[str, int]]:
+    with closing(sqlite3.connect(chemin)) as conn:
+        return [
+            (nom.split("_", 1)[1], valeur)
+            for nom, valeur in conn.execute("SELECT name, seq FROM sqlite_sequence")
+        ]
+
+
+class TestLeRenommageDesTables:
+    """Étape 6 : succes_* → vie_*, première migration de schéma du projet.
+
+    Le défaut évité : une requête oubliée sur un chemin rare (pierres
+    tombales, imports) ne lève « no such table » que des semaines plus tard ;
+    et un tick qui crée des tables vie_* vides à côté des pleines fait
+    trouver à la migration une vie_tasks vide — les données semblent perdues.
+    """
+
+    def test_la_base_fabriquee_a_le_schema_du_code_d_avant(self, donnees):
+        """Sans ce témoin, une fabrique fausse ferait passer une migration qui
+        ne sait pas traiter la vraie base."""
+        chemin = _remplir_heritee(donnees / NOM_BASE_HERITE)
+        temoin = sqlite3.connect(":memory:")
+        temoin.executescript(SCHEMA_AVANT.read_text(encoding="utf-8"))
+        with closing(sqlite3.connect(chemin)) as conn:
+            fabrique = _schema(conn)
+        assert fabrique == _schema(temoin), (
+            "la base vieillie doit porter exactement le schéma du commit 7eecc67 : "
+            f"{sorted(fabrique ^ _schema(temoin))[:4]}"
+        )
+        assert len([t for t in fabrique if t[0] == "table"]) == 26, "26 tables"
+
+    def test_les_comptes_par_table_sont_identiques_avant_et_apres(self, donnees):
+        chemin = donnees / NOM_BASE_HERITE
+        _base_riche(chemin)
+        vieillir(chemin)
+        avant, sequence = _comptes(chemin), _sequence(chemin)
+        assert len(avant) == 26 and sum(1 for n in avant.values() if n) == 25, avant
+
+        resultat = migrer_base_vie(donnees)
+
+        assert resultat.etat == "migree", resultat
+        assert _comptes(donnees / NOM_BASE) == avant, "mêmes lignes, table par table"
+        assert _sequence(donnees / NOM_BASE) == sequence, (
+            "le compteur AUTOINCREMENT de vie_operations doit suivre"
+        )
+        with closing(sqlite3.connect(donnees / NOM_BASE)) as conn:
+            assert _tables(conn) == sorted(f"vie_{t}" for t in avant), _tables(conn)
+            restes = conn.execute(
+                "SELECT name FROM sqlite_master WHERE instr(name, 'succes') > 0"
+            ).fetchall()
+            assert restes == [], f"aucun objet ne doit garder l'ancien nom : {restes}"
+            assert conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+            assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
+            assert conn.execute("PRAGMA user_version").fetchone()[0] == VERSION_SCHEMA
+
+    def test_le_schema_migre_est_celui_d_une_base_neuve(self, donnees, tmp_path):
+        """Un index resté sous l'ancien nom aurait été recréé en double par le
+        schéma neuf — sur vie_operations, 306 Mo des 311 de la vraie base."""
+        _base_riche(donnees / NOM_BASE_HERITE)
+        vieillir(donnees / NOM_BASE_HERITE)
+        migrer_base_vie(donnees)
+        VieSyncStore(donnees / NOM_BASE)  # rouvre : CREATE … IF NOT EXISTS
+        neuve = tmp_path / "neuve.db"
+        _base_riche(neuve)
+        with (
+            closing(sqlite3.connect(donnees / NOM_BASE)) as migree,
+            closing(sqlite3.connect(neuve)) as temoin,
+        ):
+            assert _schema(migree) == _schema(temoin), sorted(
+                _schema(migree) ^ _schema(temoin)
+            )[:4]
+            assert (
+                migree.execute("PRAGMA user_version").fetchone()
+                == temoin.execute("PRAGMA user_version").fetchone()
+                == (VERSION_SCHEMA,)
+            )
+
+    def test_une_sauvegarde_d_avant_restauree_se_migre_de_nouveau(self, donnees):
+        """La restauration qu'un mauvais jour demande : la copie d'avant,
+        remise en succes.db, repasse par la même migration."""
+        _base_riche(donnees / NOM_BASE_HERITE)
+        vieillir(donnees / NOM_BASE_HERITE)
+        avant = _comptes(donnees / NOM_BASE_HERITE)
+        assert migrer_base_vie(donnees).etat == "migree"
+        (sauvegarde,) = (donnees / "backups").glob("succes.db.avant-vie-*")
+        with closing(sqlite3.connect(sauvegarde)) as conn:
+            assert all(t.startswith("succes_") for t in _tables(conn)), (
+                "la sauvegarde est prise AVANT le renommage des tables"
+            )
+
+        (donnees / NOM_BASE).unlink()
+        shutil.copy2(sauvegarde, donnees / NOM_BASE_HERITE)
+        resultat = migrer_base_vie(donnees)
+
+        assert resultat.etat == "migree", resultat
+        assert _comptes(donnees / NOM_BASE) == avant, "mêmes comptes après restauration"
+        assert len(list((donnees / "backups").glob("succes.db.avant-vie-*"))) == 2, (
+            "la seconde migration ne doit pas écraser la première sauvegarde"
+        )
+
+    def test_une_sauvegarde_restauree_sous_le_nom_vie_db_se_migre(self, donnees):
+        """Le même jour, restaurée directement en vie.db : le fichier est
+        déjà à sa place, seules les tables se renomment — après leur propre
+        sauvegarde."""
+        _base_riche(donnees / NOM_BASE_HERITE)
+        vieillir(donnees / NOM_BASE_HERITE)
+        avant = _comptes(donnees / NOM_BASE_HERITE)
+        migrer_base_vie(donnees)
+        (sauvegarde,) = (donnees / "backups").glob("succes.db.avant-vie-*")
+        shutil.copy2(sauvegarde, donnees / NOM_BASE)
+
+        resultat = migrer_base_vie(donnees)
+
+        assert resultat.etat == "deja_faite", resultat
+        assert _comptes(donnees / NOM_BASE) == avant
+        with closing(sqlite3.connect(donnees / NOM_BASE)) as conn:
+            assert all(t.startswith("vie_") for t in _tables(conn)), _tables(conn)
+        copies = list((donnees / "backups").glob("vie.db.avant-tables-vie-*"))
+        assert len(copies) == 1, "les tables ne se renomment qu'après une copie"
+        assert _comptes(copies[0]) == avant
+
+    def test_un_tick_refuse_une_base_pas_encore_migree(self, donnees, monkeypatch):
+        """La règle : aucun ouvrant autre que le serveur ne crée de table
+        vie_* dans une base qui a encore des tables succes_*."""
+        chemin = _remplir_heritee(donnees / NOM_BASE_HERITE, taches=2)
+        with closing(sqlite3.connect(chemin)) as conn:
+            schema_avant = _schema(conn)
+        monkeypatch.setenv("DIAPASON_HOME", str(donnees))
+
+        for fabrique in (VieSyncStore, VieWorkspaceStore):
+            with pytest.raises(BaseVieNonMigree, match="relance le serveur"):
+                fabrique()
+
+        with closing(sqlite3.connect(chemin)) as conn:
+            assert _schema(conn) == schema_avant, "rien ne doit être créé à côté"
+        assert not (donnees / NOM_BASE).exists(), "aucune vie.db ne doit naître"
+        assert migrer_base_vie(donnees).etat == "migree", (
+            "le serveur, lui, trouve la base intacte et la migre"
+        )
+        assert len(VieSyncStore().list_tasks()) == 2
+
+    def test_les_routes_disent_503_tant_que_la_migration_est_reportee(
+        self, donnees, monkeypatch
+    ):
+        """Sans le 503, _domain_error en faisait un 409 : l'interface l'aurait
+        pris pour un conflit d'écriture."""
+        _remplir_heritee(donnees / NOM_BASE_HERITE)
+        monkeypatch.setenv("DIAPASON_HOME", str(donnees))
+        routes_vie.set_store_for_tests(None)
+        app = FastAPI()
+        routes_vie.monter(app)
+        try:
+            reponse = TestClient(app).get("/v1/vie/tasks")
+        finally:
+            routes_vie.set_store_for_tests(None)
+        assert reponse.status_code == 503, reponse.text
+        assert "pas encore migrée" in reponse.json()["detail"]
+
+    def test_une_panne_au_milieu_ne_renomme_rien(self, donnees, monkeypatch):
+        """Tout ou rien : une table renommée sans ses sœurs couperait les
+        jointures en deux."""
+        chemin = _remplir_heritee(donnees / NOM_BASE_HERITE)
+        avant = _comptes(chemin)
+        vrai = emplacement._nom_neuf
+
+        def panne(nom: str) -> str:
+            # Deux index sous le même nom neuf : le second CREATE INDEX échoue
+            # APRÈS que toutes les tables ont été renommées.
+            return "vie_index_en_double" if nom.endswith("_idx") else vrai(nom)
+
+        monkeypatch.setattr(emplacement, "_nom_neuf", panne)
+        resultat = migrer_base_vie(donnees)
+
+        assert resultat.etat == "reportee", resultat
+        assert "tables non renommées" in resultat.detail
+        assert not (donnees / NOM_BASE).exists(), "le fichier ne bouge pas non plus"
+        with closing(sqlite3.connect(chemin)) as conn:
+            assert all(t.startswith("succes_") for t in _tables(conn)), _tables(conn)
+        assert _comptes(chemin) == avant
+
+        monkeypatch.setattr(emplacement, "_nom_neuf", vrai)
+        assert migrer_base_vie(donnees).etat == "migree", "le démarrage suivant migre"
+        assert _comptes(donnees / NOM_BASE) == avant
+
+    def test_des_tables_des_deux_noms_ne_sont_pas_touchees(self, donnees):
+        """succes_tasks ET vie_tasks : choisir l'une perdrait l'autre."""
+        chemin = _remplir_heritee(donnees / NOM_BASE_HERITE)
+        with closing(sqlite3.connect(chemin)) as conn, conn:
+            conn.execute("CREATE TABLE vie_tasks (id TEXT PRIMARY KEY)")
+            schema_avant = _schema(conn)
+        resultat = migrer_base_vie(donnees)
+        assert resultat.etat == "reportee", resultat
+        assert "vie_tasks existe(nt) aussi" in resultat.detail, resultat.detail
+        assert not (donnees / NOM_BASE).exists(), "le fichier ne bouge pas"
+        with closing(sqlite3.connect(chemin)) as conn:
+            assert _schema(conn) == schema_avant, "rien ne doit être renommé"
 
 
 class TestLeServeur:
@@ -394,6 +740,8 @@ class TestLeServeur:
         trop_tot.assert_not_called()
 
     def test_le_magasin_construit_avant_est_jete(self, donnees, monkeypatch):
+        """Une succes.db aux tables déjà renommées (le déplacement avait été
+        reporté) : un magasin s'y construit, puis la migration la déplace."""
         from diapason.cli.serve import migrer_la_base_de_vie
 
         _remplir(donnees / NOM_BASE_HERITE)

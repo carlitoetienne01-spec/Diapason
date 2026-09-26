@@ -89,14 +89,14 @@ def test_le_seed_de_migration_garde_l_ordre_visible(tmp_path) -> None:
     conn = sqlite3.connect(chemin)
     conn.executescript(
         """
-        CREATE TABLE succes_projects (
+        CREATE TABLE vie_projects (
             id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT DEFAULT '',
             color TEXT DEFAULT '#000', icon TEXT DEFAULT '', start_date TEXT DEFAULT '',
             end_date TEXT DEFAULT '', created_date TEXT DEFAULT '',
             updated_at_ms INTEGER NOT NULL, deleted_at_ms INTEGER
         );
-        INSERT INTO succes_projects(id,name,updated_at_ms) VALUES ('a','Ancien',100);
-        INSERT INTO succes_projects(id,name,updated_at_ms) VALUES ('b','Recent',200);
+        INSERT INTO vie_projects(id,name,updated_at_ms) VALUES ('a','Ancien',100);
+        INSERT INTO vie_projects(id,name,updated_at_ms) VALUES ('b','Recent',200);
         """
     )
     conn.commit()

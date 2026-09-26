@@ -103,14 +103,14 @@ SYNC_ENTITIES = frozenset(
 )
 
 _SYNC_SCHEMA = """
-CREATE TABLE IF NOT EXISTS succes_sync_pairings (
+CREATE TABLE IF NOT EXISTS vie_sync_pairings (
     token_hash TEXT PRIMARY KEY,
     device_name TEXT NOT NULL,
     created_at_ms INTEGER NOT NULL,
     expires_at_ms INTEGER NOT NULL,
     redeemed_at_ms INTEGER
 );
-CREATE TABLE IF NOT EXISTS succes_sync_peers (
+CREATE TABLE IF NOT EXISTS vie_sync_peers (
     id TEXT PRIMARY KEY,
     device_name TEXT NOT NULL,
     token_hash TEXT NOT NULL UNIQUE,
@@ -120,9 +120,9 @@ CREATE TABLE IF NOT EXISTS succes_sync_peers (
     last_push_at_ms INTEGER,
     revoked_at_ms INTEGER
 );
-CREATE INDEX IF NOT EXISTS succes_sync_peers_active_idx
-    ON succes_sync_peers(revoked_at_ms, last_seen_at_ms);
-CREATE TABLE IF NOT EXISTS succes_sync_clocks (
+CREATE INDEX IF NOT EXISTS vie_sync_peers_active_idx
+    ON vie_sync_peers(revoked_at_ms, last_seen_at_ms);
+CREATE TABLE IF NOT EXISTS vie_sync_clocks (
     entity TEXT NOT NULL,
     entity_id TEXT NOT NULL,
     timestamp_ms INTEGER NOT NULL,
@@ -130,14 +130,13 @@ CREATE TABLE IF NOT EXISTS succes_sync_clocks (
     deleted INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY(entity, entity_id)
 );
-CREATE TABLE IF NOT EXISTS succes_sync_tombstones (
+CREATE TABLE IF NOT EXISTS vie_sync_tombstones (
     entity TEXT NOT NULL,
     entity_id TEXT NOT NULL,
     deleted_at_ms INTEGER NOT NULL,
     op_id TEXT NOT NULL,
     PRIMARY KEY(entity, entity_id)
 );
-PRAGMA user_version = 4;
 """
 
 
@@ -161,7 +160,7 @@ class VieSyncStore(ViePhotosStore):
             conn.executescript(_SYNC_SCHEMA)
             self._ensure_peer_columns(conn)
             conn.execute(
-                "INSERT OR IGNORE INTO succes_meta(key,value) "
+                "INSERT OR IGNORE INTO vie_meta(key,value) "
                 "VALUES('sync_clock_cursor','0')"
             )
             self._refresh_local_clocks(conn)
@@ -176,10 +175,10 @@ class VieSyncStore(ViePhotosStore):
         """
         columns = {
             row["name"]
-            for row in conn.execute("PRAGMA table_info(succes_sync_peers)").fetchall()
+            for row in conn.execute("PRAGMA table_info(vie_sync_peers)").fetchall()
         }
         if "device_id" not in columns:
-            conn.execute("ALTER TABLE succes_sync_peers ADD COLUMN device_id TEXT")
+            conn.execute("ALTER TABLE vie_sync_peers ADD COLUMN device_id TEXT")
 
     # Pairing and peer credentials -----------------------------------
 
@@ -195,12 +194,12 @@ class VieSyncStore(ViePhotosStore):
         expires = created + PAIRING_TTL_MS
         with self._transaction() as conn:
             conn.execute(
-                "DELETE FROM succes_sync_pairings WHERE expires_at_ms<? "
+                "DELETE FROM vie_sync_pairings WHERE expires_at_ms<? "
                 "OR redeemed_at_ms IS NOT NULL",
                 (created,),
             )
             conn.execute(
-                """INSERT INTO succes_sync_pairings
+                """INSERT INTO vie_sync_pairings
                    (token_hash,device_name,created_at_ms,expires_at_ms)
                    VALUES (?,?,?,?)""",
                 (_token_hash(token), clean_name, created, expires),
@@ -218,7 +217,7 @@ class VieSyncStore(ViePhotosStore):
         with self._connect() as conn:
             row = conn.execute(
                 """SELECT expires_at_ms,redeemed_at_ms
-                   FROM succes_sync_pairings WHERE token_hash=?""",
+                   FROM vie_sync_pairings WHERE token_hash=?""",
                 (_token_hash(token),),
             ).fetchone()
         return bool(
@@ -233,7 +232,7 @@ class VieSyncStore(ViePhotosStore):
         peer_id = f"peer_{secrets.token_hex(10)}"
         with self._transaction() as conn:
             pairing = conn.execute(
-                """SELECT * FROM succes_sync_pairings
+                """SELECT * FROM vie_sync_pairings
                    WHERE token_hash=? AND redeemed_at_ms IS NULL
                    AND expires_at_ms>=?""",
                 (_token_hash(token), timestamp),
@@ -243,11 +242,11 @@ class VieSyncStore(ViePhotosStore):
                     "Ce code d'appairage est invalide, expiré ou déjà utilisé."
                 )
             conn.execute(
-                "UPDATE succes_sync_pairings SET redeemed_at_ms=? WHERE token_hash=?",
+                "UPDATE vie_sync_pairings SET redeemed_at_ms=? WHERE token_hash=?",
                 (timestamp, _token_hash(token)),
             )
             conn.execute(
-                """INSERT INTO succes_sync_peers
+                """INSERT INTO vie_sync_peers
                    (id,device_name,token_hash,created_at_ms,last_seen_at_ms)
                    VALUES (?,?,?,?,?)""",
                 (
@@ -272,7 +271,7 @@ class VieSyncStore(ViePhotosStore):
             row = conn.execute(
                 """SELECT id,device_name,created_at_ms,last_seen_at_ms,
                           last_pull_cursor,last_push_at_ms
-                   FROM succes_sync_peers
+                   FROM vie_sync_peers
                    WHERE token_hash=? AND revoked_at_ms IS NULL""",
                 (_token_hash(token),),
             ).fetchone()
@@ -284,7 +283,7 @@ class VieSyncStore(ViePhotosStore):
     def revoke_peer(self, peer_id: str) -> bool:
         with self._transaction() as conn:
             result = conn.execute(
-                "UPDATE succes_sync_peers SET revoked_at_ms=? "
+                "UPDATE vie_sync_peers SET revoked_at_ms=? "
                 "WHERE id=? AND revoked_at_ms IS NULL",
                 (now_ms(), peer_id),
             )
@@ -295,7 +294,7 @@ class VieSyncStore(ViePhotosStore):
             rows = conn.execute(
                 """SELECT id,device_name,created_at_ms,last_seen_at_ms,
                           last_pull_cursor,last_push_at_ms
-                   FROM succes_sync_peers WHERE revoked_at_ms IS NULL
+                   FROM vie_sync_peers WHERE revoked_at_ms IS NULL
                    ORDER BY COALESCE(last_seen_at_ms,created_at_ms) DESC"""
             ).fetchall()
         return [
@@ -323,11 +322,11 @@ class VieSyncStore(ViePhotosStore):
 
     def _refresh_local_clocks(self, conn: sqlite3.Connection) -> None:
         row = conn.execute(
-            "SELECT value FROM succes_meta WHERE key='sync_clock_cursor'"
+            "SELECT value FROM vie_meta WHERE key='sync_clock_cursor'"
         ).fetchone()
         cursor = int(row["value"]) if row else 0
         operations = conn.execute(
-            "SELECT * FROM succes_operations WHERE seq>? ORDER BY seq", (cursor,)
+            "SELECT * FROM vie_operations WHERE seq>? ORDER BY seq", (cursor,)
         ).fetchall()
         for operation in operations:
             try:
@@ -353,7 +352,7 @@ class VieSyncStore(ViePhotosStore):
             )
         if operations:
             conn.execute(
-                "UPDATE succes_meta SET value=? WHERE key='sync_clock_cursor'",
+                "UPDATE vie_meta SET value=? WHERE key='sync_clock_cursor'",
                 (str(operations[-1]["seq"]),),
             )
 
@@ -367,13 +366,13 @@ class VieSyncStore(ViePhotosStore):
         deleted: bool,
     ) -> None:
         current = conn.execute(
-            "SELECT * FROM succes_sync_clocks WHERE entity=? AND entity_id=?",
+            "SELECT * FROM vie_sync_clocks WHERE entity=? AND entity_id=?",
             (entity, entity_id),
         ).fetchone()
         if not _clock_wins(timestamp_ms, op_id, current):
             return
         conn.execute(
-            """INSERT INTO succes_sync_clocks
+            """INSERT INTO vie_sync_clocks
                (entity,entity_id,timestamp_ms,op_id,deleted)
                VALUES (?,?,?,?,?) ON CONFLICT(entity,entity_id) DO UPDATE SET
                timestamp_ms=excluded.timestamp_ms,op_id=excluded.op_id,
@@ -398,7 +397,7 @@ class VieSyncStore(ViePhotosStore):
         timestamp = now_ms()
         with self._transaction() as conn:
             conn.execute(
-                """UPDATE succes_sync_peers SET last_seen_at_ms=?,
+                """UPDATE vie_sync_peers SET last_seen_at_ms=?,
                    last_pull_cursor=?,last_push_at_ms=? WHERE id=?
                    AND revoked_at_ms IS NULL""",
                 (timestamp, max(0, int(after)), timestamp, peer_id),
@@ -417,7 +416,7 @@ class VieSyncStore(ViePhotosStore):
         )
         with self._transaction() as conn:
             peer = conn.execute(
-                "SELECT 1 FROM succes_sync_peers WHERE id=? AND revoked_at_ms IS NULL",
+                "SELECT 1 FROM vie_sync_peers WHERE id=? AND revoked_at_ms IS NULL",
                 (peer_id,),
             ).fetchone()
             if peer is None:
@@ -431,7 +430,7 @@ class VieSyncStore(ViePhotosStore):
             authored = self._authored_device_id(conn, ordered)
             if bound is None and authored is not None:
                 conn.execute(
-                    "UPDATE succes_sync_peers SET device_id=? WHERE id=?",
+                    "UPDATE vie_sync_peers SET device_id=? WHERE id=?",
                     (authored, peer_id),
                 )
                 bound = authored
@@ -440,7 +439,7 @@ class VieSyncStore(ViePhotosStore):
                 result = self._apply_operation(conn, raw, expected_device_id=bound)
                 stats[result] += 1
             conn.execute(
-                "UPDATE succes_sync_peers SET last_seen_at_ms=? WHERE id=?",
+                "UPDATE vie_sync_peers SET last_seen_at_ms=? WHERE id=?",
                 (now_ms(), peer_id),
             )
         return stats
@@ -448,7 +447,7 @@ class VieSyncStore(ViePhotosStore):
     @staticmethod
     def _peer_device_id(conn: sqlite3.Connection, peer_id: str) -> str | None:
         row = conn.execute(
-            "SELECT device_id FROM succes_sync_peers WHERE id=?", (peer_id,)
+            "SELECT device_id FROM vie_sync_peers WHERE id=?", (peer_id,)
         ).fetchone()
         value = None if row is None else row["device_id"]
         return str(value) if value else None
@@ -471,7 +470,7 @@ class VieSyncStore(ViePhotosStore):
             if not op_id or not device_id:
                 continue
             known = conn.execute(
-                "SELECT 1 FROM succes_operations WHERE op_id=?", (op_id,)
+                "SELECT 1 FROM vie_operations WHERE op_id=?", (op_id,)
             ).fetchone()
             if known is None:
                 return device_id
@@ -497,19 +496,19 @@ class VieSyncStore(ViePhotosStore):
     def _meta_get(self, key: str) -> str | None:
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT value FROM succes_meta WHERE key=?", (key,)
+                "SELECT value FROM vie_meta WHERE key=?", (key,)
             ).fetchone()
         return None if row is None else str(row["value"])
 
     def _meta_set(self, conn: sqlite3.Connection, key: str, value: str) -> None:
         conn.execute(
-            "INSERT INTO succes_meta(key,value) VALUES(?,?) "
+            "INSERT INTO vie_meta(key,value) VALUES(?,?) "
             "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
             (key, value),
         )
 
     def _meta_delete(self, conn: sqlite3.Connection, key: str) -> None:
-        conn.execute("DELETE FROM succes_meta WHERE key=?", (key,))
+        conn.execute("DELETE FROM vie_meta WHERE key=?", (key,))
 
     def relay_url(self) -> str:
         return (self._meta_get(_META_RELAY_URL) or "").strip()
@@ -711,7 +710,7 @@ class VieSyncStore(ViePhotosStore):
         )
         existing = conn.execute(
             "SELECT device_id,entity,entity_id,kind,payload_json "
-            "FROM succes_operations WHERE op_id=?",
+            "FROM vie_operations WHERE op_id=?",
             (op_id,),
         ).fetchone()
         if existing is not None:
@@ -751,7 +750,7 @@ class VieSyncStore(ViePhotosStore):
             entity, entity_id, payload
         )
         current = conn.execute(
-            "SELECT * FROM succes_sync_clocks WHERE entity=? AND entity_id=?",
+            "SELECT * FROM vie_sync_clocks WHERE entity=? AND entity_id=?",
             (effective_entity, effective_id),
         ).fetchone()
         wins = _clock_wins(timestamp, op_id, current)
@@ -765,7 +764,7 @@ class VieSyncStore(ViePhotosStore):
                     conn, effective_entity, effective_id, payload, timestamp
                 )
                 conn.execute(
-                    "DELETE FROM succes_sync_tombstones WHERE entity=? AND entity_id=?",
+                    "DELETE FROM vie_sync_tombstones WHERE entity=? AND entity_id=?",
                     (effective_entity, effective_id),
                 )
             self._set_clock(
@@ -778,7 +777,7 @@ class VieSyncStore(ViePhotosStore):
             )
 
         conn.execute(
-            """INSERT INTO succes_operations
+            """INSERT INTO vie_operations
                (op_id,device_id,entity,entity_id,kind,request_json,payload_json,
                 timestamp_ms,created_at_ms) VALUES (?,?,?,?,?,?,?,?,?)""",
             (
@@ -806,18 +805,18 @@ class VieSyncStore(ViePhotosStore):
         op_id: str,
     ) -> None:
         tables = {
-            "tasks": "succes_tasks",
-            "projects": "succes_projects",
-            "habits": "succes_habits",
-            "notes": "succes_notes",
-            "todo_templates": "succes_task_templates",
-            "quotes": "succes_quotes",
-            "accounts": "succes_accounts",
-            "finance_categories": "succes_finance_categories",
-            "transactions": "succes_transactions",
-            "subscriptions": "succes_subscriptions",
-            "budgets": "succes_budgets",
-            "savings_goals": "succes_savings_goals",
+            "tasks": "vie_tasks",
+            "projects": "vie_projects",
+            "habits": "vie_habits",
+            "notes": "vie_notes",
+            "todo_templates": "vie_task_templates",
+            "quotes": "vie_quotes",
+            "accounts": "vie_accounts",
+            "finance_categories": "vie_finance_categories",
+            "transactions": "vie_transactions",
+            "subscriptions": "vie_subscriptions",
+            "budgets": "vie_budgets",
+            "savings_goals": "vie_savings_goals",
         }
         if entity == "task_edges":
             # Une arête n'a rien à restaurer : pas de pierre tombale, on efface.
@@ -825,8 +824,7 @@ class VieSyncStore(ViePhotosStore):
             de, _, vers = entity_id.partition("->")
             if de and vers:
                 conn.execute(
-                    "DELETE FROM succes_task_edges "
-                    "WHERE from_task_id=? AND to_task_id=?",
+                    "DELETE FROM vie_task_edges WHERE from_task_id=? AND to_task_id=?",
                     (de, vers),
                 )
             return
@@ -838,7 +836,7 @@ class VieSyncStore(ViePhotosStore):
             )
             if entity == "tasks":
                 conn.execute(
-                    "UPDATE succes_subtasks SET deleted_at_ms=?,updated_at_ms=? "
+                    "UPDATE vie_subtasks SET deleted_at_ms=?,updated_at_ms=? "
                     "WHERE task_id=? AND deleted_at_ms IS NULL",
                     (timestamp, timestamp, entity_id),
                 )
@@ -846,11 +844,11 @@ class VieSyncStore(ViePhotosStore):
             habit_id, separator, log_date = entity_id.rpartition("_")
             if separator:
                 conn.execute(
-                    "DELETE FROM succes_habit_logs WHERE habit_id=? AND log_date=?",
+                    "DELETE FROM vie_habit_logs WHERE habit_id=? AND log_date=?",
                     (habit_id, log_date),
                 )
         conn.execute(
-            """INSERT INTO succes_sync_tombstones
+            """INSERT INTO vie_sync_tombstones
                (entity,entity_id,deleted_at_ms,op_id) VALUES (?,?,?,?)
                ON CONFLICT(entity,entity_id) DO UPDATE SET
                deleted_at_ms=excluded.deleted_at_ms,op_id=excluded.op_id""",
@@ -906,7 +904,7 @@ class VieSyncStore(ViePhotosStore):
         estimate = data.get("estimateDays")
         if estimate is None:
             courante = conn.execute(
-                "SELECT estimate_days FROM succes_tasks WHERE id=?", (task_id,)
+                "SELECT estimate_days FROM vie_tasks WHERE id=?", (task_id,)
             ).fetchone()
             estimate = courante["estimate_days"] if courante is not None else 0
         try:
@@ -917,7 +915,7 @@ class VieSyncStore(ViePhotosStore):
             # rejeté brise la réplication (même règle que la cadence).
             estimate_days = 0
         conn.execute(
-            """INSERT INTO succes_tasks
+            """INSERT INTO vie_tasks
                (id,title,done,priority,scheduled_date,scheduled_time,project_id,
                 category,notes,emoji,template_id,group_id,order_index,created_date,
                 completed_date,postponed_count,updated_at_ms,deleted_at_ms,
@@ -962,7 +960,7 @@ class VieSyncStore(ViePhotosStore):
             ),
         )
         conn.execute(
-            "UPDATE succes_subtasks SET deleted_at_ms=?,updated_at_ms=? "
+            "UPDATE vie_subtasks SET deleted_at_ms=?,updated_at_ms=? "
             "WHERE task_id=? AND deleted_at_ms IS NULL",
             (ts, ts, task_id),
         )
@@ -992,7 +990,7 @@ class VieSyncStore(ViePhotosStore):
         if not de or not vers or de == vers:
             return
         conn.execute(
-            "INSERT OR REPLACE INTO succes_task_edges "
+            "INSERT OR REPLACE INTO vie_task_edges "
             "(project_id, from_task_id, to_task_id, updated_at_ms) VALUES (?,?,?,?)",
             (str(data.get("projectId") or "")[:300], de, vers, ts),
         )
@@ -1032,7 +1030,7 @@ class VieSyncStore(ViePhotosStore):
                     raw.get("children") if isinstance(raw.get("children"), list) else []
                 )
                 conn.execute(
-                    """INSERT INTO succes_subtasks
+                    """INSERT INTO vie_subtasks
                        (id,task_id,parent_id,title,done,is_group,order_index,
                         updated_at_ms,deleted_at_ms)
                        VALUES (?,?,?,?,?,?,?,?,NULL) ON CONFLICT(id) DO UPDATE SET
@@ -1081,7 +1079,7 @@ class VieSyncStore(ViePhotosStore):
         # défaut et ses tâches rangées n'importe où.
         config = normalize_structure_config(structure, data.get("structureConfig"))
         conn.execute(
-            """INSERT INTO succes_projects
+            """INSERT INTO vie_projects
                (id,name,description,color,icon,start_date,end_date,created_date,
                 updated_at_ms,deleted_at_ms,structure,structure_config)
                VALUES (?,?,?,?,?,?,?,?,?,NULL,?,?)
@@ -1130,7 +1128,7 @@ class VieSyncStore(ViePhotosStore):
         except ValueError as exc:
             raise VieError(str(exc)) from exc
         conn.execute(
-            """INSERT INTO succes_habits
+            """INSERT INTO vie_habits
                (id,name,icon,color,frequency,created_date,start_date,end_date,
                 weekly_days_json,month_week_slots_json,month_week_day,
                 reminder_time,updated_at_ms,deleted_at_ms)
@@ -1172,14 +1170,14 @@ class VieSyncStore(ViePhotosStore):
             raise VieError("L'identifiant du suivi d'habitude est incohérent.")
         if (
             conn.execute(
-                "SELECT 1 FROM succes_habits WHERE id=? AND deleted_at_ms IS NULL",
+                "SELECT 1 FROM vie_habits WHERE id=? AND deleted_at_ms IS NULL",
                 (habit_id,),
             ).fetchone()
             is None
         ):
             raise VieError("Le suivi reçu référence une habitude absente.")
         conn.execute(
-            """INSERT INTO succes_habit_logs(habit_id,log_date,done,updated_at_ms)
+            """INSERT INTO vie_habit_logs(habit_id,log_date,done,updated_at_ms)
                VALUES (?,?,?,?) ON CONFLICT(habit_id,log_date) DO UPDATE SET
                done=excluded.done,updated_at_ms=excluded.updated_at_ms""",
             (habit_id, log_date, int(bool(data.get("done"))), ts),
@@ -1195,7 +1193,7 @@ class VieSyncStore(ViePhotosStore):
             {**data, "title": data.get("title") or "Note"}
         )
         conn.execute(
-            """INSERT INTO succes_notes
+            """INSERT INTO vie_notes
                (id,title,content,created_at,updated_at,updated_at_ms,deleted_at_ms,
                 page_format,page_background,font_family,doc_lang,color)
                VALUES (?,?,?,?,?,?,NULL,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
@@ -1230,7 +1228,7 @@ class VieSyncStore(ViePhotosStore):
     ) -> None:
         clean = self._validated_template(data)
         conn.execute(
-            """INSERT INTO succes_task_templates
+            """INSERT INTO vie_task_templates
                (id,title,emoji,frequency,days_of_week_json,weekly_days_json,
                 month_week_slots_json,month_week_dow,project_id,priority,
                 template_kind,start_date,end_date,active,linked_habit_id,
@@ -1274,7 +1272,7 @@ class VieSyncStore(ViePhotosStore):
         if category not in QUOTE_CATEGORIES:
             category = "autre"
         conn.execute(
-            """INSERT INTO succes_quotes
+            """INSERT INTO vie_quotes
                (id,text,author,category,updated_at_ms,deleted_at_ms)
                VALUES (?,?,?,?,?,NULL) ON CONFLICT(id) DO UPDATE SET
                text=excluded.text,author=excluded.author,category=excluded.category,
@@ -1295,18 +1293,18 @@ class VieSyncStore(ViePhotosStore):
             self._refresh_local_clocks(conn)
             cursor = int(
                 conn.execute(
-                    "SELECT COALESCE(MAX(seq),0) AS cursor FROM succes_operations"
+                    "SELECT COALESCE(MAX(seq),0) AS cursor FROM vie_operations"
                 ).fetchone()["cursor"]
             )
             peer_count = int(
                 conn.execute(
-                    "SELECT COUNT(*) AS count FROM succes_sync_peers "
+                    "SELECT COUNT(*) AS count FROM vie_sync_peers "
                     "WHERE revoked_at_ms IS NULL"
                 ).fetchone()["count"]
             )
             pending_pairings = int(
                 conn.execute(
-                    "SELECT COUNT(*) AS count FROM succes_sync_pairings "
+                    "SELECT COUNT(*) AS count FROM vie_sync_pairings "
                     "WHERE redeemed_at_ms IS NULL AND expires_at_ms>=?",
                     (now_ms(),),
                 ).fetchone()["count"]

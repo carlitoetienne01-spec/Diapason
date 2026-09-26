@@ -32,7 +32,7 @@ from diapason.vie.finances import VieFinancesStore
 from diapason.vie.store import VieError, VieNotFound, now_ms
 
 _PHOTOS_SCHEMA = """
-CREATE TABLE IF NOT EXISTS succes_photo_piles (
+CREATE TABLE IF NOT EXISTS vie_photo_piles (
     id TEXT PRIMARY KEY,
     project_id TEXT NOT NULL,
     name TEXT NOT NULL,
@@ -42,9 +42,9 @@ CREATE TABLE IF NOT EXISTS succes_photo_piles (
     updated_at_ms INTEGER NOT NULL,
     deleted_at_ms INTEGER
 );
-CREATE INDEX IF NOT EXISTS succes_photo_piles_project_idx
-    ON succes_photo_piles(project_id, deleted_at_ms);
-CREATE TABLE IF NOT EXISTS succes_photos (
+CREATE INDEX IF NOT EXISTS vie_photo_piles_project_idx
+    ON vie_photo_piles(project_id, deleted_at_ms);
+CREATE TABLE IF NOT EXISTS vie_photos (
     id TEXT PRIMARY KEY,
     pile_id TEXT NOT NULL,
     project_id TEXT NOT NULL,
@@ -63,10 +63,10 @@ CREATE TABLE IF NOT EXISTS succes_photos (
     updated_at_ms INTEGER NOT NULL,
     deleted_at_ms INTEGER
 );
-CREATE INDEX IF NOT EXISTS succes_photos_pile_idx
-    ON succes_photos(pile_id, deleted_at_ms, created_at_ms);
-CREATE INDEX IF NOT EXISTS succes_photos_task_idx
-    ON succes_photos(project_id, task_id, deleted_at_ms);
+CREATE INDEX IF NOT EXISTS vie_photos_pile_idx
+    ON vie_photos(pile_id, deleted_at_ms, created_at_ms);
+CREATE INDEX IF NOT EXISTS vie_photos_task_idx
+    ON vie_photos(project_id, task_id, deleted_at_ms);
 """
 
 # 15 Mo : une photo d'iPhone convertie en JPEG par le navigateur pèse 2 à
@@ -274,12 +274,11 @@ class ViePhotosStore(VieFinancesStore):
         `CREATE TABLE IF NOT EXISTS` ne l'ajoute pas.
         """
         colonnes = {
-            row["name"] for row in conn.execute("PRAGMA table_info(succes_photos)")
+            row["name"] for row in conn.execute("PRAGMA table_info(vie_photos)")
         }
         if "position" not in colonnes:
             conn.execute(
-                "ALTER TABLE succes_photos ADD COLUMN "
-                "position INTEGER NOT NULL DEFAULT 0"
+                "ALTER TABLE vie_photos ADD COLUMN position INTEGER NOT NULL DEFAULT 0"
             )
         # Retouche non destructive, annotations et OCR — 13 septembre 2026.
         for nom, definition in (
@@ -289,20 +288,20 @@ class ViePhotosStore(VieFinancesStore):
             ("ocr_text", "TEXT NOT NULL DEFAULT ''"),
         ):
             if nom not in colonnes:
-                conn.execute(f"ALTER TABLE succes_photos ADD COLUMN {nom} {definition}")
+                conn.execute(f"ALTER TABLE vie_photos ADD COLUMN {nom} {definition}")
         # L'index sur `position` ne peut se créer qu'APRÈS la colonne : mis
         # dans le schéma, il faisait échouer l'ouverture d'une base créée le
         # matin même — le test l'a attrapé avant la base de Carlito.
         conn.execute(
-            "CREATE INDEX IF NOT EXISTS succes_photos_ordre_idx "
-            "ON succes_photos(pile_id, deleted_at_ms, position, created_at_ms)"
+            "CREATE INDEX IF NOT EXISTS vie_photos_ordre_idx "
+            "ON vie_photos(pile_id, deleted_at_ms, position, created_at_ms)"
         )
 
     # ── lecture ────────────────────────────────────────────────────────
 
     def _pile_row(self, conn: sqlite3.Connection, pile_id: str) -> sqlite3.Row:
         row = conn.execute(
-            "SELECT * FROM succes_photo_piles WHERE id=? AND deleted_at_ms IS NULL",
+            "SELECT * FROM vie_photo_piles WHERE id=? AND deleted_at_ms IS NULL",
             (pile_id,),
         ).fetchone()
         if row is None:
@@ -311,7 +310,7 @@ class ViePhotosStore(VieFinancesStore):
 
     def _photo_row(self, conn: sqlite3.Connection, photo_id: str) -> sqlite3.Row:
         row = conn.execute(
-            "SELECT * FROM succes_photos WHERE id=? AND deleted_at_ms IS NULL",
+            "SELECT * FROM vie_photos WHERE id=? AND deleted_at_ms IS NULL",
             (photo_id,),
         ).fetchone()
         if row is None:
@@ -366,7 +365,7 @@ class ViePhotosStore(VieFinancesStore):
         # images récentes doivent s'ajouter à la fin ». Avant, la nouvelle
         # passait devant et décalait tout ce qu'on avait rangé.
         sql = (
-            "SELECT * FROM succes_photos WHERE pile_id=? AND deleted_at_ms IS NULL "
+            "SELECT * FROM vie_photos WHERE pile_id=? AND deleted_at_ms IS NULL "
             "ORDER BY position ASC, created_at_ms ASC, id ASC"
         )
         if limite is not None:
@@ -375,7 +374,7 @@ class ViePhotosStore(VieFinancesStore):
 
     def _pile_dict(self, conn: sqlite3.Connection, row: sqlite3.Row) -> dict[str, Any]:
         count = conn.execute(
-            "SELECT COUNT(*) AS n FROM succes_photos WHERE pile_id=? "
+            "SELECT COUNT(*) AS n FROM vie_photos WHERE pile_id=? "
             "AND deleted_at_ms IS NULL",
             (row["id"],),
         ).fetchone()["n"]
@@ -385,7 +384,7 @@ class ViePhotosStore(VieFinancesStore):
         cover_id = row["cover_photo_id"]
         if cover_id:
             cover = conn.execute(
-                "SELECT * FROM succes_photos WHERE id=? AND pile_id=? "
+                "SELECT * FROM vie_photos WHERE id=? AND pile_id=? "
                 "AND deleted_at_ms IS NULL",
                 (cover_id, row["id"]),
             ).fetchone()
@@ -416,7 +415,7 @@ class ViePhotosStore(VieFinancesStore):
         with self._connect() as conn:
             self._exiger_projet(conn, project_id)
             rows = conn.execute(
-                "SELECT * FROM succes_photo_piles WHERE project_id=? "
+                "SELECT * FROM vie_photo_piles WHERE project_id=? "
                 "AND deleted_at_ms IS NULL ORDER BY order_index, created_at_ms",
                 (project_id,),
             ).fetchall()
@@ -424,7 +423,7 @@ class ViePhotosStore(VieFinancesStore):
             par_tache = {
                 r["task_id"]: int(r["n"])
                 for r in conn.execute(
-                    "SELECT task_id, COUNT(*) AS n FROM succes_photos "
+                    "SELECT task_id, COUNT(*) AS n FROM vie_photos "
                     "WHERE project_id=? AND deleted_at_ms IS NULL AND task_id<>'' "
                     "GROUP BY task_id",
                     (project_id,),
@@ -479,7 +478,7 @@ class ViePhotosStore(VieFinancesStore):
             # ne retrouve plus. Le doublon se refuse sans tenir compte de la
             # casse, comme on le chercherait.
             doublon = conn.execute(
-                "SELECT 1 FROM succes_photo_piles WHERE project_id=? "
+                "SELECT 1 FROM vie_photo_piles WHERE project_id=? "
                 "AND deleted_at_ms IS NULL AND lower(name)=lower(?)",
                 (project_id, clean),
             ).fetchone()
@@ -487,12 +486,12 @@ class ViePhotosStore(VieFinancesStore):
                 raise VieError(f"Une pile « {clean} » existe déjà dans ce projet.")
             rang = conn.execute(
                 "SELECT COALESCE(MAX(order_index), -1) + 1 AS r "
-                "FROM succes_photo_piles WHERE project_id=? AND deleted_at_ms IS NULL",
+                "FROM vie_photo_piles WHERE project_id=? AND deleted_at_ms IS NULL",
                 (project_id,),
             ).fetchone()["r"]
             pile_id = str(uuid.uuid4())
             conn.execute(
-                "INSERT INTO succes_photo_piles "
+                "INSERT INTO vie_photo_piles "
                 "(id, project_id, name, order_index, created_at_ms, updated_at_ms) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
                 (pile_id, project_id, clean, int(rang), stamp, stamp),
@@ -509,7 +508,7 @@ class ViePhotosStore(VieFinancesStore):
             if "name" in data:
                 clean = self._nom_de_pile(data["name"])
                 doublon = conn.execute(
-                    "SELECT 1 FROM succes_photo_piles WHERE project_id=? AND id<>? "
+                    "SELECT 1 FROM vie_photo_piles WHERE project_id=? AND id<>? "
                     "AND deleted_at_ms IS NULL AND lower(name)=lower(?)",
                     (pile["project_id"], pile_id, clean),
                 ).fetchone()
@@ -527,7 +526,7 @@ class ViePhotosStore(VieFinancesStore):
                 fields["updated_at_ms"] = stamp
                 assignments = ", ".join(f"{k}=?" for k in fields)
                 conn.execute(
-                    f"UPDATE succes_photo_piles SET {assignments} WHERE id=?",
+                    f"UPDATE vie_photo_piles SET {assignments} WHERE id=?",
                     (*fields.values(), pile_id),
                 )
             return self._pile_dict(conn, self._pile_row(conn, pile_id))
@@ -547,12 +546,12 @@ class ViePhotosStore(VieFinancesStore):
                     )
                 )
             conn.execute(
-                "UPDATE succes_photos SET deleted_at_ms=?, updated_at_ms=? "
+                "UPDATE vie_photos SET deleted_at_ms=?, updated_at_ms=? "
                 "WHERE pile_id=? AND deleted_at_ms IS NULL",
                 (stamp, stamp, pile_id),
             )
             conn.execute(
-                "UPDATE succes_photo_piles SET deleted_at_ms=?, updated_at_ms=? "
+                "UPDATE vie_photo_piles SET deleted_at_ms=?, updated_at_ms=? "
                 "WHERE id=?",
                 (stamp, stamp, pile_id),
             )
@@ -568,7 +567,7 @@ class ViePhotosStore(VieFinancesStore):
         if not tid:
             return ""
         row = conn.execute(
-            "SELECT project_id FROM succes_tasks WHERE id=? AND deleted_at_ms IS NULL",
+            "SELECT project_id FROM vie_tasks WHERE id=? AND deleted_at_ms IS NULL",
             (tid,),
         ).fetchone()
         if row is None or row["project_id"] != project_id:
@@ -619,12 +618,12 @@ class ViePhotosStore(VieFinancesStore):
             file_path.write_bytes(contenu)
             thumb_path.write_bytes(apercu)
             position = conn.execute(
-                "SELECT COALESCE(MAX(position), -1) + 1 AS p FROM succes_photos "
+                "SELECT COALESCE(MAX(position), -1) + 1 AS p FROM vie_photos "
                 "WHERE pile_id=? AND deleted_at_ms IS NULL",
                 (pile_id,),
             ).fetchone()["p"]
             conn.execute(
-                "INSERT INTO succes_photos (id, pile_id, project_id, file_name, mime, "
+                "INSERT INTO vie_photos (id, pile_id, project_id, file_name, mime, "
                 "bytes, width, height, tint, caption, task_id, position, file_path, "
                 "thumb_path, created_at_ms, updated_at_ms) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -648,7 +647,7 @@ class ViePhotosStore(VieFinancesStore):
                 ),
             )
             conn.execute(
-                "UPDATE succes_photo_piles SET updated_at_ms=? WHERE id=?",
+                "UPDATE vie_photo_piles SET updated_at_ms=? WHERE id=?",
                 (stamp, pile_id),
             )
             return self._photo_dict(self._photo_row(conn, photo_id), thumb=True)
@@ -695,7 +694,7 @@ class ViePhotosStore(VieFinancesStore):
                     # Si elle était la couverture de son ancienne pile, celle-ci
                     # retombe sur sa photo la plus récente.
                     conn.execute(
-                        "UPDATE succes_photo_piles SET cover_photo_id='' "
+                        "UPDATE vie_photo_piles SET cover_photo_id='' "
                         "WHERE id=? AND cover_photo_id=?",
                         (photo["pile_id"], photo_id),
                     )
@@ -703,7 +702,7 @@ class ViePhotosStore(VieFinancesStore):
                 fields["updated_at_ms"] = stamp
                 assignments = ", ".join(f"{k}=?" for k in fields)
                 conn.execute(
-                    f"UPDATE succes_photos SET {assignments} WHERE id=?",
+                    f"UPDATE vie_photos SET {assignments} WHERE id=?",
                     (*fields.values(), photo_id),
                 )
             return self._photo_dict(self._photo_row(conn, photo_id), thumb=True)
@@ -735,11 +734,11 @@ class ViePhotosStore(VieFinancesStore):
             ordre.extend(pid for pid in actuelles if pid not in vus)
             for index, pid in enumerate(ordre):
                 conn.execute(
-                    "UPDATE succes_photos SET position=?, updated_at_ms=? WHERE id=?",
+                    "UPDATE vie_photos SET position=?, updated_at_ms=? WHERE id=?",
                     (index, stamp, pid),
                 )
             conn.execute(
-                "UPDATE succes_photo_piles SET updated_at_ms=? WHERE id=?",
+                "UPDATE vie_photo_piles SET updated_at_ms=? WHERE id=?",
                 (stamp, pile_id),
             )
             return [
@@ -753,7 +752,7 @@ class ViePhotosStore(VieFinancesStore):
         with self._transaction() as conn:
             self._photo_row(conn, photo_id)
             conn.execute(
-                "UPDATE succes_photos SET ocr_text=?, updated_at_ms=? WHERE id=?",
+                "UPDATE vie_photos SET ocr_text=?, updated_at_ms=? WHERE id=?",
                 (propre, stamp, photo_id),
             )
             return self._photo_dict(self._photo_row(conn, photo_id), thumb=True)
@@ -775,8 +774,8 @@ class ViePhotosStore(VieFinancesStore):
             for mot in mots:
                 params.extend((mot, mot, mot))
             rows = conn.execute(
-                "SELECT ph.*, pi.name AS pile_name FROM succes_photos ph "
-                "JOIN succes_photo_piles pi ON pi.id = ph.pile_id "
+                "SELECT ph.*, pi.name AS pile_name FROM vie_photos ph "
+                "JOIN vie_photo_piles pi ON pi.id = ph.pile_id "
                 "WHERE ph.project_id=? AND ph.deleted_at_ms IS NULL "
                 f"AND pi.deleted_at_ms IS NULL AND {conditions} "
                 "ORDER BY pi.order_index, ph.position, ph.created_at_ms DESC "
@@ -824,11 +823,11 @@ class ViePhotosStore(VieFinancesStore):
         with self._transaction() as conn:
             photo = self._photo_row(conn, photo_id)
             conn.execute(
-                "UPDATE succes_photos SET deleted_at_ms=?, updated_at_ms=? WHERE id=?",
+                "UPDATE vie_photos SET deleted_at_ms=?, updated_at_ms=? WHERE id=?",
                 (stamp, stamp, photo_id),
             )
             conn.execute(
-                "UPDATE succes_photo_piles SET cover_photo_id='', updated_at_ms=? "
+                "UPDATE vie_photo_piles SET cover_photo_id='', updated_at_ms=? "
                 "WHERE id=? AND cover_photo_id=?",
                 (stamp, photo["pile_id"], photo_id),
             )
@@ -861,12 +860,12 @@ class ViePhotosStore(VieFinancesStore):
         stamp = now_ms()
         with self._transaction() as conn:
             conn.execute(
-                "UPDATE succes_photos SET deleted_at_ms=?, updated_at_ms=? "
+                "UPDATE vie_photos SET deleted_at_ms=?, updated_at_ms=? "
                 "WHERE project_id=? AND deleted_at_ms IS NULL",
                 (stamp, stamp, project_id),
             )
             conn.execute(
-                "UPDATE succes_photo_piles SET deleted_at_ms=?, updated_at_ms=? "
+                "UPDATE vie_photo_piles SET deleted_at_ms=?, updated_at_ms=? "
                 "WHERE project_id=? AND deleted_at_ms IS NULL",
                 (stamp, stamp, project_id),
             )

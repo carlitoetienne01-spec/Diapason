@@ -57,6 +57,51 @@ class VieNoteConflict(VieError):
     """Une fenêtre a modifié le texte lu par l'autre."""
 
 
+# 25/09/2026, étape 6 du plan de la phase 1b (docs/development/
+# diapason-mobile.md) : les tables s'appellent vie_*, et plus succes_*.
+PREFIXE_TABLES = "vie_"
+PREFIXE_TABLES_HERITE = "succes_"
+
+# La version du schéma de vie.db. Chaque schéma écrivait la sienne (1, 3, 4
+# et 5) et la dernière classe construite gagnait : 4 pour le serveur, 3 pour
+# un outil — la valeur ne disait rien. 6 est au-dessus de toutes : aucune
+# base d'avant le renommage des tables ne peut la porter.
+VERSION_SCHEMA = 6
+
+
+class BaseVieNonMigree(VieError):
+    """La base porte encore des tables succes_* : seul le serveur la migre.
+
+    25/09/2026 : un ``tick``, un briefing ou un outil qui ouvrait une base pas
+    encore migrée y aurait créé des tables vie_* VIDES à côté des succes_*
+    pleines. La migration du serveur, trouvant alors vie_tasks déjà là, ne
+    pouvait plus renommer : les données semblaient perdues. On refuse donc
+    d'ouvrir, et on dit quoi faire.
+    """
+
+    def __init__(self, chemin: Path, tables: Sequence[str]) -> None:
+        super().__init__(
+            f"La base {chemin.name} n'est pas encore migrée (elle porte "
+            f"{len(tables)} table(s) {PREFIXE_TABLES_HERITE}*) : relance le "
+            "serveur (diapason serve), qui seul la migre. Rien n'a été créé "
+            "à côté."
+        )
+        self.chemin = chemin
+        self.tables = tuple(tables)
+
+
+def tables_heritees(conn: sqlite3.Connection) -> list[str]:
+    """Les tables succes_* encore présentes, triées."""
+    return sorted(
+        row[0]
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' "
+            "AND substr(name, 1, ?) = ?",
+            (len(PREFIXE_TABLES_HERITE), PREFIXE_TABLES_HERITE),
+        )
+    )
+
+
 def now_ms() -> int:
     return int(time.time() * 1000)
 
@@ -125,11 +170,11 @@ def _clean_text(value: Any, *, field: str, maximum: int, required: bool = False)
 
 
 _SCHEMA = """
-CREATE TABLE IF NOT EXISTS succes_meta (
+CREATE TABLE IF NOT EXISTS vie_meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
-CREATE TABLE IF NOT EXISTS succes_tasks (
+CREATE TABLE IF NOT EXISTS vie_tasks (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
     done INTEGER NOT NULL DEFAULT 0,
@@ -151,11 +196,11 @@ CREATE TABLE IF NOT EXISTS succes_tasks (
     deleted_at_ms INTEGER,
     owner_id TEXT NOT NULL DEFAULT 'local-owner'
 );
-CREATE INDEX IF NOT EXISTS succes_tasks_date_idx
-    ON succes_tasks(scheduled_date, done, order_index);
-CREATE TABLE IF NOT EXISTS succes_subtasks (
+CREATE INDEX IF NOT EXISTS vie_tasks_date_idx
+    ON vie_tasks(scheduled_date, done, order_index);
+CREATE TABLE IF NOT EXISTS vie_subtasks (
     id TEXT PRIMARY KEY,
-    task_id TEXT NOT NULL REFERENCES succes_tasks(id),
+    task_id TEXT NOT NULL REFERENCES vie_tasks(id),
     parent_id TEXT,
     title TEXT NOT NULL,
     done INTEGER NOT NULL DEFAULT 0,
@@ -165,9 +210,9 @@ CREATE TABLE IF NOT EXISTS succes_subtasks (
     deleted_at_ms INTEGER,
     owner_id TEXT NOT NULL DEFAULT 'local-owner'
 );
-CREATE INDEX IF NOT EXISTS succes_subtasks_task_idx
-    ON succes_subtasks(task_id, parent_id, order_index);
-CREATE TABLE IF NOT EXISTS succes_projects (
+CREATE INDEX IF NOT EXISTS vie_subtasks_task_idx
+    ON vie_subtasks(task_id, parent_id, order_index);
+CREATE TABLE IF NOT EXISTS vie_projects (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
@@ -180,7 +225,7 @@ CREATE TABLE IF NOT EXISTS succes_projects (
     deleted_at_ms INTEGER,
     order_index INTEGER NOT NULL DEFAULT 0
 );
-CREATE TABLE IF NOT EXISTS succes_operations (
+CREATE TABLE IF NOT EXISTS vie_operations (
     seq INTEGER PRIMARY KEY AUTOINCREMENT,
     op_id TEXT NOT NULL UNIQUE,
     device_id TEXT NOT NULL,
@@ -192,9 +237,9 @@ CREATE TABLE IF NOT EXISTS succes_operations (
     timestamp_ms INTEGER NOT NULL,
     created_at_ms INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS succes_operations_cursor_idx
-    ON succes_operations(seq);
-CREATE TABLE IF NOT EXISTS succes_imports (
+CREATE INDEX IF NOT EXISTS vie_operations_cursor_idx
+    ON vie_operations(seq);
+CREATE TABLE IF NOT EXISTS vie_imports (
     id TEXT PRIMARY KEY,
     source TEXT NOT NULL,
     sha256 TEXT NOT NULL UNIQUE,
@@ -202,7 +247,6 @@ CREATE TABLE IF NOT EXISTS succes_imports (
     imported_at_ms INTEGER NOT NULL,
     summary_json TEXT NOT NULL
 );
-PRAGMA user_version = 1;
 """
 
 
@@ -225,22 +269,28 @@ class VieStore:
         # couperaient en deux bases sans une erreur (25/09/2026).
         self._existe = self.db_path.exists()
         with self._connect() as conn:
+            heritees = tables_heritees(conn)
+            if heritees:
+                raise BaseVieNonMigree(self.db_path, heritees)
+            neuve = not conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE name='vie_meta'"
+            ).fetchone()
             conn.executescript(_SCHEMA)
+            if neuve:
+                conn.execute(f"PRAGMA user_version = {VERSION_SCHEMA}")
             operation_columns = {
                 row["name"]
-                for row in conn.execute(
-                    "PRAGMA table_info(succes_operations)"
-                ).fetchall()
+                for row in conn.execute("PRAGMA table_info(vie_operations)").fetchall()
             }
             if "request_json" not in operation_columns:
                 conn.execute(
-                    "ALTER TABLE succes_operations ADD COLUMN "
+                    "ALTER TABLE vie_operations ADD COLUMN "
                     "request_json TEXT NOT NULL DEFAULT '{}'"
                 )
             self._ensure_task_columns(conn)
             self._ensure_project_columns(conn)
             conn.execute(
-                "INSERT OR IGNORE INTO succes_meta(key, value) VALUES('device_id', ?)",
+                "INSERT OR IGNORE INTO vie_meta(key, value) VALUES('device_id', ?)",
                 (f"mac-{secrets.token_hex(8)}",),
             )
             conn.commit()
@@ -249,27 +299,27 @@ class VieStore:
     def _ensure_task_columns(conn: sqlite3.Connection) -> None:
         columns = {
             row["name"]
-            for row in conn.execute("PRAGMA table_info(succes_tasks)").fetchall()
+            for row in conn.execute("PRAGMA table_info(vie_tasks)").fetchall()
         }
         if "parent_task_id" not in columns:
             conn.execute(
-                "ALTER TABLE succes_tasks ADD COLUMN "
+                "ALTER TABLE vie_tasks ADD COLUMN "
                 "parent_task_id TEXT NOT NULL DEFAULT ''"
             )
             conn.execute(
-                "CREATE INDEX IF NOT EXISTS succes_tasks_parent_idx "
-                "ON succes_tasks(project_id, parent_task_id, order_index)"
+                "CREATE INDEX IF NOT EXISTS vie_tasks_parent_idx "
+                "ON vie_tasks(project_id, parent_task_id, order_index)"
             )
         # L'étape (pipeline) et la cadence (cycle) des cinq formes de projet.
         # Colonnes additives : un client mobile qui les ignore continue de
         # fonctionner, il ne les renverra simplement pas.
         if "stage" not in columns:
             conn.execute(
-                "ALTER TABLE succes_tasks ADD COLUMN stage TEXT NOT NULL DEFAULT ''"
+                "ALTER TABLE vie_tasks ADD COLUMN stage TEXT NOT NULL DEFAULT ''"
             )
         if "cadence" not in columns:
             conn.execute(
-                "ALTER TABLE succes_tasks ADD COLUMN cadence TEXT NOT NULL DEFAULT ''"
+                "ALTER TABLE vie_tasks ADD COLUMN cadence TEXT NOT NULL DEFAULT ''"
             )
         # Le CARNET de la tâche (30 août 2026), distinct de `notes`.
         #
@@ -280,7 +330,7 @@ class VieStore:
         # noter un doute.
         if "journal" not in columns:
             conn.execute(
-                "ALTER TABLE succes_tasks ADD COLUMN journal TEXT NOT NULL DEFAULT ''"
+                "ALTER TABLE vie_tasks ADD COLUMN journal TEXT NOT NULL DEFAULT ''"
             )
         # La durée estimée en jours d'une tâche du réseau (18 sept. 2026).
         # Sans elle, la chaîne la plus longue se compte en tâches et la vue ne
@@ -289,7 +339,7 @@ class VieStore:
         # « chemin critique » n'apparaît que lorsqu'une durée existe (§5).
         if "estimate_days" not in columns:
             conn.execute(
-                "ALTER TABLE succes_tasks ADD COLUMN "
+                "ALTER TABLE vie_tasks ADD COLUMN "
                 "estimate_days INTEGER NOT NULL DEFAULT 0"
             )
 
@@ -297,11 +347,11 @@ class VieStore:
     def _ensure_project_columns(conn: sqlite3.Connection) -> None:
         columns = {
             row["name"]
-            for row in conn.execute("PRAGMA table_info(succes_projects)").fetchall()
+            for row in conn.execute("PRAGMA table_info(vie_projects)").fetchall()
         }
         if "structure" not in columns:
             conn.execute(
-                "ALTER TABLE succes_projects ADD COLUMN "
+                "ALTER TABLE vie_projects ADD COLUMN "
                 "structure TEXT NOT NULL DEFAULT 'flat'"
             )
         # 15 septembre 2026 : l'ordre manuel des projets (order_index,
@@ -311,31 +361,31 @@ class VieStore:
         # tant que Carlito n'a pas glissé.
         if "order_index" not in columns:
             conn.execute(
-                "ALTER TABLE succes_projects ADD COLUMN "
+                "ALTER TABLE vie_projects ADD COLUMN "
                 "order_index INTEGER NOT NULL DEFAULT 0"
             )
             for index, row in enumerate(
                 conn.execute(
-                    "SELECT id FROM succes_projects WHERE deleted_at_ms IS NULL"
+                    "SELECT id FROM vie_projects WHERE deleted_at_ms IS NULL"
                     " ORDER BY updated_at_ms DESC"
                 ).fetchall()
             ):
                 conn.execute(
-                    "UPDATE succes_projects SET order_index=? WHERE id=?",
+                    "UPDATE vie_projects SET order_index=? WHERE id=?",
                     (index, row["id"]),
                 )
         # Réglages propres à la forme (levelLabels, stages…), en JSON : une
         # colonne par réglage condamnerait le schéma à suivre chaque idée.
         if "structure_config" not in columns:
             conn.execute(
-                "ALTER TABLE succes_projects ADD COLUMN "
+                "ALTER TABLE vie_projects ADD COLUMN "
                 "structure_config TEXT NOT NULL DEFAULT '{}'"
             )
         # Les synapses du réseau : « from débloque to ». Une paire unique par
         # sens ; la suppression est un effacement dur, l'arête n'ayant pas de
         # contenu à restaurer.
         conn.execute(
-            """CREATE TABLE IF NOT EXISTS succes_task_edges (
+            """CREATE TABLE IF NOT EXISTS vie_task_edges (
                 project_id TEXT NOT NULL,
                 from_task_id TEXT NOT NULL,
                 to_task_id TEXT NOT NULL,
@@ -344,8 +394,8 @@ class VieStore:
             )"""
         )
         conn.execute(
-            "CREATE INDEX IF NOT EXISTS succes_task_edges_project_idx "
-            "ON succes_task_edges(project_id)"
+            "CREATE INDEX IF NOT EXISTS vie_task_edges_project_idx "
+            "ON vie_task_edges(project_id)"
         )
 
     @contextmanager
@@ -401,7 +451,7 @@ class VieStore:
     def device_id(self) -> str:
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT value FROM succes_meta WHERE key='device_id'"
+                "SELECT value FROM vie_meta WHERE key='device_id'"
             ).fetchone()
         return str(row["value"])
 
@@ -418,7 +468,7 @@ class VieStore:
         op_id: str | None = None,
     ) -> None:
         conn.execute(
-            """INSERT OR IGNORE INTO succes_operations
+            """INSERT OR IGNORE INTO vie_operations
                (op_id, device_id, entity, entity_id, kind, request_json,
                 payload_json, timestamp_ms, created_at_ms)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
@@ -454,7 +504,7 @@ class VieStore:
         if not op_id:
             return None
         row = conn.execute(
-            "SELECT request_json,payload_json FROM succes_operations WHERE op_id=?",
+            "SELECT request_json,payload_json FROM vie_operations WHERE op_id=?",
             (op_id,),
         ).fetchone()
         if row is None:
@@ -513,7 +563,7 @@ class VieStore:
         if not project_id:
             return "flat", []
         row = conn.execute(
-            "SELECT structure, structure_config FROM succes_projects "
+            "SELECT structure, structure_config FROM vie_projects "
             "WHERE id=? AND deleted_at_ms IS NULL",
             (project_id,),
         ).fetchone()
@@ -536,7 +586,7 @@ class VieStore:
         Demandé le 6 septembre 2026 : « si je n'ai pas accédé à la tâche
         avant, je ne peux pas accéder aux autres ». Le calcul vit ICI et pas
         seulement dans l'interface — une restriction qu'un client peut lever
-        est décorative, et l'outil `succes_tasks` coche par le même chemin.
+        est décorative, et l'outil `vie_tasks` coche par le même chemin.
 
         Trois règles, dans cet ordre :
         - les RACINES ne se verrouillent jamais : les grandes branches d'un
@@ -556,7 +606,7 @@ class VieStore:
         if structure not in TREE_FAMILY:
             return None
         row = conn.execute(
-            "SELECT structure_config FROM succes_projects "
+            "SELECT structure_config FROM vie_projects "
             "WHERE id=? AND deleted_at_ms IS NULL",
             (projet,),
         ).fetchone()
@@ -575,7 +625,7 @@ class VieStore:
                 return None
             vus.add(identifiant)
             precedente = conn.execute(
-                "SELECT title FROM succes_tasks WHERE project_id=? AND "
+                "SELECT title FROM vie_tasks WHERE project_id=? AND "
                 "parent_task_id=? AND deleted_at_ms IS NULL AND done=0 AND "
                 "(order_index < ? OR (order_index = ? AND id < ?)) "
                 "ORDER BY order_index ASC, id ASC LIMIT 1",
@@ -643,7 +693,7 @@ class VieStore:
         if parent_id == task_id:
             raise VieError("Une tâche ne peut pas être son propre parent.")
         parent = conn.execute(
-            """SELECT id, project_id, parent_task_id FROM succes_tasks
+            """SELECT id, project_id, parent_task_id FROM vie_tasks
                WHERE id=? AND deleted_at_ms IS NULL""",
             (parent_id,),
         ).fetchone()
@@ -666,7 +716,7 @@ class VieStore:
                 raise VieError("Cette hiérarchie formerait une boucle.")
             seen.add(next_id)
             cursor = conn.execute(
-                """SELECT id, project_id, parent_task_id FROM succes_tasks
+                """SELECT id, project_id, parent_task_id FROM vie_tasks
                    WHERE id=? AND deleted_at_ms IS NULL""",
                 (next_id,),
             ).fetchone()
@@ -710,7 +760,7 @@ class VieStore:
     def _load_task(
         self, conn: sqlite3.Connection, task_id: str, *, include_deleted: bool = False
     ) -> dict[str, Any] | None:
-        sql = "SELECT * FROM succes_tasks WHERE id = ?"
+        sql = "SELECT * FROM vie_tasks WHERE id = ?"
         params: tuple[Any, ...] = (task_id,)
         if not include_deleted:
             sql += " AND deleted_at_ms IS NULL"
@@ -718,7 +768,7 @@ class VieStore:
         if row is None:
             return None
         subrows = conn.execute(
-            """SELECT * FROM succes_subtasks
+            """SELECT * FROM vie_subtasks
                WHERE task_id = ? AND deleted_at_ms IS NULL
                ORDER BY order_index, id""",
             (task_id,),
@@ -738,7 +788,7 @@ class VieStore:
             ids = [
                 row["id"]
                 for row in conn.execute(
-                    """SELECT id FROM succes_tasks
+                    """SELECT id FROM vie_tasks
                        WHERE deleted_at_ms IS NULL AND lower(title) LIKE ?
                        ORDER BY updated_at_ms DESC LIMIT 20""",
                     (needle,),
@@ -770,7 +820,7 @@ class VieStore:
             conn.execute("BEGIN")
             filtre = " AND ".join(clauses)
             rows = conn.execute(
-                f"""SELECT * FROM succes_tasks WHERE {filtre}
+                f"""SELECT * FROM vie_tasks WHERE {filtre}
                          ORDER BY done, CASE priority
                            WHEN 'urgent' THEN 0 WHEN 'high' THEN 1
                            WHEN 'medium' THEN 2 ELSE 3 END,
@@ -780,9 +830,9 @@ class VieStore:
             if not rows:
                 return []
             subrows = conn.execute(
-                f"""SELECT * FROM succes_subtasks
+                f"""SELECT * FROM vie_subtasks
                     WHERE deleted_at_ms IS NULL AND task_id IN
-                      (SELECT id FROM succes_tasks WHERE {filtre})
+                      (SELECT id FROM vie_tasks WHERE {filtre})
                     ORDER BY order_index, id""",
                 params,
             ).fetchall()
@@ -848,7 +898,7 @@ class VieStore:
                 parent_task_id=str(data.get("parentTaskId") or ""),
             )
             existing = conn.execute(
-                "SELECT updated_at_ms FROM succes_tasks WHERE id=?", (task_id,)
+                "SELECT updated_at_ms FROM vie_tasks WHERE id=?", (task_id,)
             ).fetchone()
             if existing is not None:
                 raise VieError("Une tâche avec cet identifiant existe déjà.")
@@ -884,7 +934,7 @@ class VieStore:
                 # tombe se retrouverait avec deux tâches au même rang.
                 rang = conn.execute(
                     """SELECT COALESCE(MAX(order_index), -1) + 1 AS n
-                       FROM succes_tasks
+                       FROM vie_tasks
                        WHERE project_id=? AND parent_task_id=?""",
                     (project_id, parent_task_id),
                 ).fetchone()["n"]
@@ -913,7 +963,7 @@ class VieStore:
                 ts,
             )
             conn.execute(
-                """INSERT INTO succes_tasks
+                """INSERT INTO vie_tasks
                    (id,title,done,priority,scheduled_date,scheduled_time,project_id,
                     parent_task_id,category,notes,journal,emoji,template_id,group_id,
                     order_index,created_date,completed_date,postponed_count,stage,
@@ -1051,7 +1101,7 @@ class VieStore:
                         assignments.insert(-2, "parent_task_id = ?")
                         values.insert(-2, validated_parent)
             conn.execute(
-                f"UPDATE succes_tasks SET {', '.join(assignments)} WHERE id = ?", values
+                f"UPDATE vie_tasks SET {', '.join(assignments)} WHERE id = ?", values
             )
             task = self._load_task(conn, task_id)
             assert task is not None
@@ -1091,7 +1141,7 @@ class VieStore:
             # of sync would make the next toggle either fail or flip back.
             if task["subtasks"]:
                 conn.execute(
-                    "UPDATE succes_subtasks SET done=?, updated_at_ms=? "
+                    "UPDATE vie_subtasks SET done=?, updated_at_ms=? "
                     "WHERE task_id=? AND deleted_at_ms IS NULL",
                     (int(done), ts, task_id),
                 )
@@ -1123,13 +1173,13 @@ class VieStore:
                     stage_final = stages[-2] if len(stages) >= 2 else stages[0]
             if stage_final is None:
                 conn.execute(
-                    "UPDATE succes_tasks SET done=?, completed_date=?, "
+                    "UPDATE vie_tasks SET done=?, completed_date=?, "
                     "updated_at_ms=? WHERE id=?",
                     (int(done), completed, ts, task_id),
                 )
             else:
                 conn.execute(
-                    "UPDATE succes_tasks SET done=?, completed_date=?, stage=?, "
+                    "UPDATE vie_tasks SET done=?, completed_date=?, stage=?, "
                     "updated_at_ms=? WHERE id=?",
                     (int(done), completed, stage_final, ts, task_id),
                 )
@@ -1161,7 +1211,7 @@ class VieStore:
             if task is None:
                 raise VieNotFound("Cette tâche n'existe pas ou a été supprimée.")
             conn.execute(
-                """UPDATE succes_tasks SET scheduled_date=?,
+                """UPDATE vie_tasks SET scheduled_date=?,
                    postponed_count=postponed_count+1, updated_at_ms=? WHERE id=?""",
                 (scheduled, ts, task_id),
             )
@@ -1205,7 +1255,7 @@ class VieStore:
                 raise VieError("La tâche de référence n'a pas encore de date.")
             delta = (date.fromisoformat(scheduled) - date.fromisoformat(current)).days
             rows = conn.execute(
-                "SELECT id, scheduled_date FROM succes_tasks "
+                "SELECT id, scheduled_date FROM vie_tasks "
                 "WHERE template_id=? AND deleted_at_ms IS NULL",
                 (template_id,),
             ).fetchall()
@@ -1217,7 +1267,7 @@ class VieStore:
                 new_date = (date.fromisoformat(old) + timedelta(days=delta)).isoformat()
                 if delta != 0:
                     conn.execute(
-                        "UPDATE succes_tasks SET scheduled_date=?, updated_at_ms=? "
+                        "UPDATE vie_tasks SET scheduled_date=?, updated_at_ms=? "
                         "WHERE id=?",
                         (new_date, ts, row["id"]),
                     )
@@ -1266,7 +1316,7 @@ class VieStore:
                 raise VieNotFound("Cette tâche n'existe pas ou a été supprimée.")
             if parent_id:
                 parent = conn.execute(
-                    "SELECT id,parent_id FROM succes_subtasks "
+                    "SELECT id,parent_id FROM vie_subtasks "
                     "WHERE id=? AND task_id=? AND deleted_at_ms IS NULL",
                     (parent_id, task_id),
                 ).fetchone()
@@ -1281,21 +1331,21 @@ class VieStore:
                             "La profondeur maximale des sous-tâches est atteinte."
                         )
                     cursor = conn.execute(
-                        "SELECT id,parent_id FROM succes_subtasks WHERE id=?",
+                        "SELECT id,parent_id FROM vie_subtasks WHERE id=?",
                         (cursor["parent_id"],),
                     ).fetchone()
                     if cursor is None:
                         break
                 conn.execute(
-                    "UPDATE succes_subtasks SET is_group=1 WHERE id=?", (parent_id,)
+                    "UPDATE vie_subtasks SET is_group=1 WHERE id=?", (parent_id,)
                 )
             order = conn.execute(
-                """SELECT COALESCE(MAX(order_index), -1) + 1 AS n FROM succes_subtasks
+                """SELECT COALESCE(MAX(order_index), -1) + 1 AS n FROM vie_subtasks
                    WHERE task_id=? AND parent_id IS ? AND deleted_at_ms IS NULL""",
                 (task_id, parent_id),
             ).fetchone()["n"]
             conn.execute(
-                """INSERT INTO succes_subtasks
+                """INSERT INTO vie_subtasks
                    (id,task_id,parent_id,title,done,is_group,order_index,updated_at_ms)
                    VALUES (?,?,?,?,0,0,?,?)""",
                 (subtask_id, task_id, parent_id, clean_title, order, ts),
@@ -1330,7 +1380,7 @@ class VieStore:
             if replayed is not None:
                 return replayed
             row = conn.execute(
-                "SELECT id FROM succes_subtasks "
+                "SELECT id FROM vie_subtasks "
                 "WHERE id=? AND task_id=? AND deleted_at_ms IS NULL",
                 (subtask_id, task_id),
             ).fetchone()
@@ -1340,7 +1390,7 @@ class VieStore:
             ids = [subtask_id, *descendants]
             placeholders = ",".join("?" for _ in ids)
             conn.execute(
-                "UPDATE succes_subtasks SET done=?, updated_at_ms=? "
+                "UPDATE vie_subtasks SET done=?, updated_at_ms=? "
                 f"WHERE id IN ({placeholders})",
                 [int(done), ts, *ids],
             )
@@ -1374,7 +1424,7 @@ class VieStore:
             if replayed is not None:
                 return replayed
             row = conn.execute(
-                "SELECT id FROM succes_subtasks "
+                "SELECT id FROM vie_subtasks "
                 "WHERE id=? AND task_id=? AND deleted_at_ms IS NULL",
                 (subtask_id, task_id),
             ).fetchone()
@@ -1384,7 +1434,7 @@ class VieStore:
             ids = [subtask_id, *descendants]
             placeholders = ",".join("?" for _ in ids)
             conn.execute(
-                f"UPDATE succes_subtasks SET deleted_at_ms=?, updated_at_ms=? "
+                f"UPDATE vie_subtasks SET deleted_at_ms=?, updated_at_ms=? "
                 f"WHERE id IN ({placeholders})",
                 [ts, ts, *ids],
             )
@@ -1413,7 +1463,7 @@ class VieStore:
             if self._load_task(conn, task_id) is None:
                 raise VieNotFound("Cette tâche n'existe pas ou a été supprimée.")
             conn.execute(
-                "UPDATE succes_tasks SET deleted_at_ms=?, updated_at_ms=? WHERE id=?",
+                "UPDATE vie_tasks SET deleted_at_ms=?, updated_at_ms=? WHERE id=?",
                 (ts, ts, task_id),
             )
             orphelines = self._emporter_les_dependances(conn, task_id, ts)
@@ -1465,18 +1515,18 @@ class VieStore:
         chacune, sans quoi le pair garde des liens vers un disparu.
         """
         conn.execute(
-            "UPDATE succes_subtasks SET deleted_at_ms=? "
+            "UPDATE vie_subtasks SET deleted_at_ms=? "
             "WHERE task_id=? AND deleted_at_ms IS NULL",
             (ts, task_id),
         )
         orphelines = conn.execute(
-            "SELECT from_task_id, to_task_id FROM succes_task_edges "
+            "SELECT from_task_id, to_task_id FROM vie_task_edges "
             "WHERE from_task_id=? OR to_task_id=?",
             (task_id, task_id),
         ).fetchall()
         if orphelines:
             conn.execute(
-                "DELETE FROM succes_task_edges WHERE from_task_id=? OR to_task_id=?",
+                "DELETE FROM vie_task_edges WHERE from_task_id=? OR to_task_id=?",
                 (task_id, task_id),
             )
         return list(orphelines)
@@ -1485,9 +1535,9 @@ class VieStore:
     def _descendant_ids(conn: sqlite3.Connection, parent_id: str) -> list[str]:
         rows = conn.execute(
             """WITH RECURSIVE descendants(id) AS (
-                 SELECT id FROM succes_subtasks
+                 SELECT id FROM vie_subtasks
                  WHERE parent_id=? AND deleted_at_ms IS NULL
-                 UNION ALL SELECT s.id FROM succes_subtasks s
+                 UNION ALL SELECT s.id FROM vie_subtasks s
                  JOIN descendants d ON s.parent_id=d.id
                  WHERE s.deleted_at_ms IS NULL)
                SELECT id FROM descendants""",
@@ -1498,18 +1548,18 @@ class VieStore:
     @staticmethod
     def _recompute_groups(conn: sqlite3.Connection, task_id: str, ts: int) -> None:
         rows = conn.execute(
-            "SELECT id FROM succes_subtasks WHERE task_id=? AND deleted_at_ms IS NULL",
+            "SELECT id FROM vie_subtasks WHERE task_id=? AND deleted_at_ms IS NULL",
             (task_id,),
         ).fetchall()
         for row in reversed(rows):
             children = conn.execute(
-                "SELECT done FROM succes_subtasks "
+                "SELECT done FROM vie_subtasks "
                 "WHERE parent_id=? AND deleted_at_ms IS NULL",
                 (row["id"],),
             ).fetchall()
             if children:
                 conn.execute(
-                    "UPDATE succes_subtasks SET is_group=1,done=?,"
+                    "UPDATE vie_subtasks SET is_group=1,done=?,"
                     "updated_at_ms=? WHERE id=?",
                     (
                         int(all(bool(child["done"]) for child in children)),
@@ -1519,20 +1569,19 @@ class VieStore:
                 )
             else:
                 conn.execute(
-                    "UPDATE succes_subtasks SET is_group=0 WHERE id=?", (row["id"],)
+                    "UPDATE vie_subtasks SET is_group=0 WHERE id=?", (row["id"],)
                 )
 
     def _recompute_task(self, conn: sqlite3.Connection, task_id: str, ts: int) -> None:
         roots = conn.execute(
-            """SELECT done FROM succes_subtasks
+            """SELECT done FROM vie_subtasks
                WHERE task_id=? AND parent_id IS NULL AND deleted_at_ms IS NULL""",
             (task_id,),
         ).fetchall()
         done = bool(roots) and all(bool(row["done"]) for row in roots)
         completed = date.today().isoformat() if done else ""
         conn.execute(
-            "UPDATE succes_tasks SET done=?,completed_date=?,"
-            "updated_at_ms=? WHERE id=?",
+            "UPDATE vie_tasks SET done=?,completed_date=?,updated_at_ms=? WHERE id=?",
             (int(done), completed, ts, task_id),
         )
 
@@ -1540,11 +1589,11 @@ class VieStore:
         limit = min(max(int(limit), 1), 1000)
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT * FROM succes_operations WHERE seq>? ORDER BY seq LIMIT ?",
+                "SELECT * FROM vie_operations WHERE seq>? ORDER BY seq LIMIT ?",
                 (max(0, int(after)), limit),
             ).fetchall()
             cursor = conn.execute(
-                "SELECT COALESCE(MAX(seq),0) AS cursor FROM succes_operations"
+                "SELECT COALESCE(MAX(seq),0) AS cursor FROM vie_operations"
             ).fetchone()["cursor"]
         return {
             "operations": [
@@ -1568,7 +1617,7 @@ class VieStore:
     def sync_status(self) -> dict[str, Any]:
         with self._connect() as conn:
             cursor = conn.execute(
-                "SELECT COALESCE(MAX(seq),0) AS cursor FROM succes_operations"
+                "SELECT COALESCE(MAX(seq),0) AS cursor FROM vie_operations"
             ).fetchone()["cursor"]
         return {
             "mode": "local_only",
@@ -1605,7 +1654,7 @@ class VieStore:
         }
         with self._transaction() as conn:
             existing_import = conn.execute(
-                "SELECT summary_json FROM succes_imports WHERE sha256=?", (digest,)
+                "SELECT summary_json FROM vie_imports WHERE sha256=?", (digest,)
             ).fetchone()
             if existing_import:
                 previous = json.loads(existing_import["summary_json"])
@@ -1621,13 +1670,13 @@ class VieStore:
                     continue
                 ts = _safe_timestamp(project.get("updatedAtMs"), fallback=0)
                 current = conn.execute(
-                    "SELECT updated_at_ms FROM succes_projects WHERE id=?",
+                    "SELECT updated_at_ms FROM vie_projects WHERE id=?",
                     (project_id,),
                 ).fetchone()
                 if current and current["updated_at_ms"] > ts:
                     continue
                 conn.execute(
-                    """INSERT INTO succes_projects
+                    """INSERT INTO vie_projects
                        (id,name,description,color,icon,start_date,end_date,created_date,updated_at_ms,deleted_at_ms)
                        VALUES (?,?,?,?,?,?,?,?,?,NULL)
                        ON CONFLICT(id) DO UPDATE SET
@@ -1658,7 +1707,7 @@ class VieStore:
                     continue
                 summary["tasksImported" if imported else "tasksSkipped"] += 1
             conn.execute(
-                "INSERT INTO succes_imports"
+                "INSERT INTO vie_imports"
                 "(id,source,sha256,snapshot_json,imported_at_ms,summary_json) "
                 "VALUES(?,?,?,?,?,?)",
                 (
@@ -1679,7 +1728,7 @@ class VieStore:
             return False
         ts = _safe_timestamp(todo.get("updatedAtMs"), fallback=0)
         current = conn.execute(
-            "SELECT updated_at_ms FROM succes_tasks WHERE id=?", (task_id,)
+            "SELECT updated_at_ms FROM vie_tasks WHERE id=?", (task_id,)
         ).fetchone()
         if current and current["updated_at_ms"] > ts:
             return False
@@ -1687,7 +1736,7 @@ class VieStore:
         if priority not in PRIORITIES:
             priority = "medium"
         conn.execute(
-            """INSERT INTO succes_tasks
+            """INSERT INTO vie_tasks
                (id,title,done,priority,scheduled_date,scheduled_time,project_id,category,
                 notes,emoji,template_id,group_id,order_index,created_date,completed_date,
                 postponed_count,updated_at_ms,deleted_at_ms,parent_task_id)
@@ -1723,7 +1772,7 @@ class VieStore:
             ),
         )
         conn.execute(
-            "UPDATE succes_subtasks SET deleted_at_ms=? "
+            "UPDATE vie_subtasks SET deleted_at_ms=? "
             "WHERE task_id=? AND deleted_at_ms IS NULL",
             (ts, task_id),
         )
@@ -1767,7 +1816,7 @@ class VieStore:
             )
             ts = _safe_timestamp(raw.get("updatedAtMs"), fallback=fallback_ts)
             conn.execute(
-                """INSERT INTO succes_subtasks
+                """INSERT INTO vie_subtasks
                    (id,task_id,parent_id,title,done,is_group,order_index,updated_at_ms,deleted_at_ms)
                    VALUES (?,?,?,?,?,?,?,?,NULL)
                    ON CONFLICT(id) DO UPDATE SET

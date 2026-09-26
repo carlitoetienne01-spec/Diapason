@@ -18,6 +18,12 @@ avant toute construction de magasin), sous un verrou de fichier ; tout autre
 ouvrant prend ``vie.db`` si elle existe, sinon ``succes.db``, et ne crée
 ``vie.db`` que si aucune des deux n'existe. Un magasin n'ouvre plus en
 création une base censée exister (``VieStore._connect``, ``mode=rw``).
+
+Étape 6 (même jour) : les 26 tables ``succes_*`` deviennent ``vie_*``, dans la
+même migration et sous le même verrou, après la même sauvegarde. Un ouvrant
+autre que le serveur qui trouve encore une table ``succes_*`` refuse
+(:class:`~diapason.vie.store.BaseVieNonMigree`) au lieu de créer des tables
+``vie_*`` vides à côté des pleines.
 """
 
 from __future__ import annotations
@@ -33,7 +39,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Iterator
 
-from diapason.vie.store import VieError
+from diapason.vie.store import (
+    PREFIXE_TABLES,
+    PREFIXE_TABLES_HERITE,
+    VERSION_SCHEMA,
+    BaseVieNonMigree,
+    VieError,
+    tables_heritees,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -137,7 +150,7 @@ def a_des_donnees(chemin: Path) -> bool:
                 )
             }
             for suffixe in _TABLES_DE_DONNEES:
-                for prefixe in ("vie_", "succes_"):
+                for prefixe in (PREFIXE_TABLES, PREFIXE_TABLES_HERITE):
                     table = prefixe + suffixe
                     if (
                         table in tables
@@ -318,6 +331,15 @@ def _migrer_fichier(data_dir: Path) -> str | None:
         )
         with closing(sqlite3.connect(sauvegarde)) as copie:
             conn.backup(copie)
+        # Les tables, sur la même connexion exclusive et après la même
+        # sauvegarde : une seule copie d'avant couvre les deux renommages.
+        try:
+            renommer_tables(conn)
+        except sqlite3.DatabaseError as exc:
+            # Le fichier ne bouge pas non plus : une vie.db aux tables
+            # succes_* serait refusée par tous les ouvrants, sous un nom neuf
+            # qui laisserait croire la migration faite.
+            return f"tables non renommées ({exc})"
     restes = [c.name for c in _compagnons(herite) if c.exists()]
     if restes:
         # Quelqu'un a rouvert la base entre la bascule et la fermeture : la
@@ -332,6 +354,100 @@ def _migrer_fichier(data_dir: Path) -> str | None:
         NOM_BASE,
         sauvegarde,
     )
+    return None
+
+
+def _nom_neuf(nom: str) -> str:
+    """``succes_tasks_date_idx`` → ``vie_tasks_date_idx`` ; ``idx_succes_txn_date``
+    → ``idx_vie_txn_date``. Les noms d'index suivent ceux des tables : les
+    laisser dériver ferait créer par le schéma neuf un second index identique
+    sur chaque table, et vie_operations pèse 306 Mo sur 311 (25/09/2026)."""
+    return nom.replace(PREFIXE_TABLES_HERITE, PREFIXE_TABLES, 1)
+
+
+def renommer_tables(conn: sqlite3.Connection) -> int:
+    """succes_* → vie_*, en une transaction ; rend le nombre de tables.
+
+    ``ALTER TABLE … RENAME`` suit de lui-même les clés étrangères, les index
+    automatiques et ``sqlite_sequence`` (vérifié le 25/09/2026 sur SQLite
+    3.53) ; il ne renomme pas les index nommés, ni les déclencheurs et les
+    vues : ceux-là sont recréés sous leur nom neuf. Tout ou rien : une table
+    renommée sans ses sœurs couperait les jointures en deux.
+
+    Idempotente : une base sans table ``succes_*`` rend 0 sans rien écrire.
+    Une base qui porte À LA FOIS ``succes_x`` et ``vie_x`` n'est pas touchée
+    (``sqlite3.DatabaseError``) : choisir l'une des deux perdrait l'autre.
+    """
+    heritees = tables_heritees(conn)
+    if not heritees:
+        return 0
+    existantes = {row[0] for row in conn.execute("SELECT name FROM sqlite_master")}
+    doublons = [_nom_neuf(t) for t in heritees if _nom_neuf(t) in existantes]
+    if doublons:
+        raise sqlite3.DatabaseError(
+            f"{', '.join(doublons)} existe(nt) aussi sous l'ancien nom "
+            f"{PREFIXE_TABLES_HERITE}* : rien n'est renommé, c'est à trancher "
+            "à la main"
+        )
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        for table in heritees:
+            conn.execute(f'ALTER TABLE "{table}" RENAME TO "{_nom_neuf(table)}"')
+        objets = conn.execute(
+            "SELECT type, name, sql FROM sqlite_master "
+            "WHERE type IN ('index', 'trigger', 'view') AND sql IS NOT NULL "
+            "AND instr(name, ?) > 0",
+            (PREFIXE_TABLES_HERITE,),
+        ).fetchall()
+        for genre, nom, sql in objets:
+            conn.execute(f'DROP {genre.upper()} "{nom}"')
+            conn.execute(sql.replace(nom, _nom_neuf(nom), 1))
+        restes = [
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE instr(name, ?) > 0",
+                (PREFIXE_TABLES_HERITE,),
+            )
+        ]
+        if restes:
+            raise sqlite3.DatabaseError(
+                f"objets encore nommés {PREFIXE_TABLES_HERITE}* : {restes}"
+            )
+        conn.execute(f"PRAGMA user_version = {VERSION_SCHEMA}")
+    except BaseException:
+        conn.execute("ROLLBACK")
+        raise
+    conn.execute("COMMIT")
+    logger.warning(
+        "vie : %d tables %s* renommées en %s*",
+        len(heritees),
+        PREFIXE_TABLES_HERITE,
+        PREFIXE_TABLES,
+    )
+    return len(heritees)
+
+
+def _migrer_tables(data_dir: Path, base: Path) -> str | None:
+    """Les tables d'une vie.db encore en succes_* ; la raison d'un report.
+
+    Le cas d'une base déjà renommée par l'étape 5 et pas encore par l'étape
+    6, ou d'une sauvegarde d'avant restaurée sous le nom vie.db.
+    """
+    with closing(sqlite3.connect(base, timeout=0.5)) as conn:
+        if not tables_heritees(conn):
+            return None
+        refus = _rendre_exclusive(conn)
+        if refus:
+            return refus
+        sauvegarde = _cible_sauvegarde(
+            data_dir, f"{base.name}.avant-tables-vie-{datetime.now():%Y%m%d}"
+        )
+        with closing(sqlite3.connect(sauvegarde)) as copie:
+            conn.backup(copie)
+        try:
+            renommer_tables(conn)
+        except sqlite3.DatabaseError as exc:
+            return f"tables non renommées ({exc})"
     return None
 
 
@@ -354,7 +470,7 @@ def relativiser_photo(chemin: str, data_dir: Path) -> str | None:
 def _table_photos(conn: sqlite3.Connection) -> str | None:
     requete = "SELECT name FROM sqlite_master WHERE type='table'"
     tables = {row[0] for row in conn.execute(requete)}
-    for nom in ("vie_photos", "succes_photos"):
+    for nom in (f"{PREFIXE_TABLES}photos", f"{PREFIXE_TABLES_HERITE}photos"):
         if nom in tables:
             return nom
     return None
@@ -481,6 +597,16 @@ def migrer_base_vie(data_dir: Path) -> Migration:
             etat = "migree"
         elif not neuve.exists():
             return Migration("neuve", neuve)
+        else:
+            refus = _migrer_tables(data_dir, neuve)
+            if refus:
+                logger.warning(
+                    "vie : tables de %s non renommées, reporté au prochain "
+                    "démarrage — %s",
+                    NOM_BASE,
+                    refus,
+                )
+                return Migration("reportee", neuve, refus)
 
         try:
             photos = _migrer_photos(neuve, data_dir)
@@ -497,6 +623,7 @@ def migrer_base_vie(data_dir: Path) -> Migration:
 
 
 __all__ = [
+    "BaseVieNonMigree",
     "DOSSIER_PHOTOS",
     "DOSSIER_PHOTOS_HERITE",
     "DeuxBasesVie",
@@ -508,4 +635,5 @@ __all__ = [
     "dossier_photos_pour",
     "migrer_base_vie",
     "relativiser_photo",
+    "renommer_tables",
 ]

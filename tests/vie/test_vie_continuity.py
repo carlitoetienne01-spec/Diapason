@@ -295,7 +295,7 @@ class TestUneCitationImporteePuisSupprimeeNeFaitPasTomberLeDemarrage:
         )
         with rouvert._connect() as conn:
             ligne = conn.execute(
-                "SELECT deleted_at_ms FROM succes_quotes WHERE id=?",
+                "SELECT deleted_at_ms FROM vie_quotes WHERE id=?",
                 ("citation-importee",),
             ).fetchone()
         assert ligne is not None and ligne["deleted_at_ms"] is not None, (

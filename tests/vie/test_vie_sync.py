@@ -26,9 +26,7 @@ def test_pairing_is_one_time_hashed_and_revocable(tmp_path) -> None:
     invitation = db.create_pairing("iPhone personnel")
 
     with sqlite3.connect(db.db_path) as conn:
-        stored = conn.execute("SELECT token_hash FROM succes_sync_pairings").fetchone()[
-            0
-        ]
+        stored = conn.execute("SELECT token_hash FROM vie_sync_pairings").fetchone()[0]
     assert invitation["pairingToken"] not in stored
     assert len(stored) == 64
 
@@ -251,7 +249,7 @@ def test_peer_is_bound_to_the_device_it_first_authors(tmp_path) -> None:
     with sqlite3.connect(db.db_path) as conn:
         conn.row_factory = sqlite3.Row
         bound = conn.execute(
-            "SELECT device_id FROM succes_sync_peers WHERE id=?", (peer["peerId"],)
+            "SELECT device_id FROM vie_sync_peers WHERE id=?", (peer["peerId"],)
         ).fetchone()["device_id"]
     assert bound == "phone-a"
 

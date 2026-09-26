@@ -43,7 +43,7 @@ HABIT_FREQUENCIES = frozenset({"daily", "weekly", "monthly"})
 _COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 _WORKSPACE_SCHEMA = """
-CREATE TABLE IF NOT EXISTS succes_habits (
+CREATE TABLE IF NOT EXISTS vie_habits (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     icon TEXT NOT NULL DEFAULT '',
@@ -59,18 +59,18 @@ CREATE TABLE IF NOT EXISTS succes_habits (
     updated_at_ms INTEGER NOT NULL,
     deleted_at_ms INTEGER
 );
-CREATE INDEX IF NOT EXISTS succes_habits_active_idx
-    ON succes_habits(deleted_at_ms, updated_at_ms);
-CREATE TABLE IF NOT EXISTS succes_habit_logs (
-    habit_id TEXT NOT NULL REFERENCES succes_habits(id),
+CREATE INDEX IF NOT EXISTS vie_habits_active_idx
+    ON vie_habits(deleted_at_ms, updated_at_ms);
+CREATE TABLE IF NOT EXISTS vie_habit_logs (
+    habit_id TEXT NOT NULL REFERENCES vie_habits(id),
     log_date TEXT NOT NULL,
     done INTEGER NOT NULL DEFAULT 0,
     updated_at_ms INTEGER NOT NULL,
     PRIMARY KEY(habit_id, log_date)
 );
-CREATE INDEX IF NOT EXISTS succes_habit_logs_date_idx
-    ON succes_habit_logs(log_date, done);
-CREATE TABLE IF NOT EXISTS succes_notes (
+CREATE INDEX IF NOT EXISTS vie_habit_logs_date_idx
+    ON vie_habit_logs(log_date, done);
+CREATE TABLE IF NOT EXISTS vie_notes (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
     content TEXT NOT NULL DEFAULT '',
@@ -91,14 +91,13 @@ CREATE TABLE IF NOT EXISTS succes_notes (
     project_id TEXT NOT NULL DEFAULT '',
     order_index INTEGER NOT NULL DEFAULT 0
 );
-CREATE INDEX IF NOT EXISTS succes_notes_active_idx
-    ON succes_notes(deleted_at_ms, updated_at_ms DESC);
-CREATE TABLE IF NOT EXISTS succes_note_categories (
+CREATE INDEX IF NOT EXISTS vie_notes_active_idx
+    ON vie_notes(deleted_at_ms, updated_at_ms DESC);
+CREATE TABLE IF NOT EXISTS vie_note_categories (
     name TEXT PRIMARY KEY,
     order_index INTEGER NOT NULL DEFAULT 0,
     updated_at_ms INTEGER NOT NULL DEFAULT 0
 );
-PRAGMA user_version = 3;
 """
 
 NOTE_PAGE_FORMATS = frozenset(
@@ -229,7 +228,7 @@ class VieWorkspaceStore(VieStore):
     def _ensure_note_columns(conn: sqlite3.Connection) -> None:
         columns = {
             row["name"]
-            for row in conn.execute("PRAGMA table_info(succes_notes)").fetchall()
+            for row in conn.execute("PRAGMA table_info(vie_notes)").fetchall()
         }
         additions = (
             ("page_format", "TEXT NOT NULL DEFAULT 'a4'"),
@@ -262,9 +261,7 @@ class VieWorkspaceStore(VieStore):
         neuves = [name for name, _ in additions if name not in columns]
         for name, declaration in additions:
             if name not in columns:
-                conn.execute(
-                    f"ALTER TABLE succes_notes ADD COLUMN {name} {declaration}"
-                )
+                conn.execute(f"ALTER TABLE vie_notes ADD COLUMN {name} {declaration}")
         if "page_size" in neuves and "page_format" in columns:
             # REMPLIR, et non déduire à la lecture. `ALTER TABLE` donne à
             # chaque note existante le défaut des colonnes neuves, ce qui rend
@@ -275,7 +272,7 @@ class VieWorkspaceStore(VieStore):
             # colonnes deviennent la vérité.
             for herite, (taille, sens, marges) in _FORMAT_HERITE.items():
                 conn.execute(
-                    """UPDATE succes_notes
+                    """UPDATE vie_notes
                        SET page_size=?, page_orientation=?, page_margins=?
                        WHERE page_format=?""",
                     (taille, sens, marges, herite),
@@ -285,11 +282,11 @@ class VieWorkspaceStore(VieStore):
     def _ensure_habit_columns(conn: sqlite3.Connection) -> None:
         columns = {
             row["name"]
-            for row in conn.execute("PRAGMA table_info(succes_habits)").fetchall()
+            for row in conn.execute("PRAGMA table_info(vie_habits)").fetchall()
         }
         if "reminder_time" not in columns:
             conn.execute(
-                "ALTER TABLE succes_habits ADD COLUMN reminder_time TEXT NOT NULL "
+                "ALTER TABLE vie_habits ADD COLUMN reminder_time TEXT NOT NULL "
                 "DEFAULT ''"
             )
 
@@ -303,7 +300,7 @@ class VieWorkspaceStore(VieStore):
         if not op_id:
             return None
         row = conn.execute(
-            "SELECT request_json,payload_json FROM succes_operations WHERE op_id=?",
+            "SELECT request_json,payload_json FROM vie_operations WHERE op_id=?",
             (op_id,),
         ).fetchone()
         if row is None:
@@ -348,14 +345,14 @@ class VieWorkspaceStore(VieStore):
         self, conn: sqlite3.Connection, project_id: str
     ) -> dict[str, Any] | None:
         row = conn.execute(
-            "SELECT * FROM succes_projects WHERE id=? AND deleted_at_ms IS NULL",
+            "SELECT * FROM vie_projects WHERE id=? AND deleted_at_ms IS NULL",
             (project_id,),
         ).fetchone()
         if row is None:
             return None
         counts = conn.execute(
             """SELECT COUNT(*) total, COALESCE(SUM(done),0) completed
-               FROM succes_tasks WHERE project_id=? AND deleted_at_ms IS NULL""",
+               FROM vie_tasks WHERE project_id=? AND deleted_at_ms IS NULL""",
             (project_id,),
         ).fetchone()
         return self._project_dict(row, int(counts["total"]), int(counts["completed"]))
@@ -373,7 +370,7 @@ class VieWorkspaceStore(VieStore):
             ids = [
                 row["id"]
                 for row in conn.execute(
-                    """SELECT id FROM succes_projects
+                    """SELECT id FROM vie_projects
                        WHERE deleted_at_ms IS NULL AND lower(name) LIKE ?
                        ORDER BY order_index ASC, updated_at_ms DESC""",
                     (query,),
@@ -435,7 +432,7 @@ class VieWorkspaceStore(VieStore):
             if replay is not None:
                 return replay
             conn.execute(
-                """INSERT INTO succes_projects
+                """INSERT INTO vie_projects
                    (id,name,description,color,icon,start_date,end_date,created_date,
                     updated_at_ms,deleted_at_ms,structure,structure_config,order_index)
                    VALUES (?,?,?,?,?,?,?,?,?,NULL,?,?,?)""",
@@ -514,7 +511,7 @@ class VieWorkspaceStore(VieStore):
         self.get_project(project_id)  # 404 franc plutôt qu'une liste vide menteuse
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT * FROM succes_task_edges WHERE project_id=? "
+                "SELECT * FROM vie_task_edges WHERE project_id=? "
                 "ORDER BY from_task_id, to_task_id",
                 (project_id,),
             ).fetchall()
@@ -524,7 +521,7 @@ class VieWorkspaceStore(VieStore):
         self, conn: sqlite3.Connection, task_id: str, project_id: str, *, role: str
     ) -> None:
         row = conn.execute(
-            "SELECT project_id FROM succes_tasks WHERE id=? AND deleted_at_ms IS NULL",
+            "SELECT project_id FROM vie_tasks WHERE id=? AND deleted_at_ms IS NULL",
             (task_id,),
         ).fetchone()
         if row is None:
@@ -571,7 +568,7 @@ class VieWorkspaceStore(VieStore):
             while frontiere:
                 courant = frontiere.pop()
                 for row in conn.execute(
-                    "SELECT to_task_id FROM succes_task_edges "
+                    "SELECT to_task_id FROM vie_task_edges "
                     "WHERE project_id=? AND from_task_id=?",
                     (project_id, courant),
                 ).fetchall():
@@ -586,7 +583,7 @@ class VieWorkspaceStore(VieStore):
                         atteints.add(suivant)
                         frontiere.append(suivant)
             existante = conn.execute(
-                "SELECT updated_at_ms FROM succes_task_edges "
+                "SELECT updated_at_ms FROM vie_task_edges "
                 "WHERE from_task_id=? AND to_task_id=?",
                 (de, vers),
             ).fetchone()
@@ -601,7 +598,7 @@ class VieWorkspaceStore(VieStore):
                     "updatedAtMs": int(existante["updated_at_ms"]),
                 }
             conn.execute(
-                "INSERT INTO succes_task_edges "
+                "INSERT INTO vie_task_edges "
                 "(project_id, from_task_id, to_task_id, updated_at_ms) "
                 "VALUES (?,?,?,?)",
                 (project_id, de, vers, ts),
@@ -642,7 +639,7 @@ class VieWorkspaceStore(VieStore):
         ts = now_ms()
         with self._transaction() as conn:
             cursor = conn.execute(
-                "DELETE FROM succes_task_edges "
+                "DELETE FROM vie_task_edges "
                 "WHERE project_id=? AND from_task_id=? AND to_task_id=?",
                 (project_id, de, vers),
             )
@@ -679,7 +676,7 @@ class VieWorkspaceStore(VieStore):
             ids = [
                 row["id"]
                 for row in conn.execute(
-                    "SELECT id FROM succes_tasks WHERE project_id=? "
+                    "SELECT id FROM vie_tasks WHERE project_id=? "
                     "AND deleted_at_ms IS NULL ORDER BY order_index, updated_at_ms",
                     (project_id,),
                 ).fetchall()
@@ -775,7 +772,7 @@ class VieWorkspaceStore(VieStore):
             # fois un travail entre-temps refait.
             if op_id:
                 deja = conn.execute(
-                    "SELECT 1 FROM succes_operations WHERE op_id LIKE ? LIMIT 1",
+                    "SELECT 1 FROM vie_operations WHERE op_id LIKE ? LIMIT 1",
                     (f"{op_id}:%",),
                 ).fetchone()
                 if deja is not None:
@@ -786,14 +783,14 @@ class VieWorkspaceStore(VieStore):
             ids = [
                 row["id"]
                 for row in conn.execute(
-                    "SELECT id FROM succes_tasks "
+                    "SELECT id FROM vie_tasks "
                     "WHERE project_id=? AND deleted_at_ms IS NULL AND done=1",
                     (project_id,),
                 ).fetchall()
             ]
             for task_id in ids:
                 conn.execute(
-                    "UPDATE succes_tasks SET done=0, completed_date='', "
+                    "UPDATE vie_tasks SET done=0, completed_date='', "
                     "updated_at_ms=? WHERE id=?",
                     (ts, task_id),
                 )
@@ -802,7 +799,7 @@ class VieWorkspaceStore(VieStore):
                 # l'arbre fait et re-cochait la tâche — le tour « recommencé »
                 # s'achevait tout seul, sans que rien n'ait été fait.
                 conn.execute(
-                    "UPDATE succes_subtasks SET done=0, updated_at_ms=? "
+                    "UPDATE vie_subtasks SET done=0, updated_at_ms=? "
                     "WHERE task_id=? AND deleted_at_ms IS NULL",
                     (ts, task_id),
                 )
@@ -863,7 +860,7 @@ class VieWorkspaceStore(VieStore):
             if self._load_project(conn, project_id) is None:
                 raise VieNotFound("Ce projet n'existe pas ou a été supprimé.")
             conn.execute(
-                """UPDATE succes_projects SET name=?,description=?,color=?,icon=?,
+                """UPDATE vie_projects SET name=?,description=?,color=?,icon=?,
                    start_date=?,end_date=?,structure=?,structure_config=?,
                    updated_at_ms=? WHERE id=?""",
                 (
@@ -890,21 +887,21 @@ class VieWorkspaceStore(VieStore):
             if etapes_valides:
                 marques = ",".join("?" * len(etapes_valides))
                 egarees = conn.execute(
-                    f"""SELECT id FROM succes_tasks WHERE project_id=?
+                    f"""SELECT id FROM vie_tasks WHERE project_id=?
                         AND deleted_at_ms IS NULL AND stage NOT IN ({marques})""",
                     (project_id, *etapes_valides),
                 ).fetchall()
                 repli = etapes_valides[0]
             else:
                 egarees = conn.execute(
-                    "SELECT id FROM succes_tasks WHERE project_id=? "
+                    "SELECT id FROM vie_tasks WHERE project_id=? "
                     "AND deleted_at_ms IS NULL AND stage != ''",
                     (project_id,),
                 ).fetchall()
                 repli = ""
             for ligne in egarees:
                 conn.execute(
-                    "UPDATE succes_tasks SET stage=?, updated_at_ms=? WHERE id=?",
+                    "UPDATE vie_tasks SET stage=?, updated_at_ms=? WHERE id=?",
                     (repli, timestamp, ligne["id"]),
                 )
                 tache = self._load_task(conn, ligne["id"])
@@ -939,7 +936,7 @@ class VieWorkspaceStore(VieStore):
     @staticmethod
     def _prochain_ordre_projet(conn: sqlite3.Connection) -> int:
         row = conn.execute(
-            "SELECT COALESCE(MAX(order_index), -1) + 1 AS n FROM succes_projects"
+            "SELECT COALESCE(MAX(order_index), -1) + 1 AS n FROM vie_projects"
         ).fetchone()
         return int(row["n"])
 
@@ -958,7 +955,7 @@ class VieWorkspaceStore(VieStore):
             rang = 0
             for project_id in propres:
                 row = conn.execute(
-                    "SELECT order_index FROM succes_projects"
+                    "SELECT order_index FROM vie_projects"
                     " WHERE id=? AND deleted_at_ms IS NULL",
                     (project_id,),
                 ).fetchone()
@@ -969,8 +966,7 @@ class VieWorkspaceStore(VieStore):
                 if int(row["order_index"]) == index:
                     continue
                 conn.execute(
-                    "UPDATE succes_projects SET order_index=?,updated_at_ms=?"
-                    " WHERE id=?",
+                    "UPDATE vie_projects SET order_index=?,updated_at_ms=? WHERE id=?",
                     (index, timestamp, project_id),
                 )
                 project = self._load_project(conn, project_id)
@@ -999,7 +995,7 @@ class VieWorkspaceStore(VieStore):
             if (
                 op_id
                 and conn.execute(
-                    "SELECT 1 FROM succes_operations WHERE op_id=?", (op_id,)
+                    "SELECT 1 FROM vie_operations WHERE op_id=?", (op_id,)
                 ).fetchone()
             ):
                 return
@@ -1007,7 +1003,7 @@ class VieWorkspaceStore(VieStore):
             if project is None:
                 raise VieNotFound("Ce projet n'existe pas ou a été supprimé.")
             conn.execute(
-                "UPDATE succes_projects SET deleted_at_ms=?,updated_at_ms=? WHERE id=?",
+                "UPDATE vie_projects SET deleted_at_ms=?,updated_at_ms=? WHERE id=?",
                 (timestamp, timestamp, project_id),
             )
             # Les notes rattachées redeviennent « sans projet » — supprimer un
@@ -1017,14 +1013,14 @@ class VieWorkspaceStore(VieStore):
             liberees = [
                 row["id"]
                 for row in conn.execute(
-                    """SELECT id FROM succes_notes
+                    """SELECT id FROM vie_notes
                        WHERE deleted_at_ms IS NULL AND project_id=?""",
                     (project_id,),
                 )
             ]
             for note_id in liberees:
                 conn.execute(
-                    """UPDATE succes_notes SET project_id='',updated_at_ms=?
+                    """UPDATE vie_notes SET project_id='',updated_at_ms=?
                        WHERE id=?""",
                     (timestamp, note_id),
                 )
@@ -1063,15 +1059,13 @@ class VieWorkspaceStore(VieStore):
             # applique les suppressions entité par entité, et un pair qui ne
             # reçoit que la mort du projet garde toutes les tâches.
             survivantes = conn.execute(
-                "SELECT id FROM succes_tasks "
-                "WHERE project_id=? AND deleted_at_ms IS NULL",
+                "SELECT id FROM vie_tasks WHERE project_id=? AND deleted_at_ms IS NULL",
                 (project_id,),
             ).fetchall()
             for rang, ligne in enumerate(survivantes):
                 task_id = ligne["id"]
                 conn.execute(
-                    "UPDATE succes_tasks SET deleted_at_ms=?,updated_at_ms=? "
-                    "WHERE id=?",
+                    "UPDATE vie_tasks SET deleted_at_ms=?,updated_at_ms=? WHERE id=?",
                     (timestamp, timestamp, task_id),
                 )
                 aretes = self._emporter_les_dependances(conn, task_id, timestamp)
@@ -1136,7 +1130,7 @@ class VieWorkspaceStore(VieStore):
         self, conn: sqlite3.Connection, habit_id: str
     ) -> dict[str, Any] | None:
         row = conn.execute(
-            "SELECT * FROM succes_habits WHERE id=? AND deleted_at_ms IS NULL",
+            "SELECT * FROM vie_habits WHERE id=? AND deleted_at_ms IS NULL",
             (habit_id,),
         ).fetchone()
         return self._habit_base(row) if row is not None else None
@@ -1163,7 +1157,7 @@ class VieWorkspaceStore(VieStore):
 
     def _habit_done(self, conn: sqlite3.Connection, habit_id: str, iso: str) -> bool:
         row = conn.execute(
-            "SELECT done FROM succes_habit_logs WHERE habit_id=? AND log_date=?",
+            "SELECT done FROM vie_habit_logs WHERE habit_id=? AND log_date=?",
             (habit_id, iso),
         ).fetchone()
         return bool(row and row["done"])
@@ -1217,7 +1211,7 @@ class VieWorkspaceStore(VieStore):
         target = date.fromisoformat(iso)
         with self._connect() as conn:
             rows = conn.execute(
-                """SELECT * FROM succes_habits WHERE deleted_at_ms IS NULL
+                """SELECT * FROM vie_habits WHERE deleted_at_ms IS NULL
                    ORDER BY updated_at_ms DESC"""
             ).fetchall()
             habits: list[dict[str, Any]] = []
@@ -1281,7 +1275,7 @@ class VieWorkspaceStore(VieStore):
             if replay is not None:
                 return replay
             conn.execute(
-                """INSERT INTO succes_habits
+                """INSERT INTO vie_habits
                    (id,name,icon,color,frequency,created_date,start_date,end_date,
                     weekly_days_json,month_week_slots_json,month_week_day,
                     reminder_time,updated_at_ms,deleted_at_ms)
@@ -1330,7 +1324,7 @@ class VieWorkspaceStore(VieStore):
             if self._load_habit(conn, habit_id) is None:
                 raise VieNotFound("Cette habitude n'existe pas ou a été supprimée.")
             conn.execute(
-                """UPDATE succes_habits SET name=?,icon=?,color=?,frequency=?,
+                """UPDATE vie_habits SET name=?,icon=?,color=?,frequency=?,
                    start_date=?,end_date=?,weekly_days_json=?,month_week_slots_json=?,
                    month_week_day=?,reminder_time=?,updated_at_ms=? WHERE id=?""",
                 (
@@ -1379,7 +1373,7 @@ class VieWorkspaceStore(VieStore):
         # Bound the window so a bad client cannot pull the entire history at once.
         if (date.fromisoformat(end) - date.fromisoformat(start)).days > 400:
             raise VieError("La plage de suivi ne peut pas dépasser 400 jours.")
-        query = """SELECT habit_id, log_date FROM succes_habit_logs
+        query = """SELECT habit_id, log_date FROM vie_habit_logs
                    WHERE done=1 AND log_date>=? AND log_date<=?"""
         params: list[Any] = [start, end]
         if habit_id:
@@ -1411,7 +1405,7 @@ class VieWorkspaceStore(VieStore):
         with self._transaction() as conn:
             if op_id:
                 row = conn.execute(
-                    "SELECT request_json FROM succes_operations WHERE op_id=?", (op_id,)
+                    "SELECT request_json FROM vie_operations WHERE op_id=?", (op_id,)
                 ).fetchone()
                 if row:
                     if row["request_json"] != self._canonical_json(request):
@@ -1421,7 +1415,7 @@ class VieWorkspaceStore(VieStore):
                         )
                     return self.get_habit(habit_id, on_date=iso)
             conn.execute(
-                """INSERT INTO succes_habit_logs(habit_id,log_date,done,updated_at_ms)
+                """INSERT INTO vie_habit_logs(habit_id,log_date,done,updated_at_ms)
                    VALUES (?,?,?,?) ON CONFLICT(habit_id,log_date) DO UPDATE SET
                    done=excluded.done,updated_at_ms=excluded.updated_at_ms""",
                 (habit_id, iso, int(done), timestamp),
@@ -1447,12 +1441,12 @@ class VieWorkspaceStore(VieStore):
             if (
                 op_id
                 and conn.execute(
-                    "SELECT 1 FROM succes_operations WHERE op_id=?", (op_id,)
+                    "SELECT 1 FROM vie_operations WHERE op_id=?", (op_id,)
                 ).fetchone()
             ):
                 return
             conn.execute(
-                "UPDATE succes_habits SET deleted_at_ms=?,updated_at_ms=? WHERE id=?",
+                "UPDATE vie_habits SET deleted_at_ms=?,updated_at_ms=? WHERE id=?",
                 (timestamp, timestamp, habit_id),
             )
             self._record_op(
@@ -1501,7 +1495,7 @@ class VieWorkspaceStore(VieStore):
         self, conn: sqlite3.Connection, note_id: str
     ) -> dict[str, Any] | None:
         row = conn.execute(
-            "SELECT * FROM succes_notes WHERE id=? AND deleted_at_ms IS NULL",
+            "SELECT * FROM vie_notes WHERE id=? AND deleted_at_ms IS NULL",
             (note_id,),
         ).fetchone()
         return self._note_dict(row) if row is not None else None
@@ -1517,7 +1511,7 @@ class VieWorkspaceStore(VieStore):
         query = "%" + search.strip().lower() + "%"
         with self._connect() as conn:
             rows = conn.execute(
-                """SELECT * FROM succes_notes WHERE deleted_at_ms IS NULL
+                """SELECT * FROM vie_notes WHERE deleted_at_ms IS NULL
                    AND (lower(title) LIKE ? OR lower(content) LIKE ?)
                    ORDER BY order_index ASC, updated_at_ms DESC""",
                 (query, query),
@@ -1613,7 +1607,7 @@ class VieWorkspaceStore(VieStore):
             if replay is not None:
                 return replay
             conn.execute(
-                """INSERT INTO succes_notes
+                """INSERT INTO vie_notes
                    (id,title,content,created_at,updated_at,updated_at_ms,deleted_at_ms,
                     page_format,page_size,page_orientation,page_margins,
                     page_background,font_family,doc_lang,color,reading_mark,
@@ -1689,7 +1683,7 @@ class VieWorkspaceStore(VieStore):
                 valeurs["content"] = current["content"] + str(patch["appendContent"])
             title, content, meta = self._note_fields(valeurs)
             conn.execute(
-                """UPDATE succes_notes SET title=?,content=?,updated_at=?,
+                """UPDATE vie_notes SET title=?,content=?,updated_at=?,
                    updated_at_ms=?,page_format=?,page_size=?,page_orientation=?,
                    page_margins=?,page_background=?,font_family=?,
                    doc_lang=?,color=?,reading_mark=?,category=?,project_id=?
@@ -1736,7 +1730,7 @@ class VieWorkspaceStore(VieStore):
         qu'un pair qui resynchronise une note supprimée ne retombe pas sur un
         rang déjà pris (le patron des tâches, pas celui des photos)."""
         row = conn.execute(
-            "SELECT COALESCE(MAX(order_index), -1) + 1 AS n FROM succes_notes"
+            "SELECT COALESCE(MAX(order_index), -1) + 1 AS n FROM vie_notes"
         ).fetchone()
         return int(row["n"])
 
@@ -1759,7 +1753,7 @@ class VieWorkspaceStore(VieStore):
             rang = 0
             for note_id in propres:
                 row = conn.execute(
-                    "SELECT order_index FROM succes_notes"
+                    "SELECT order_index FROM vie_notes"
                     " WHERE id=? AND deleted_at_ms IS NULL",
                     (note_id,),
                 ).fetchone()
@@ -1770,7 +1764,7 @@ class VieWorkspaceStore(VieStore):
                 if int(row["order_index"]) == index:
                     continue
                 conn.execute(
-                    "UPDATE succes_notes SET order_index=?,updated_at_ms=? WHERE id=?",
+                    "UPDATE vie_notes SET order_index=?,updated_at_ms=? WHERE id=?",
                     (index, timestamp, note_id),
                 )
                 note = self._load_note(conn, note_id)
@@ -1800,20 +1794,18 @@ class VieWorkspaceStore(VieStore):
             vivantes = {
                 str(row["category"])
                 for row in conn.execute(
-                    """SELECT DISTINCT category FROM succes_notes
+                    """SELECT DISTINCT category FROM vie_notes
                        WHERE deleted_at_ms IS NULL AND category != ''"""
                 )
             }
             ordonnees = [
                 str(row["name"])
                 for row in conn.execute(
-                    "SELECT name FROM succes_note_categories ORDER BY order_index"
+                    "SELECT name FROM vie_note_categories ORDER BY order_index"
                 )
             ]
             for morte in [n for n in ordonnees if n not in vivantes]:
-                conn.execute(
-                    "DELETE FROM succes_note_categories WHERE name=?", (morte,)
-                )
+                conn.execute("DELETE FROM vie_note_categories WHERE name=?", (morte,))
             gardees = [n for n in ordonnees if n in vivantes]
             return gardees + sorted(vivantes - set(gardees))
 
@@ -1828,7 +1820,7 @@ class VieWorkspaceStore(VieStore):
         with self._transaction() as conn:
             for index, nom in enumerate(propres):
                 conn.execute(
-                    """INSERT INTO succes_note_categories
+                    """INSERT INTO vie_note_categories
                        (name,order_index,updated_at_ms)
                        VALUES (?,?,?)
                        ON CONFLICT(name) DO UPDATE
@@ -1853,14 +1845,14 @@ class VieWorkspaceStore(VieStore):
             notes = [
                 row["id"]
                 for row in conn.execute(
-                    """SELECT id FROM succes_notes
+                    """SELECT id FROM vie_notes
                        WHERE deleted_at_ms IS NULL AND category=?""",
                     (ancien_nom,),
                 )
             ]
             for note_id in notes:
                 conn.execute(
-                    """UPDATE succes_notes SET category=?,updated_at_ms=?
+                    """UPDATE vie_notes SET category=?,updated_at_ms=?
                        WHERE id=?""",
                     (nouveau_nom, timestamp, note_id),
                 )
@@ -1882,13 +1874,13 @@ class VieWorkspaceStore(VieStore):
             # L'ordre suit le nom ; une dissolution retire la ligne.
             if nouveau_nom:
                 conn.execute(
-                    """UPDATE OR REPLACE succes_note_categories SET name=?
+                    """UPDATE OR REPLACE vie_note_categories SET name=?
                        WHERE name=?""",
                     (nouveau_nom, ancien_nom),
                 )
             else:
                 conn.execute(
-                    "DELETE FROM succes_note_categories WHERE name=?", (ancien_nom,)
+                    "DELETE FROM vie_note_categories WHERE name=?", (ancien_nom,)
                 )
         return len(notes)
 
@@ -1900,12 +1892,12 @@ class VieWorkspaceStore(VieStore):
             if (
                 op_id
                 and conn.execute(
-                    "SELECT 1 FROM succes_operations WHERE op_id=?", (op_id,)
+                    "SELECT 1 FROM vie_operations WHERE op_id=?", (op_id,)
                 ).fetchone()
             ):
                 return
             conn.execute(
-                "UPDATE succes_notes SET deleted_at_ms=?,updated_at_ms=? WHERE id=?",
+                "UPDATE vie_notes SET deleted_at_ms=?,updated_at_ms=? WHERE id=?",
                 (timestamp, timestamp, note_id),
             )
             self._record_op(
@@ -1943,7 +1935,7 @@ class VieWorkspaceStore(VieStore):
     def materialize_archived_snapshots(self) -> None:
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT snapshot_json FROM succes_imports ORDER BY imported_at_ms"
+                "SELECT snapshot_json FROM vie_imports ORDER BY imported_at_ms"
             ).fetchall()
         for row in rows:
             try:
@@ -1981,7 +1973,7 @@ class VieWorkspaceStore(VieStore):
                     continue
                 timestamp = _safe_timestamp(raw.get("updatedAtMs"), fallback=0)
                 current = conn.execute(
-                    "SELECT updated_at_ms FROM succes_habits WHERE id=?", (habit_id,)
+                    "SELECT updated_at_ms FROM vie_habits WHERE id=?", (habit_id,)
                 ).fetchone()
                 if current and current["updated_at_ms"] >= timestamp:
                     continue
@@ -1990,7 +1982,7 @@ class VieWorkspaceStore(VieStore):
                 except VieError:
                     continue
                 conn.execute(
-                    """INSERT INTO succes_habits
+                    """INSERT INTO vie_habits
                        (id,name,icon,color,frequency,created_date,start_date,end_date,
                         weekly_days_json,month_week_slots_json,month_week_day,
                         reminder_time,updated_at_ms,deleted_at_ms)
@@ -2030,7 +2022,7 @@ class VieWorkspaceStore(VieStore):
                     continue
                 timestamp = _safe_timestamp(raw.get("updatedAtMs"), fallback=0)
                 current = conn.execute(
-                    "SELECT updated_at_ms FROM succes_notes WHERE id=?", (note_id,)
+                    "SELECT updated_at_ms FROM vie_notes WHERE id=?", (note_id,)
                 ).fetchone()
                 if current and current["updated_at_ms"] >= timestamp:
                     continue
@@ -2039,7 +2031,7 @@ class VieWorkspaceStore(VieStore):
                 except VieError:
                     continue
                 conn.execute(
-                    """INSERT INTO succes_notes
+                    """INSERT INTO vie_notes
                        (id,title,content,created_at,updated_at,updated_at_ms,deleted_at_ms,
                         page_format,page_size,page_orientation,page_margins,
                         page_background,font_family,doc_lang,color,reading_mark)
@@ -2094,20 +2086,20 @@ class VieWorkspaceStore(VieStore):
                 except VieError:
                     continue
                 if not conn.execute(
-                    "SELECT 1 FROM succes_habits WHERE id=? AND deleted_at_ms IS NULL",
+                    "SELECT 1 FROM vie_habits WHERE id=? AND deleted_at_ms IS NULL",
                     (habit_id,),
                 ).fetchone():
                     continue
                 timestamp = _safe_timestamp(value, fallback=0)
                 current = conn.execute(
-                    """SELECT updated_at_ms FROM succes_habit_logs
+                    """SELECT updated_at_ms FROM vie_habit_logs
                        WHERE habit_id=? AND log_date=?""",
                     (habit_id, iso),
                 ).fetchone()
                 if current and current["updated_at_ms"] >= timestamp:
                     continue
                 conn.execute(
-                    """INSERT INTO succes_habit_logs
+                    """INSERT INTO vie_habit_logs
                        (habit_id,log_date,done,updated_at_ms)
                        VALUES (?,?,?,?) ON CONFLICT(habit_id,log_date) DO UPDATE SET
                        done=excluded.done,updated_at_ms=excluded.updated_at_ms""",

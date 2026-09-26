@@ -268,8 +268,21 @@ def _legacy_succes_device_id() -> str | None:
         with closing(
             sqlite3.connect(f"{db_path.absolute().as_uri()}?mode=ro", uri=True)
         ) as conn:
+            # vie_meta since the tables were renamed (25/09/2026); succes_meta
+            # while `diapason serve` has not migrated them yet. Reading only
+            # one name would mint a second identity for this machine the day
+            # the other one is in use.
+            tables = {
+                row[0]
+                for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                )
+            }
+            table = next((t for t in ("vie_meta", "succes_meta") if t in tables), None)
+            if table is None:
+                return None
             row = conn.execute(
-                "SELECT value FROM succes_meta WHERE key='device_id'"
+                f"SELECT value FROM {table} WHERE key='device_id'"  # noqa: S608 - fixed names
             ).fetchone()
         return str(row[0]) if row and row[0] else None
     except Exception:  # noqa: BLE001 - continuity is a nicety, never a blocker

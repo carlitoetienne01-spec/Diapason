@@ -195,7 +195,7 @@ class TestLesPhotos:
             # Forcer un ordre strict : la même milliseconde ne trie rien.
             with magasin._connect() as conn:
                 conn.execute(
-                    "UPDATE succes_photos SET created_at_ms=? WHERE id=?",
+                    "UPDATE vie_photos SET created_at_ms=? WHERE id=?",
                     (1_000 + i, photo["id"]),
                 )
                 conn.commit()
@@ -405,7 +405,7 @@ class TestLeRangement:
             )
             with magasin._connect() as conn:
                 conn.execute(
-                    "UPDATE succes_photos SET created_at_ms=? WHERE id=?",
+                    "UPDATE vie_photos SET created_at_ms=? WHERE id=?",
                     (1_000 + i, photo["id"]),
                 )
                 conn.commit()
@@ -489,8 +489,8 @@ class TestLeRangement:
         magasin = VieSyncStore(chemin)
         with magasin._connect() as conn:
             conn.executescript(
-                "ALTER TABLE succes_photos RENAME TO ancienne;"
-                "CREATE TABLE succes_photos AS SELECT id, pile_id, project_id, "
+                "ALTER TABLE vie_photos RENAME TO ancienne;"
+                "CREATE TABLE vie_photos AS SELECT id, pile_id, project_id, "
                 "file_name, mime, bytes, width, height, tint, caption, task_id, "
                 "file_path, thumb_path, created_at_ms, updated_at_ms, deleted_at_ms "
                 "FROM ancienne;"
@@ -500,7 +500,7 @@ class TestLeRangement:
         rouverte = VieSyncStore(chemin)
         with rouverte._connect() as conn:
             colonnes = {
-                r["name"] for r in conn.execute("PRAGMA table_info(succes_photos)")
+                r["name"] for r in conn.execute("PRAGMA table_info(vie_photos)")
             }
         assert "position" in colonnes
 

@@ -59,7 +59,7 @@ DEFAULT_INCOME_CATEGORIES: tuple[tuple[str, str, str], ...] = (
 )
 
 _FINANCES_SCHEMA = """
-CREATE TABLE IF NOT EXISTS succes_accounts (
+CREATE TABLE IF NOT EXISTS vie_accounts (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     account_type TEXT NOT NULL DEFAULT 'checking',
@@ -72,7 +72,7 @@ CREATE TABLE IF NOT EXISTS succes_accounts (
     deleted_at_ms INTEGER
 );
 
-CREATE TABLE IF NOT EXISTS succes_finance_categories (
+CREATE TABLE IF NOT EXISTS vie_finance_categories (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     kind TEXT NOT NULL DEFAULT 'expense',
@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS succes_finance_categories (
     deleted_at_ms INTEGER
 );
 
-CREATE TABLE IF NOT EXISTS succes_transactions (
+CREATE TABLE IF NOT EXISTS vie_transactions (
     id TEXT PRIMARY KEY,
     account_id TEXT NOT NULL,
     category_id TEXT NOT NULL DEFAULT '',
@@ -100,14 +100,14 @@ CREATE TABLE IF NOT EXISTS succes_transactions (
     deleted_at_ms INTEGER
 );
 
-CREATE INDEX IF NOT EXISTS idx_succes_txn_date
-    ON succes_transactions(txn_date);
-CREATE INDEX IF NOT EXISTS idx_succes_txn_account
-    ON succes_transactions(account_id, txn_date);
-CREATE INDEX IF NOT EXISTS idx_succes_txn_category
-    ON succes_transactions(category_id, txn_date);
+CREATE INDEX IF NOT EXISTS idx_vie_txn_date
+    ON vie_transactions(txn_date);
+CREATE INDEX IF NOT EXISTS idx_vie_txn_account
+    ON vie_transactions(account_id, txn_date);
+CREATE INDEX IF NOT EXISTS idx_vie_txn_category
+    ON vie_transactions(category_id, txn_date);
 
-CREATE TABLE IF NOT EXISTS succes_subscriptions (
+CREATE TABLE IF NOT EXISTS vie_subscriptions (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     amount_cents INTEGER NOT NULL,
@@ -123,7 +123,7 @@ CREATE TABLE IF NOT EXISTS succes_subscriptions (
     deleted_at_ms INTEGER
 );
 
-CREATE TABLE IF NOT EXISTS succes_budgets (
+CREATE TABLE IF NOT EXISTS vie_budgets (
     id TEXT PRIMARY KEY,
     scope TEXT NOT NULL DEFAULT 'global',
     category_id TEXT NOT NULL DEFAULT '',
@@ -134,7 +134,7 @@ CREATE TABLE IF NOT EXISTS succes_budgets (
     deleted_at_ms INTEGER
 );
 
-CREATE TABLE IF NOT EXISTS succes_savings_goals (
+CREATE TABLE IF NOT EXISTS vie_savings_goals (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     target_cents INTEGER NOT NULL,
@@ -147,8 +147,6 @@ CREATE TABLE IF NOT EXISTS succes_savings_goals (
     updated_at_ms INTEGER NOT NULL,
     deleted_at_ms INTEGER
 );
-
-PRAGMA user_version = 5;
 """
 
 
@@ -236,7 +234,7 @@ class VieFinancesStore(VieContinuityStore):
 
     def _seed_defaults(self, conn: sqlite3.Connection) -> None:
         count = conn.execute(
-            "SELECT COUNT(*) AS n FROM succes_finance_categories WHERE deleted_at_ms "
+            "SELECT COUNT(*) AS n FROM vie_finance_categories WHERE deleted_at_ms "
             "IS NULL"
         ).fetchone()["n"]
         if count:
@@ -244,25 +242,25 @@ class VieFinancesStore(VieContinuityStore):
         stamp = now_ms()
         for name, icon, color in DEFAULT_EXPENSE_CATEGORIES:
             conn.execute(
-                """INSERT INTO succes_finance_categories
+                """INSERT INTO vie_finance_categories
                    (id, name, kind, color, icon, system, updated_at_ms)
                    VALUES (?, ?, 'expense', ?, ?, 1, ?)""",
                 (str(uuid.uuid4()), name, color, icon, stamp),
             )
         for name, icon, color in DEFAULT_INCOME_CATEGORIES:
             conn.execute(
-                """INSERT INTO succes_finance_categories
+                """INSERT INTO vie_finance_categories
                    (id, name, kind, color, icon, system, updated_at_ms)
                    VALUES (?, ?, 'income', ?, ?, 1, ?)""",
                 (str(uuid.uuid4()), name, color, icon, stamp),
             )
         # Default checking account if none.
         accounts = conn.execute(
-            "SELECT COUNT(*) AS n FROM succes_accounts WHERE deleted_at_ms IS NULL"
+            "SELECT COUNT(*) AS n FROM vie_accounts WHERE deleted_at_ms IS NULL"
         ).fetchone()["n"]
         if not accounts:
             conn.execute(
-                """INSERT INTO succes_accounts
+                """INSERT INTO vie_accounts
                    (id, name, account_type, currency, opening_balance_cents,
                     color, icon, archived, updated_at_ms)
                    VALUES (?, 'Compte chèque', 'checking', 'CAD', 0,
@@ -363,7 +361,7 @@ class VieFinancesStore(VieContinuityStore):
         self, conn: sqlite3.Connection, entity_id: str
     ) -> dict[str, Any] | None:
         row = conn.execute(
-            "SELECT * FROM succes_accounts WHERE id=? AND deleted_at_ms IS NULL",
+            "SELECT * FROM vie_accounts WHERE id=? AND deleted_at_ms IS NULL",
             (entity_id,),
         ).fetchone()
         return self._account_dict(row) if row else None
@@ -372,8 +370,7 @@ class VieFinancesStore(VieContinuityStore):
         self, conn: sqlite3.Connection, entity_id: str
     ) -> dict[str, Any] | None:
         row = conn.execute(
-            "SELECT * FROM succes_finance_categories WHERE id=? AND deleted_at_ms IS "
-            "NULL",
+            "SELECT * FROM vie_finance_categories WHERE id=? AND deleted_at_ms IS NULL",
             (entity_id,),
         ).fetchone()
         return self._category_dict(row) if row else None
@@ -382,7 +379,7 @@ class VieFinancesStore(VieContinuityStore):
         self, conn: sqlite3.Connection, entity_id: str
     ) -> dict[str, Any] | None:
         row = conn.execute(
-            "SELECT * FROM succes_transactions WHERE id=? AND deleted_at_ms IS NULL",
+            "SELECT * FROM vie_transactions WHERE id=? AND deleted_at_ms IS NULL",
             (entity_id,),
         ).fetchone()
         return self._txn_dict(row) if row else None
@@ -391,7 +388,7 @@ class VieFinancesStore(VieContinuityStore):
         self, conn: sqlite3.Connection, entity_id: str
     ) -> dict[str, Any] | None:
         row = conn.execute(
-            "SELECT * FROM succes_subscriptions WHERE id=? AND deleted_at_ms IS NULL",
+            "SELECT * FROM vie_subscriptions WHERE id=? AND deleted_at_ms IS NULL",
             (entity_id,),
         ).fetchone()
         return self._subscription_dict(row) if row else None
@@ -400,7 +397,7 @@ class VieFinancesStore(VieContinuityStore):
         self, conn: sqlite3.Connection, entity_id: str
     ) -> dict[str, Any] | None:
         row = conn.execute(
-            "SELECT * FROM succes_budgets WHERE id=? AND deleted_at_ms IS NULL",
+            "SELECT * FROM vie_budgets WHERE id=? AND deleted_at_ms IS NULL",
             (entity_id,),
         ).fetchone()
         return self._budget_dict(row) if row else None
@@ -409,7 +406,7 @@ class VieFinancesStore(VieContinuityStore):
         self, conn: sqlite3.Connection, entity_id: str
     ) -> dict[str, Any] | None:
         row = conn.execute(
-            "SELECT * FROM succes_savings_goals WHERE id=? AND deleted_at_ms IS NULL",
+            "SELECT * FROM vie_savings_goals WHERE id=? AND deleted_at_ms IS NULL",
             (entity_id,),
         ).fetchone()
         return self._goal_dict(row) if row else None
@@ -422,7 +419,7 @@ class VieFinancesStore(VieContinuityStore):
             clause += " AND archived=0"
         with self._connect() as conn:
             rows = conn.execute(
-                f"SELECT * FROM succes_accounts WHERE {clause} ORDER BY name COLLATE "
+                f"SELECT * FROM vie_accounts WHERE {clause} ORDER BY name COLLATE "
                 "NOCASE"
             ).fetchall()
             accounts = [self._account_dict(row) for row in rows]
@@ -437,7 +434,7 @@ class VieFinancesStore(VieContinuityStore):
     ) -> float:
         rows = conn.execute(
             """SELECT account_id, txn_type, amount_cents, transfer_account_id
-               FROM succes_transactions
+               FROM vie_transactions
                WHERE deleted_at_ms IS NULL
                  AND (account_id=? OR transfer_account_id=?)""",
             (account_id, account_id),
@@ -489,7 +486,7 @@ class VieFinancesStore(VieContinuityStore):
             if replay is not None:
                 return replay
             conn.execute(
-                """INSERT INTO succes_accounts
+                """INSERT INTO vie_accounts
                    (id, name, account_type, currency, opening_balance_cents,
                     color, icon, archived, updated_at_ms)
                    VALUES (?, ?, ?, 'CAD', ?, ?, ?, 0, ?)""",
@@ -555,7 +552,7 @@ class VieFinancesStore(VieContinuityStore):
                 else int(existing["archived"])
             )
             conn.execute(
-                """UPDATE succes_accounts SET name=?, account_type=?, opening_balance_cents=?,
+                """UPDATE vie_accounts SET name=?, account_type=?, opening_balance_cents=?,
                    color=?, icon=?, archived=?, updated_at_ms=?
                    WHERE id=? AND deleted_at_ms IS NULL""",
                 (name, account_type, opening, color, icon, archived, stamp, account_id),
@@ -590,8 +587,7 @@ class VieFinancesStore(VieContinuityStore):
             if existing is None:
                 raise VieNotFound("Ce compte n'existe pas.")
             conn.execute(
-                "UPDATE succes_accounts SET deleted_at_ms=?, updated_at_ms=? WHERE "
-                "id=?",
+                "UPDATE vie_accounts SET deleted_at_ms=?, updated_at_ms=? WHERE id=?",
                 (stamp, stamp, account_id),
             )
             self._record_op(
@@ -608,7 +604,7 @@ class VieFinancesStore(VieContinuityStore):
     # ── Categories ────────────────────────────────────────────────────
 
     def list_categories(self, *, kind: str | None = None) -> list[dict[str, Any]]:
-        query = "SELECT * FROM succes_finance_categories WHERE deleted_at_ms IS NULL"
+        query = "SELECT * FROM vie_finance_categories WHERE deleted_at_ms IS NULL"
         params: list[Any] = []
         if kind:
             if kind not in CATEGORY_KINDS:
@@ -652,7 +648,7 @@ class VieFinancesStore(VieContinuityStore):
             if replay is not None:
                 return replay
             conn.execute(
-                """INSERT INTO succes_finance_categories
+                """INSERT INTO vie_finance_categories
                    (id, name, kind, color, icon, system, updated_at_ms)
                    VALUES (?, ?, ?, ?, ?, 0, ?)""",
                 (category_id, name, kind, color, icon, stamp),
@@ -686,7 +682,7 @@ class VieFinancesStore(VieContinuityStore):
             if existing["system"]:
                 raise VieError("Impossible de supprimer une catégorie système.")
             conn.execute(
-                "UPDATE succes_finance_categories SET deleted_at_ms=?, updated_at_ms=? "
+                "UPDATE vie_finance_categories SET deleted_at_ms=?, updated_at_ms=? "
                 "WHERE id=?",
                 (stamp, stamp, category_id),
             )
@@ -713,7 +709,7 @@ class VieFinancesStore(VieContinuityStore):
         txn_type: str | None = None,
         limit: int = 500,
     ) -> list[dict[str, Any]]:
-        query = "SELECT * FROM succes_transactions WHERE deleted_at_ms IS NULL"
+        query = "SELECT * FROM vie_transactions WHERE deleted_at_ms IS NULL"
         params: list[Any] = []
         if from_date:
             query += " AND txn_date>=?"
@@ -795,7 +791,7 @@ class VieFinancesStore(VieContinuityStore):
             if category_id and self._load_category(conn, category_id) is None:
                 raise VieNotFound("Cette catégorie n'existe pas.")
             conn.execute(
-                """INSERT INTO succes_transactions
+                """INSERT INTO vie_transactions
                    (id, account_id, category_id, txn_type, amount_cents, currency,
                     txn_date, payee, notes, transfer_account_id, subscription_id,
                     import_hash, updated_at_ms)
@@ -837,7 +833,7 @@ class VieFinancesStore(VieContinuityStore):
             if self._load_txn(conn, txn_id) is None:
                 raise VieNotFound("Cette transaction n'existe pas.")
             conn.execute(
-                "UPDATE succes_transactions SET deleted_at_ms=?, updated_at_ms=? WHERE "
+                "UPDATE vie_transactions SET deleted_at_ms=?, updated_at_ms=? WHERE "
                 "id=?",
                 (stamp, stamp, txn_id),
             )
@@ -855,7 +851,7 @@ class VieFinancesStore(VieContinuityStore):
     # ── Subscriptions ─────────────────────────────────────────────────
 
     def list_subscriptions(self, *, active_only: bool = False) -> list[dict[str, Any]]:
-        query = "SELECT * FROM succes_subscriptions WHERE deleted_at_ms IS NULL"
+        query = "SELECT * FROM vie_subscriptions WHERE deleted_at_ms IS NULL"
         if active_only:
             query += " AND active=1"
         query += " ORDER BY next_due_date ASC, name COLLATE NOCASE"
@@ -905,7 +901,7 @@ class VieFinancesStore(VieContinuityStore):
             if replay is not None:
                 return replay
             conn.execute(
-                """INSERT INTO succes_subscriptions
+                """INSERT INTO vie_subscriptions
                    (id, name, amount_cents, currency, cadence, next_due_date,
                     account_id, category_id, active, reminder_days, notes, updated_at_ms)
                    VALUES (?, ?, ?, 'CAD', ?, ?, ?, ?, 1, ?, ?, ?)""",
@@ -982,7 +978,7 @@ class VieFinancesStore(VieContinuityStore):
             )
             notes = data.get("notes", existing["notes"]) or ""
             conn.execute(
-                """UPDATE succes_subscriptions SET name=?, amount_cents=?, cadence=?,
+                """UPDATE vie_subscriptions SET name=?, amount_cents=?, cadence=?,
                    next_due_date=?, account_id=?, category_id=?, active=?,
                    reminder_days=?, notes=?, updated_at_ms=?
                    WHERE id=? AND deleted_at_ms IS NULL""",
@@ -1026,7 +1022,7 @@ class VieFinancesStore(VieContinuityStore):
             if self._load_subscription(conn, sub_id) is None:
                 raise VieNotFound("Cet abonnement n'existe pas.")
             conn.execute(
-                "UPDATE succes_subscriptions SET deleted_at_ms=?, updated_at_ms=? "
+                "UPDATE vie_subscriptions SET deleted_at_ms=?, updated_at_ms=? "
                 "WHERE id=?",
                 (stamp, stamp, sub_id),
             )
@@ -1049,7 +1045,7 @@ class VieFinancesStore(VieContinuityStore):
         created: list[dict[str, Any]] = []
         with self._transaction() as conn:
             rows = conn.execute(
-                """SELECT * FROM succes_subscriptions
+                """SELECT * FROM vie_subscriptions
                    WHERE deleted_at_ms IS NULL AND active=1 AND next_due_date<=?
                    ORDER BY next_due_date""",
                 (today,),
@@ -1060,7 +1056,7 @@ class VieFinancesStore(VieContinuityStore):
                 if not account_id:
                     # Use first non-archived account.
                     acct = conn.execute(
-                        """SELECT id FROM succes_accounts
+                        """SELECT id FROM vie_accounts
                            WHERE deleted_at_ms IS NULL AND archived=0
                            ORDER BY name LIMIT 1"""
                     ).fetchone()
@@ -1070,7 +1066,7 @@ class VieFinancesStore(VieContinuityStore):
                 txn_id = str(uuid.uuid4())
                 stamp = now_ms()
                 conn.execute(
-                    """INSERT INTO succes_transactions
+                    """INSERT INTO vie_transactions
                        (id, account_id, category_id, txn_type, amount_cents, currency,
                         txn_date, payee, notes, transfer_account_id, subscription_id,
                         import_hash, updated_at_ms)
@@ -1094,7 +1090,7 @@ class VieFinancesStore(VieContinuityStore):
                     next_due = _advance_due(next_due, sub["cadence"])
                     guard += 1
                 conn.execute(
-                    "UPDATE succes_subscriptions SET next_due_date=?, updated_at_ms=? "
+                    "UPDATE vie_subscriptions SET next_due_date=?, updated_at_ms=? "
                     "WHERE id=?",
                     (next_due, stamp, sub["id"]),
                 )
@@ -1107,7 +1103,7 @@ class VieFinancesStore(VieContinuityStore):
         ym = _year_month(year_month)
         with self._connect() as conn:
             rows = conn.execute(
-                """SELECT * FROM succes_budgets
+                """SELECT * FROM vie_budgets
                    WHERE deleted_at_ms IS NULL AND year_month=?
                    ORDER BY scope, category_id""",
                 (ym,),
@@ -1142,20 +1138,20 @@ class VieFinancesStore(VieContinuityStore):
             if replay is not None:
                 return replay
             existing = conn.execute(
-                """SELECT id FROM succes_budgets
+                """SELECT id FROM vie_budgets
                    WHERE deleted_at_ms IS NULL AND scope=? AND category_id=? AND year_month=?""",
                 (scope, category_id, year_month),
             ).fetchone()
             budget_id = existing["id"] if existing else str(uuid.uuid4())
             if existing:
                 conn.execute(
-                    """UPDATE succes_budgets SET limit_cents=?, updated_at_ms=?
+                    """UPDATE vie_budgets SET limit_cents=?, updated_at_ms=?
                        WHERE id=?""",
                     (limit, stamp, budget_id),
                 )
             else:
                 conn.execute(
-                    """INSERT INTO succes_budgets
+                    """INSERT INTO vie_budgets
                        (id, scope, category_id, year_month, limit_cents, currency, updated_at_ms)
                        VALUES (?, ?, ?, ?, ?, 'CAD', ?)""",
                     (budget_id, scope, category_id, year_month, limit, stamp),
@@ -1186,7 +1182,7 @@ class VieFinancesStore(VieContinuityStore):
             if self._load_budget(conn, budget_id) is None:
                 raise VieNotFound("Ce budget n'existe pas.")
             conn.execute(
-                "UPDATE succes_budgets SET deleted_at_ms=?, updated_at_ms=? WHERE id=?",
+                "UPDATE vie_budgets SET deleted_at_ms=?, updated_at_ms=? WHERE id=?",
                 (stamp, stamp, budget_id),
             )
             self._record_op(
@@ -1205,7 +1201,7 @@ class VieFinancesStore(VieContinuityStore):
     def list_goals(self) -> list[dict[str, Any]]:
         with self._connect() as conn:
             rows = conn.execute(
-                """SELECT * FROM succes_savings_goals
+                """SELECT * FROM vie_savings_goals
                    WHERE deleted_at_ms IS NULL
                    ORDER BY name COLLATE NOCASE"""
             ).fetchall()
@@ -1249,7 +1245,7 @@ class VieFinancesStore(VieContinuityStore):
             if replay is not None:
                 return replay
             conn.execute(
-                """INSERT INTO succes_savings_goals
+                """INSERT INTO vie_savings_goals
                    (id, name, target_cents, current_cents, currency, account_id,
                     deadline, color, icon, updated_at_ms)
                    VALUES (?, ?, ?, ?, 'CAD', ?, ?, ?, ?, ?)""",
@@ -1325,7 +1321,7 @@ class VieFinancesStore(VieContinuityStore):
                 or existing["icon"]
             )
             conn.execute(
-                """UPDATE succes_savings_goals SET name=?, target_cents=?, current_cents=?,
+                """UPDATE vie_savings_goals SET name=?, target_cents=?, current_cents=?,
                    account_id=?, deadline=?, color=?, icon=?, updated_at_ms=?
                    WHERE id=? AND deleted_at_ms IS NULL""",
                 (
@@ -1363,7 +1359,7 @@ class VieFinancesStore(VieContinuityStore):
             if self._load_goal(conn, goal_id) is None:
                 raise VieNotFound("Cet objectif n'existe pas.")
             conn.execute(
-                "UPDATE succes_savings_goals SET deleted_at_ms=?, updated_at_ms=? "
+                "UPDATE vie_savings_goals SET deleted_at_ms=?, updated_at_ms=? "
                 "WHERE id=?",
                 (stamp, stamp, goal_id),
             )
@@ -1397,7 +1393,7 @@ class VieFinancesStore(VieContinuityStore):
             txns = [
                 self._txn_dict(row)
                 for row in conn.execute(
-                    """SELECT * FROM succes_transactions
+                    """SELECT * FROM vie_transactions
                        WHERE deleted_at_ms IS NULL AND txn_date>=? AND txn_date<=?""",
                     (start, end),
                 ).fetchall()
@@ -1405,7 +1401,7 @@ class VieFinancesStore(VieContinuityStore):
             prev = [
                 self._txn_dict(row)
                 for row in conn.execute(
-                    """SELECT * FROM succes_transactions
+                    """SELECT * FROM vie_transactions
                        WHERE deleted_at_ms IS NULL AND txn_date>=? AND txn_date<=?""",
                     (prev_start.isoformat(), prev_end.isoformat()),
                 ).fetchall()
@@ -1413,8 +1409,7 @@ class VieFinancesStore(VieContinuityStore):
             categories = {
                 row["id"]: self._category_dict(row)
                 for row in conn.execute(
-                    "SELECT * FROM succes_finance_categories WHERE deleted_at_ms IS "
-                    "NULL"
+                    "SELECT * FROM vie_finance_categories WHERE deleted_at_ms IS NULL"
                 ).fetchall()
             }
 
@@ -1534,8 +1529,7 @@ class VieFinancesStore(VieContinuityStore):
             categories = {
                 row["name"].casefold(): self._category_dict(row)
                 for row in conn.execute(
-                    "SELECT * FROM succes_finance_categories WHERE deleted_at_ms IS "
-                    "NULL"
+                    "SELECT * FROM vie_finance_categories WHERE deleted_at_ms IS NULL"
                 ).fetchall()
             }
 
@@ -1592,7 +1586,7 @@ class VieFinancesStore(VieContinuityStore):
                         f"{account_id}|{txn_date}|{amount_cents}|{payee}|{txn_type}".encode()
                     ).hexdigest()
                     exists = conn.execute(
-                        """SELECT id FROM succes_transactions
+                        """SELECT id FROM vie_transactions
                            WHERE import_hash=? AND deleted_at_ms IS NULL""",
                         (digest,),
                     ).fetchone()
@@ -1603,7 +1597,7 @@ class VieFinancesStore(VieContinuityStore):
                     txn_id = str(uuid.uuid4())
                     stamp = now_ms()
                     conn.execute(
-                        """INSERT INTO succes_transactions
+                        """INSERT INTO vie_transactions
                            (id, account_id, category_id, txn_type, amount_cents, currency,
                             txn_date, payee, notes, transfer_account_id, subscription_id,
                             import_hash, updated_at_ms)

@@ -25,7 +25,7 @@ def _vivantes(chemin, project_id: str) -> list[str]:
         return [
             r["title"]
             for r in conn.execute(
-                "SELECT title FROM succes_tasks "
+                "SELECT title FROM vie_tasks "
                 "WHERE project_id=? AND deleted_at_ms IS NULL ORDER BY title",
                 (project_id,),
             )
@@ -38,8 +38,7 @@ def _ops(chemin, entity: str) -> list[str]:
         return [
             r["entity_id"]
             for r in conn.execute(
-                "SELECT entity_id FROM succes_operations "
-                "WHERE entity=? AND kind='delete'",
+                "SELECT entity_id FROM vie_operations WHERE entity=? AND kind='delete'",
                 (entity,),
             )
         ]
@@ -94,7 +93,7 @@ def test_les_sous_taches_partent_avec(tmp_path) -> None:
     store.delete_project(projet["id"])
     with closing(sqlite3.connect(chemin)) as conn:
         restantes = conn.execute(
-            "SELECT COUNT(*) FROM succes_subtasks WHERE deleted_at_ms IS NULL"
+            "SELECT COUNT(*) FROM vie_subtasks WHERE deleted_at_ms IS NULL"
         ).fetchone()[0]
     assert restantes == 0
 
@@ -110,7 +109,7 @@ def test_les_aretes_partent_avec(tmp_path) -> None:
 
     store.delete_project(projet["id"])
     with closing(sqlite3.connect(chemin)) as conn:
-        assert conn.execute("SELECT COUNT(*) FROM succes_task_edges").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM vie_task_edges").fetchone()[0] == 0
 
 
 def test_le_telephone_apprend_chaque_tache_separement(tmp_path) -> None:

@@ -124,7 +124,7 @@ def test_legacy_import_is_idempotent_and_archives_full_snapshot(
 
     with sqlite3.connect(store.db_path) as conn:
         archived = json.loads(
-            conn.execute("SELECT snapshot_json FROM succes_imports").fetchone()[0]
+            conn.execute("SELECT snapshot_json FROM vie_imports").fetchone()[0]
         )
     assert archived["state"]["habits"][0]["id"] == "habit-preserved"
 

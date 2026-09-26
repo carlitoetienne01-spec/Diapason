@@ -65,15 +65,15 @@ class TestLaDureeDansLeMagasin:
         chemin = tmp_path / "ancienne.db"
         VieStore(chemin).create_task({"title": "D'avant"})
         with sqlite3.connect(chemin) as conn:
-            conn.execute("CREATE TABLE sauvegarde AS SELECT * FROM succes_tasks")
+            conn.execute("CREATE TABLE sauvegarde AS SELECT * FROM vie_tasks")
             colonnes = [
                 r[1]
-                for r in conn.execute("PRAGMA table_info(succes_tasks)").fetchall()
+                for r in conn.execute("PRAGMA table_info(vie_tasks)").fetchall()
                 if r[1] != "estimate_days"
             ]
-            conn.execute("DROP TABLE succes_tasks")
+            conn.execute("DROP TABLE vie_tasks")
             conn.execute(
-                "CREATE TABLE succes_tasks AS SELECT "
+                "CREATE TABLE vie_tasks AS SELECT "
                 + ", ".join(colonnes)
                 + " FROM sauvegarde"
             )

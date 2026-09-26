@@ -179,3 +179,24 @@ class TestContinuity:
         assert identity.device_id == "mac-feedfacefeedface", (
             "the id recorded in vie.db must be adopted"
         )
+
+    def test_the_renamed_vie_meta_table_is_read_too(self, home):
+        """25/09/2026: the tables are renamed too, succes_meta → vie_meta.
+
+        Reading only succes_meta would, on the first start after the
+        migration, find nothing and mint a second identity for this machine.
+        """
+        root, module = home
+        import sqlite3
+
+        with sqlite3.connect(Path(root) / "vie.db") as conn:
+            conn.execute("CREATE TABLE vie_meta (key TEXT PRIMARY KEY, value TEXT)")
+            conn.execute(
+                "INSERT INTO vie_meta VALUES ('device_id', 'mac-0123456789abcdef')"
+            )
+            conn.commit()
+
+        identity = module.device_identity()
+        assert identity.device_id == "mac-0123456789abcdef", (
+            "the id recorded in vie_meta must be adopted"
+        )
