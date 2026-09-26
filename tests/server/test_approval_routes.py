@@ -472,21 +472,40 @@ class TestLaClocheNeGelePasLaBoucle:
         from httpx import ASGITransport, AsyncClient
 
         action_id = _queue(approval_store)
-        # Un rendez-vous plutôt qu'un simple retard : chaque lecture attend
-        # (1 s au plus) que l'autre décision lise aussi. Sans verrou, les
-        # deux lisent « pending » ensemble ; avec, la seconde ne peut pas
-        # lire tant que la première n'a pas écrit, et le rendez-vous expire.
+        # Un rendez-vous APRÈS la lecture : chaque décision lit, puis attend
+        # (1 s au plus) que l'autre ait lu aussi avant d'écrire. Sans verrou,
+        # les deux lisent « pending » avant toute écriture ; avec, la seconde
+        # ne peut pas lire tant que la première n'a pas écrit, et le
+        # rendez-vous expire.
+        #
+        # 26/09/2026, contre-épreuve : le rendez-vous était placé AVANT la
+        # lecture. Franchi, il laissait le second fil lire après l'écriture
+        # du premier — [200, 409] sans verrou, et la perte du verrou n'était
+        # vue qu'une fois sur 5 à 10 (2 rouges sur 20 passages).
+        #
+        # ``accès`` sérialise les appels à la connexion SQLite du magasin,
+        # partagée entre fils : sans lui, deux lectures simultanées levaient
+        # parfois ``sqlite3.InterfaceError`` au lieu de montrer [200, 200].
         arrivees = threading.Barrier(2, timeout=1.0)
-        original = approval_store.get_action
+        acces = threading.Lock()
+        lire = approval_store.get_action
+        ecrire = approval_store.update_status
 
-        def lecture_au_rendez_vous(*args, **kwargs):
+        def lecture_puis_rendez_vous(*args, **kwargs):
+            with acces:
+                lue = lire(*args, **kwargs)
             try:
                 arrivees.wait()
             except threading.BrokenBarrierError:
                 pass
-            return original(*args, **kwargs)
+            return lue
 
-        monkeypatch.setattr(approval_store, "get_action", lecture_au_rendez_vous)
+        def ecriture_seule(*args, **kwargs):
+            with acces:
+                return ecrire(*args, **kwargs)
+
+        monkeypatch.setattr(approval_store, "get_action", lecture_puis_rendez_vous)
+        monkeypatch.setattr(approval_store, "update_status", ecriture_seule)
         app = self._app()
 
         async def scenario():
@@ -503,6 +522,6 @@ class TestLaClocheNeGelePasLaBoucle:
         assert statuts == [200, 409], f"une seule décision doit passer, pas {statuts}"
         gagnante = oui if oui.status_code == 200 else non
         attendu = STATUS_APPROVED if gagnante is oui else STATUS_DENIED
-        assert approval_store.get_action(action_id).status == attendu, (
+        assert lire(action_id).status == attendu, (
             "la base doit garder la décision qui a répondu 200"
         )
