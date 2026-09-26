@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useState, useCallback, useRef, type ReactElement } from 'react';
+import { Suspense, useEffect, useLayoutEffect, useState, useCallback, useRef, type ReactElement, type ReactNode } from 'react';
 import { estDansUneZoneDeSaisie, laissePasserLeRaccourci } from './lib/saisie';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router';
 import { Layout } from './components/Layout';
@@ -22,6 +22,7 @@ import { PartageDuTelephone } from './components/PartageDuTelephone';
 import { pagesAffichees } from './lib/pagesAffichees';
 import { pageParesseuse } from './lib/pageParesseuse';
 import { optionsDuNavigateur, planifierPrechargement } from './lib/prechargerPages';
+import { releveNavigation } from './lib/mesuresNavigation';
 import { TalkToDiapasonHost } from './components/TalkToDiapasonHost';
 import { track, hashId } from './lib/analytics';
 import { demarrerSyncConversations } from './lib/convSync';
@@ -126,6 +127,30 @@ const PAGES_VIE_ELEMENTS: Record<PageVie, ReactElement> = {
  */
 function PageAffichee({ chemin, children }: { chemin: string; children: ReactElement }) {
   useEffect(() => pagesAffichees.signalerMontee(chemin), [chemin]);
+  return children;
+}
+
+/**
+ * Le relevé de fluidité du téléphone (lib/mesuresNavigation.ts,
+ * 26/09/2026) : le DÉBUT est noté au premier rendu de la nouvelle adresse,
+ * la MONTÉE quand React a posé la page dans le document — l'effet ne part
+ * qu'une fois son morceau arrivé et son `Suspense` levé. Posé autour de
+ * `Layout`, qui reste tel quel. Hors du téléphone, rien n'est relevé.
+ */
+function MesureDeRoute({ children }: { children: ReactNode }) {
+  const { key, pathname } = useLocation();
+  // La clé seule ne suffit pas : une entrée d'historique posée hors du
+  // routeur (un `pushState` sans état) garde la clé « default » de
+  // l'ouverture, et chaque page suivante passait pour la même navigation.
+  const cle = `${key}\u0000${pathname}`;
+  if (estMobile) releveNavigation.debut(cle, pathname, performance.now());
+  // Un effet de MISE EN PAGE, pas un effet passif : ceux-là partent après
+  // ceux de la page, et le banc les a vus attendre derrière 100 à 200 ms de
+  // travail des pages déjà peintes (relevé à 136 ms quand le contenu était
+  // à l'écran à 21 ms, 26/09/2026).
+  useLayoutEffect(() => {
+    if (estMobile) releveNavigation.montee(cle);
+  }, [cle]);
   return children;
 }
 
@@ -491,9 +516,9 @@ export default function App() {
   return (
     <ModeGestesProvider>
     <ConfirmProvider>
-      <Suspense fallback={<div role="status" className="p-6">Chargement…</div>}>
+      <Suspense fallback={<div role="status" className="p-6" data-chargement="">Chargement…</div>}>
         <Routes>
-          <Route element={<Layout />}>
+          <Route element={<MesureDeRoute><Layout /></MesureDeRoute>}>
             <Route index element={<ChatPage />} />
             <Route path="dashboard" element={<DashboardPage />} />
             <Route path="settings" element={<SettingsPage />} />

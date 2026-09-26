@@ -119,7 +119,7 @@ export function VieYearReviewPage() {
             <button type="button" disabled={year >= currentYear + 15} onClick={() => { setYear((value) => value + 1); setMonth(undefined); }} className="size-9 rounded-lg flex items-center justify-center disabled:opacity-30 cursor-pointer" style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text-secondary)' }} aria-label="Année suivante"><ChevronRight size={17} /></button>
           </div>
 
-          {loading ? <div className="h-40 flex items-center justify-center"><Loader2 className="animate-spin" style={{ color: 'var(--color-accent)' }} /></div> : (
+          {loading ? <div data-chargement="" className="h-40 flex items-center justify-center"><Loader2 className="animate-spin" style={{ color: 'var(--color-accent)' }} /></div> : (
             <div className="grid grid-cols-6 md:grid-cols-12 gap-1.5 sm:gap-2" aria-label="Activité par mois">
               {(review?.activityByMonth ?? Array(12).fill(0)).map((value, index) => {
                 const selected = month === index + 1;

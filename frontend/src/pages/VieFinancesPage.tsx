@@ -675,7 +675,10 @@ export function VieFinancesPage() {
 
   return (
     <div data-verre-defilement className="flex-1 overflow-y-auto px-3 py-4 sm:px-5 sm:py-8 md:px-8 md:py-10">
-      <main className="max-w-6xl mx-auto w-full">
+      {/* Sans cache, les panneaux restent vides jusqu'à la première réponse :
+          c'est du chargement, pas du contenu, pour le relevé de fluidité
+          (lib/mesuresNavigation.ts, 26/09/2026). */}
+      <main className="max-w-6xl mx-auto w-full" data-chargement={loading ? '' : undefined}>
         {/* À 460 px, ~1 400 px de décor précédaient la première donnée
             actionnable (audit du 16 sept. 2026). Sous sm l'en-tête tient sur
             une rangée : sous-titre tu, bouton réduit à son icône. */}

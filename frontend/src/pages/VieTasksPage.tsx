@@ -1235,7 +1235,7 @@ export function VieTasksPage() {
             pendant les relectures (carnet, édition, chips d'un 409 vivent
             dans les cartes). */}
         {loading ? (
-          <div className="flex items-center justify-center gap-2 py-20 text-sm" style={{ color: 'var(--color-text-tertiary)' }}>
+          <div data-chargement="" className="flex items-center justify-center gap-2 py-20 text-sm" style={{ color: 'var(--color-text-tertiary)' }}>
             <Loader2 size={17} className="animate-spin" /> Chargement des tâches…
           </div>
         ) : viewMode === 'done' ? (

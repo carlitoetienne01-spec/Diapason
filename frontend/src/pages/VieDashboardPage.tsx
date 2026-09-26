@@ -135,7 +135,7 @@ export function VieDashboardPage() {
         </header>
 
         {loading ? (
-          <div className="flex items-center justify-center gap-2 py-24 text-sm" style={{ color: 'var(--color-text-tertiary)' }}>
+          <div data-chargement="" className="flex items-center justify-center gap-2 py-24 text-sm" style={{ color: 'var(--color-text-tertiary)' }}>
             <Loader2 size={17} className="animate-spin" /> Chargement…
           </div>
         ) : data ? (

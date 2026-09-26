@@ -1564,11 +1564,11 @@ export function VieProjectsPage() {
               </section>
 
               {loading ? (
-                <div className="flex justify-center gap-2 py-16 text-sm" style={{ color: 'var(--color-text-tertiary)' }}>
+                <div data-chargement="" className="flex justify-center gap-2 py-16 text-sm" style={{ color: 'var(--color-text-tertiary)' }}>
                   <Loader2 size={17} className="animate-spin" /> Chargement…
                 </div>
               ) : !tachesConnues ? (
-                <div className="flex justify-center gap-2 py-16 text-sm" style={{ color: 'var(--color-text-tertiary)' }}>
+                <div data-chargement="" className="flex justify-center gap-2 py-16 text-sm" style={{ color: 'var(--color-text-tertiary)' }}>
                   <Loader2 size={17} className="animate-spin" /> Chargement des tâches…
                 </div>
               ) : projectTasks.length === 0 ? (
@@ -1990,7 +1990,7 @@ export function VieProjectsPage() {
         )}
 
         {loading ? (
-          <div className="flex justify-center gap-2 py-20 text-sm" style={{ color: 'var(--color-text-tertiary)' }}><Loader2 size={17} className="animate-spin" /> Chargement des projets…</div>
+          <div data-chargement="" className="flex justify-center gap-2 py-20 text-sm" style={{ color: 'var(--color-text-tertiary)' }}><Loader2 size={17} className="animate-spin" /> Chargement des projets…</div>
         ) : projects.length === 0 ? (
           <CadreVitre className="rounded-2xl py-16 text-center" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}><BriefcaseBusiness size={28} className="mx-auto mb-3" style={{ color: 'var(--color-accent)' }} /><p className="font-medium" style={{ color: 'var(--color-text)' }}>Aucun projet</p><p className="text-sm mt-1" style={{ color: 'var(--color-text-tertiary)' }}>Créez votre premier projet ou demandez-le à DIA.</p></CadreVitre>
         ) : (

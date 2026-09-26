@@ -600,7 +600,7 @@ export function VieHabitsPage() {
         )}
 
         {loading ? (
-          <div className="flex justify-center gap-2 py-20 text-sm" style={{ color: 'var(--color-text-tertiary)' }}>
+          <div data-chargement="" className="flex justify-center gap-2 py-20 text-sm" style={{ color: 'var(--color-text-tertiary)' }}>
             <Loader2 size={17} className="animate-spin" /> Chargement des habitudes…
           </div>
         ) : (

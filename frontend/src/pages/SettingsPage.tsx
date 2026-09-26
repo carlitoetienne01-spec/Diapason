@@ -66,6 +66,7 @@ import { toast } from 'sonner';
 import { useTranslation } from '../i18n/useTranslation';
 import { LOCALES, LOCALE_NAMES, type Locale } from '../i18n/locale';
 import { SectionCompte } from '../features/compte/SectionCompte';
+import { MesuresFluidite } from '../components/MesuresFluidite';
 
 const CLOUD_KEY_STATUS_CHANGED = 'diapason-cloud-key-status-changed';
 
@@ -780,6 +781,14 @@ export function SettingsPage() {
             </SettingRow>
             </>)}
           </Section>
+
+          {/* Au téléphone seulement : le relevé de fluidité de CETTE WebView,
+              pour lire les vrais chiffres du téléphone (26/09/2026). */}
+          {estMobile && (
+            <Section title={t('settings.fluidite.title')}>
+              <MesuresFluidite />
+            </Section>
+          )}
 
           {/* Compte et chiffrement — après Connexion (compte-chiffre.md §3.11). */}
           <SectionCompte />
