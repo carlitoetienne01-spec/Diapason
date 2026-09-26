@@ -380,7 +380,7 @@ Un point est à vérifier sur la machine, faute d'avoir pu le faire : quels en-t
 *Risque silencieux :* un `tailscale serve 8000` lancé « pour essayer » exposerait toute l'API locale. Le téléphone y arriverait de 127.0.0.1 et hériterait du pilotage du Mac (`routes.py:260`).
 *Preuve :* en données mobiles, `http://<nom>:8001/` rend un 404 JSON, et `tailscale funnel status` est vide.
 
-**1. « Rien ne représentait une session d'appareil ».** On crée `mesh/sessions.py` (en anglais, comme le reste de `mesh/`) et, dans le `_SCHEMA` de `DeviceRegistry`, deux tables :
+~~**1. « Rien ne représentait une session d'appareil ».**~~ *Commité le 26/09/2026 (branche `chantier/phase2`), avec `tests/mesh/test_sessions.py`. Deux ajouts au plan : `revoke()` efface aussi les sessions et tickets de l'appareil, dans la même transaction (la jointure sur `TRUSTED` reste le vrai verrou, et un test l'éprouve sans passer par `revoke()`) ; `close_device_sessions()` et `list_sessions()` existent déjà pour l'étape 9, qui n'aura plus qu'à les exposer. La dernière activité (`last_used_at_ms`) n'est réécrite qu'une fois par minute, pour ne pas faire de chaque GET une écriture sur `mesh.db`.* On crée `mesh/sessions.py` (en anglais, comme le reste de `mesh/`) et, dans le `_SCHEMA` de `DeviceRegistry`, deux tables :
 - `mesh_sessions` : `session_hash` sha256, `device_id` avec `REFERENCES mesh_devices ON DELETE CASCADE`, et des dates en millisecondes entières ;
 - `mesh_session_tickets` : à usage unique, valables 60 s, avec la garde `UPDATE … WHERE redeemed IS NULL`.
 
