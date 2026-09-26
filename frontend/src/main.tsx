@@ -55,6 +55,9 @@ import '@fontsource/nunito/700.css';
 import '@fontsource/playfair-display/400.css';
 import '@fontsource/playfair-display/700.css';
 import './index.css';
+// Au téléphone seulement : l'aspect plat (26/09/2026, lot 3). Après
+// index.css, qu'il ne fait que retirer.
+import './telephonePlat.css';
 
 function applyTheme() {
   try {

@@ -1,0 +1,86 @@
+/* L'aspect PLAT du téléphone (26/09/2026, chantier de la fluidité, lot 3).
+ *
+ * Mêmes couleurs, mêmes sept apparences que le Mac ; sans le verre. Au banc
+ * (Chromium 152 sans tête, processeur ×4), la page des Notes peignait 62
+ * flous d'arrière-plan, les Tâches 25, les Projets 22 ; un flou relit et
+ * brouille à chaque image tout ce qui passe derrière lui. Ce coût-là tombe
+ * sur le processeur graphique — celui d'un téléphone, bien plus lent que le
+ * M5 du banc, que le banc ne sait pas ralentir.
+ *
+ * Tout est borné au MODE téléphone (`data-diapason-mobile` sur <html>, posé
+ * par lib/natif.ts au pont natif, jamais à la largeur) : la fenêtre du Mac et
+ * le mini-panneau n'en voient pas une règle. Fichier à part, importé après
+ * index.css : il ne fait que retirer, et se lit d'un bloc.
+ *
+ * Le modèle est celui que le verre s'était déjà donné pour
+ * `prefers-reduced-transparency` (ComposerGlass.css, CadreVitre.css,
+ * CarteVitree.css) : surface pleine `--color-input-bg`, ni tranche ni reflet,
+ * quadrillage du terminal sans découpes. */
+
+/* ── 1. Aucun flou de verre ──────────────────────────────────────────
+ * Sur tout élément et ses deux pseudo-éléments : les vitres posent le leur
+ * en CSS, d'autres en style en ligne (dossiers des Notes, fenêtres, menus).
+ * `!important` bat les deux. */
+html[data-diapason-mobile='1'] *,
+html[data-diapason-mobile='1'] *::before,
+html[data-diapason-mobile='1'] *::after {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+/* Le verre devient une surface pleine : sans flou, un fond à 5 % laissait
+ * lire la page à travers les menus et les cartes posées dessus. */
+html[data-diapason-mobile='1'] :is(.composer-glass, .composer-glass-menu) {
+  background: var(--color-input-bg) !important;
+}
+/* Ni la tranche en dégradé (::before) ni le reflet qui suit le pointeur
+ * (::after) : la bordure de la carte suffit à la dessiner. */
+html[data-diapason-mobile='1'] .composer-glass::before,
+html[data-diapason-mobile='1'] .composer-glass::after {
+  display: none !important;
+}
+
+/* ── 2. Pas de grandes ombres ────────────────────────────────────────
+ * Les jetons d'ombre moyenne et grande prennent la valeur de la petite ;
+ * les utilités `shadow-md` à `shadow-2xl` de Tailwind aussi (par leur seule
+ * variable `--tw-shadow` : les anneaux de focus, eux, restent). Le verre
+ * perd ses reflets intérieurs et ses ombres portées. */
+html[data-diapason-mobile='1'] {
+  --shadow-md: var(--shadow-sm);
+  --shadow-lg: var(--shadow-sm);
+}
+html[data-diapason-mobile='1'] :is(.shadow-md, .shadow-lg, .shadow-xl, .shadow-2xl) {
+  --tw-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.08) !important;
+}
+html[data-diapason-mobile='1'] :is(.composer-glass, .carte-vitree, .cadre-vitre) {
+  box-shadow: none !important;
+}
+
+/* ── 3. Aucune animation de fond ─────────────────────────────────────
+ * Le décor « HUD » (deux halos, une grille qui dérive en boucle sur 60 s et
+ * un grain en `mix-blend-mode: screen` sur tout l'écran) : une couche
+ * plein écran mêlée à chaque image. Le fond reste la couleur de l'apparence
+ * (`body`, index.css). La pluie du terminal et l'orbe de la voix au repos
+ * s'arrêtent dans leurs composants (MatrixRain.tsx, VoiceResonance.tsx). */
+html[data-diapason-mobile='1'] .hud-backdrop {
+  display: none;
+}
+
+/* ── 4. La texture des écrans du terminal, sans découpes ─────────────
+ * Sur le Mac, le quadrillage CRT (body::after) est troué à l'endroit de
+ * chaque vitre, et le même motif est repeint SOUS la vitre, derrière son
+ * flou : un masque recalculé à chaque défilement (verreTexture.ts), et
+ * `useSurfaceVitree` n'inscrit plus aucune vitre au téléphone. Sans flou, le
+ * motif passe simplement sur tout l'écran. Les trous, eux, restaient visibles
+ * au travers de tout ce qui se pose par-dessus une page : au banc, en
+ * Ardéchine, un écran plein laissait voir les cartes de la page en fantômes. */
+html[data-diapason-mobile='1'].terminal body::after {
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
+}
+html[data-diapason-mobile='1'] .carte-vitree-support {
+  background-image: none !important;
+}
+html[data-diapason-mobile='1'] .cadre-vitre {
+  --cadre-verre-texture: linear-gradient(transparent, transparent);
+}

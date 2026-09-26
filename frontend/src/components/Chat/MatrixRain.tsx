@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useAppStore } from '../../lib/store';
+import { estMobile } from '../../lib/natif';
 import { lireSurfacesVitrees } from './verreTexture';
 import { refractionDuBiseau } from './cristal';
 
@@ -134,7 +135,10 @@ export function MatrixRain() {
   const skin = useAppStore((s) => s.settings.terminalSkin);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const active = theme === 'terminal';
+  // 26/09/2026 (lot 3) : au téléphone, aucune animation de fond — la pluie
+  // redessinait un canevas plein écran à chaque image, derrière chaque mot
+  // de la Discussion, tant que l'app restait ouverte.
+  const active = theme === 'terminal' && !estMobile;
 
   useEffect(() => {
     if (!active) return;

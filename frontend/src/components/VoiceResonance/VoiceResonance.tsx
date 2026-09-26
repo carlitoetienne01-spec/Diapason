@@ -3,6 +3,8 @@ import type { VoiceLiveState } from '../../hooks/useVoiceLive';
 import { useAudioSpectrum } from '../../hooks/useAudioSpectrum';
 import { useAdaptiveQuality } from '../../hooks/useAdaptiveQuality';
 import { SceneResonance } from './scene';
+import { orbeFigee } from './orbeFigee';
+import { estMobile } from '../../lib/natif';
 
 export function VoiceResonance({ state, audioSource, micSource }: {
   state: VoiceLiveState;
@@ -44,7 +46,7 @@ export function VoiceResonance({ state, audioSource, micSource }: {
     setIndisponible(false);
     let perdu = false;
     const preference = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const mouvement = () => rendu.configurer(etat.current, preference.matches);
+    const mouvement = () => rendu.configurer(etat.current, orbeFigee(etat.current, preference.matches, estMobile));
     const visibilite = () => rendu.setVisible(!document.hidden && !perdu);
     const taille = new ResizeObserver(([entree]) =>
       rendu.redimensionner(entree.contentRect.width, entree.contentRect.height));
@@ -73,7 +75,10 @@ export function VoiceResonance({ state, audioSource, micSource }: {
 
   useEffect(() => { scene.current?.setQualite(quality); }, [quality]);
   useEffect(() => {
-    scene.current?.configurer(state, window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    scene.current?.configurer(
+      state,
+      orbeFigee(state, window.matchMedia('(prefers-reduced-motion: reduce)').matches, estMobile),
+    );
   }, [state]);
 
   return <div ref={hote} className="resonance-volume" aria-hidden="true">

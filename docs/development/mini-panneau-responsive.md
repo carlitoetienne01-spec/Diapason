@@ -58,7 +58,7 @@ n'est pas une largeur : c'est un **mode**, comme `compact`, reconnu au pont
 natif et à lui seul (`lib/natif.ts` : le canal `DiapasonNatif`, normalisé en
 `data-diapason-mobile="1"` sur `<html>`). Un navigateur de 375 px n'est pas
 un téléphone ; un téléphone tenu à l'horizontale (740 à 915 px) en reste un.
-Les cinq règles valent telles quelles ; le téléphone en ajoute quatre.
+Les cinq règles valent telles quelles ; le téléphone en ajoute cinq (6 à 9, et 11).
 
 6. **Le doigt : 40 px de côté au moins.** Posé une fois, hors des couches,
    dans `index.css` (`html[data-diapason-mobile='1'] :is(button, a[href],
@@ -99,6 +99,21 @@ Les cinq règles valent telles quelles ; le téléphone en ajoute quatre.
     police d'affichage de l'Ardéchine : le Mois des Tâches à R=350 pour
     320 px, les Notes à 819/334.
 
+11. **Au téléphone, l'aspect est plat** (26/09/2026, lot 3 de la fluidité).
+    `src/telephonePlat.css`, borné au mode : aucun `backdrop-filter` (sur
+    tout élément et ses pseudo-éléments), le verre devient une surface
+    pleine `--color-input-bg` sans tranche ni reflet (le modèle de
+    `prefers-reduced-transparency`), pas de grande ombre (`--shadow-md` et
+    `--shadow-lg` valent `--shadow-sm`), pas de décor animé
+    (`.hud-backdrop`), quadrillage du terminal sans découpes
+    (`useSurfaceVitree` n'inscrit rien). Un composant qui redessine un
+    canevas ou une scène en continu s'arrête sous `estMobile` : la pluie du
+    terminal, l'orbe de la voix au repos (`orbeFigee.ts`). Mesuré au banc
+    (×4) : 63 flous aux Notes → 0, la page de 49 à 60 images/s. Une
+    surface nouvelle n'ajoute ni flou ni ombre au
+    téléphone ; ce fichier les retire de toute façon, mais un flou posé en
+    style en ligne avec `!important` y échapperait.
+
 Pour vérifier une page au téléphone sans téléphone, le banc injecte un faux
 canal `DiapasonNatif` avant le bundle (une page de la même origine qui
 réécrit le document) ; ce qu'il ne dit pas, et que seule la vraie WebView
@@ -121,4 +136,4 @@ horizontal, 17 pages sur 17) : c'est le rendu du bundle, pas encore la
 vraie WKWebView non activante du mini-panneau, qui reste due pour les neuf.
 Le même jour, les mêmes pages ont été vues à 375 px avec le pont simulé
 (`diapason-mobile.md`, étape 5).
-Un module nouveau se conforme aux dix règles dès sa naissance.
+Un module nouveau se conforme aux onze règles dès sa naissance.
