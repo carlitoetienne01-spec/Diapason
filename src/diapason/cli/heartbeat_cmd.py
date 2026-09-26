@@ -142,9 +142,9 @@ def heartbeat_briefing(silencieux: bool, sans_notification: bool, prenom: str) -
     """Compose le briefing du jour et le fait parvenir à l'utilisateur.
 
     C'est la commande qu'un déclencheur (launchd) appelle le matin. Elle ne
-    consulte AUCUN modèle : le briefing se compose des données de Succès, ce
-    qui le rend instantané, toujours juste, et sans effet sur le créneau
-    unique d'Ollama. À ne pas confondre avec ``diapason digest``, qui fait
+    consulte AUCUN modèle : le briefing se compose des tâches et habitudes
+    de Diapason, ce qui le rend instantané, toujours juste, et sans effet sur
+    le créneau unique d'Ollama. À ne pas confondre avec ``diapason digest``, qui fait
     rédiger un résumé par le modèle à partir des connecteurs (Gmail, agenda
     Google) — utile quand ils sont branchés, muet sinon.
     """

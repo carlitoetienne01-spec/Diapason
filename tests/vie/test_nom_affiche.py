@@ -72,3 +72,34 @@ class TestLeNomAffiche:
         assert trouvees == ["Succès est ouvert."], (
             "la chaîne doit être vue, la docstring ignorée"
         )
+
+
+def _aides_de_la_ligne_de_commande(groupe, chemin="diapason"):
+    """Chaque texte que ``--help`` rend : aide, résumé, aide des options."""
+    import click
+
+    textes = [(chemin, groupe.help or ""), (chemin, groupe.short_help or "")]
+    textes += [
+        (f"{chemin} {p.name}", p.help or "")
+        for p in groupe.params
+        if isinstance(p, click.Option)
+    ]
+    for nom, commande in getattr(groupe, "commands", {}).items():
+        textes += _aides_de_la_ligne_de_commande(commande, f"{chemin} {nom}")
+    return textes
+
+
+class TestLAideDeLaLigneDeCommande:
+    def test_aucune_aide_de_commande_ne_nomme_encore_succes(self):
+        """Click publie la docstring d'une commande comme son ``--help`` : le
+        test précédent, qui écarte toute docstring, ne pouvait pas voir
+        « les données de Succès » de ``diapason heartbeat briefing --help``
+        (constaté le 25/09/2026)."""
+        from diapason.cli import cli
+
+        aides = _aides_de_la_ligne_de_commande(cli)
+        fautives = sorted(
+            {chemin for chemin, texte in aides if _ANCIEN_NOM.search(texte)}
+        )
+        assert len(aides) > 200, f"le parcours doit voir toute la CLI, pas {len(aides)}"
+        assert fautives == [], f"ces aides disent encore « Succès » : {fautives}"
