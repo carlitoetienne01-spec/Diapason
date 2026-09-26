@@ -387,13 +387,20 @@ function ProjectFolderVisual({
       onPointerEnter={() => setActive(true)}
       onPointerMove={followPointer}
       onPointerLeave={reset}
-      style={{ perspective: '760px', background: 'transparent' }}
+      // 26/09/2026 : à 375 px (et à 340 dans le mini-panneau), la colonne
+      // d'une grille à deux cartes fait ~167 px ; l'objet, haut de toute la
+      // boîte, en réclamait 192 et poussait la page de 13 px vers la droite —
+      // `maxWidth: 100%` ne mordait pas sur la piste de cette grille. La
+      // boîte devient un conteneur de taille : l'objet prend la plus petite
+      // de sa largeur et de sa hauteur × le ratio, sans jamais se déformer
+      // (les masques sont posés à 100 % × 100 % et suivraient l'étirement).
+      style={{ perspective: '760px', background: 'transparent', containerType: 'size' }}
     >
       <div
-        className="relative h-full"
+        className="relative"
         style={{
           aspectRatio: '135 / 138',
-          maxWidth: '100%',
+          width: 'min(100cqw, calc(100cqh * 135 / 138))',
           transform: `rotateX(${tilt.y}deg) rotateY(${tilt.x}deg) scale(${active ? 1.02 : 1})`,
           transformStyle: 'preserve-3d',
           transition: active ? 'transform 90ms linear' : 'transform 460ms cubic-bezier(.2,.8,.2,1)',
