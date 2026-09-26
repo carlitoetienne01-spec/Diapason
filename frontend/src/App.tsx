@@ -21,7 +21,7 @@ import { NavigationDuTelephone } from './components/NavigationDuTelephone';
 import { PartageDuTelephone } from './components/PartageDuTelephone';
 import { pagesAffichees } from './lib/pagesAffichees';
 import { pageParesseuse } from './lib/pageParesseuse';
-import { optionsDuNavigateur, planifierPrechargement } from './lib/prechargerPages';
+import { optionsDuNavigateur, piloterPrechargement } from './lib/prechargerPages';
 import { releveNavigation } from './lib/mesuresNavigation';
 import { TalkToDiapasonHost } from './components/TalkToDiapasonHost';
 import { track, hashId } from './lib/analytics';
@@ -93,14 +93,6 @@ const PAGES_A_PRECHARGER: readonly (() => Promise<unknown>)[] = [
   SettingsPage, DevicesPage, DashboardPage, VieSyncPage, AgentsPage, LogsPage,
   DataSourcesPage, GetStartedPage,
 ].map((page) => page.precharger);
-
-/**
- * Après l'événement `load`, le temps que les lectures `/v1` du démarrage
- * finissent : au banc, les neuf partent avec la Discussion et se terminent
- * 280 ms après elle (1 461 → 1 735 ms, 4G simulée). Précharger avant, c'est
- * leur voler le lien.
- */
-const PRECHARGEMENT_APRES_LOAD_MS = 500;
 
 /**
  * Une page par entrée de `PAGES_VIE` : le `Record` refuse une page oubliée
@@ -296,25 +288,30 @@ export default function App() {
   }, [importOverlay]);
 
   // Au téléphone, les pages se préchargent pendant les creux, une fois
-  // l'ouverture passée (lib/prechargerPages.ts, 26/09/2026). Le Mac lit ses
-  // morceaux sur le disque : rien à y gagner, rien n'y change.
+  // l'ouverture passée, et se taisent pendant chaque navigation
+  // (lib/prechargerPages.ts, 26/09/2026). Le Mac lit ses morceaux sur le
+  // disque : rien à y gagner, rien n'y change.
+  const piloteRef = useRef<ReturnType<typeof piloterPrechargement> | null>(null);
   useEffect(() => {
     if (!estMobile) return;
-    let prechargement: { annuler: () => void } | null = null;
-    let minuteur: number | undefined;
-    const lancer = () => {
-      minuteur = window.setTimeout(() => {
-        prechargement = planifierPrechargement(PAGES_A_PRECHARGER, optionsDuNavigateur());
-      }, PRECHARGEMENT_APRES_LOAD_MS);
-    };
-    if (document.readyState === 'complete') lancer();
-    else window.addEventListener('load', lancer, { once: true });
+    const pilote = piloterPrechargement(PAGES_A_PRECHARGER, optionsDuNavigateur());
+    piloteRef.current = pilote;
+    if (document.readyState === 'complete') pilote.demarrer();
+    else window.addEventListener('load', pilote.demarrer, { once: true });
     return () => {
-      window.removeEventListener('load', lancer);
-      window.clearTimeout(minuteur);
-      prechargement?.annuler();
+      window.removeEventListener('load', pilote.demarrer);
+      pilote.arreter();
+      piloteRef.current = null;
     };
   }, []);
+  // Chaque changement de page (pas le premier rendu) met le préchargement
+  // en pause : la page demandée a le lien pour elle seule.
+  const cheminPrecedent = useRef(pathname);
+  useEffect(() => {
+    if (cheminPrecedent.current === pathname) return;
+    cheminPrecedent.current = pathname;
+    piloteRef.current?.navigation();
+  }, [pathname]);
 
   // Fetch models on mount
   useEffect(() => {

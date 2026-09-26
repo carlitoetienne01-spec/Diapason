@@ -4,7 +4,14 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
-import { memoiserChargeur, planifierPrechargement, type OptionsPrechargement } from './prechargerPages';
+import {
+  memoiserChargeur,
+  piloterPrechargement,
+  planifierPrechargement,
+  REPRISE_APRES_NAVIGATION_MS,
+  type OptionsPilote,
+  type OptionsPrechargement,
+} from './prechargerPages';
 
 function doublures(surcharges: Partial<OptionsPrechargement> = {}) {
   const creux: (() => void)[] = [];
@@ -132,5 +139,128 @@ describe('planifierPrechargement', () => {
     await jouer();
     expect(chargeur, 'rien après l’annulation').not.toHaveBeenCalled();
     await expect(fini).resolves.toEqual({ charges: 0, interrompu: true });
+  });
+});
+
+/** Une horloge et des minuteurs à la main, et des creux joués aussitôt. */
+function horloge() {
+  let t = 0;
+  let minuteurs: { quand: number; travail: () => void; vivant: boolean }[] = [];
+  const options: OptionsPilote = {
+    enCreux: (travail) => travail(),
+    visible: () => true,
+    plusTard: (travail) => void setTimeout(travail, 0),
+    economieDeDonnees: () => false,
+    maintenant: () => t,
+    minuteur: (travail, ms) => {
+      const m = { quand: t + ms, travail, vivant: true };
+      minuteurs.push(m);
+      return () => {
+        m.vivant = false;
+      };
+    },
+  };
+  const avancer = async (ms: number) => {
+    const fin = t + ms;
+    for (;;) {
+      const prochain = minuteurs.filter((m) => m.vivant && m.quand <= fin).sort((a, b) => a.quand - b.quand)[0];
+      if (!prochain) break;
+      t = prochain.quand;
+      prochain.vivant = false;
+      minuteurs = minuteurs.filter((m) => m.vivant);
+      prochain.travail();
+      for (let i = 0; i < 10; i += 1) await Promise.resolve();
+    }
+    t = fin;
+    for (let i = 0; i < 10; i += 1) await Promise.resolve();
+  };
+  return { options, avancer };
+}
+
+/** Des chargeurs qu'on laisse arriver à la main : `arriver()` finit le plus ancien en vol. */
+function chargeursManuels(noms: string[]) {
+  const partis: string[] = [];
+  const enVol: (() => void)[] = [];
+  const chargeurs = noms.map((nom) => () => {
+    partis.push(nom);
+    return new Promise<void>((r) => enVol.push(r));
+  });
+  const arriver = async () => {
+    enVol.shift()?.();
+    for (let i = 0; i < 10; i += 1) await Promise.resolve();
+  };
+  return { chargeurs, partis, arriver };
+}
+
+describe('piloterPrechargement', () => {
+  it('se tait pendant une navigation : aucune page ne part tant que la page demandée lit ses données', async () => {
+    // 26/09/2026, contre-épreuve : touchées dès l'ouverture, les Tâches
+    // partageaient le lien 4G avec 40 morceaux d'autres pages — 404 Ko,
+    // page stable à 2,6 s au lieu de ~0,8 s.
+    const { options, avancer } = horloge();
+    const { chargeurs, partis, arriver } = chargeursManuels(['taches', 'planificateur', 'notes']);
+    const pilote = piloterPrechargement(chargeurs, options, { departMs: 500, repriseMs: 1500 });
+    pilote.demarrer();
+    await avancer(500);
+    expect(partis, 'la première page part 500 ms après load').toEqual(['taches']);
+    pilote.navigation();
+    await arriver();
+    await avancer(1499);
+    expect(partis, 'rien de neuf pendant la navigation, même le morceau en vol arrivé').toEqual(['taches']);
+    await avancer(1);
+    expect(partis, 'la reprise, 1 500 ms après, continue la liste').toEqual(['taches', 'planificateur']);
+  });
+
+  it('une navigation avant le départ le repousse d’autant', async () => {
+    const { options, avancer } = horloge();
+    const { chargeurs, partis } = chargeursManuels(['taches']);
+    const pilote = piloterPrechargement(chargeurs, options, { departMs: 500, repriseMs: 1500 });
+    pilote.demarrer();
+    await avancer(100);
+    pilote.navigation();
+    await avancer(1400);
+    expect(partis, 'pas au bout des 500 ms : une page vient d’être demandée').toEqual([]);
+    await avancer(100);
+    expect(partis).toEqual(['taches']);
+  });
+
+  it('chaque navigation prolonge la pause, jusqu’à la dernière', async () => {
+    const { options, avancer } = horloge();
+    const { chargeurs, partis } = chargeursManuels(['taches']);
+    const pilote = piloterPrechargement(chargeurs, options, { departMs: 0 });
+    pilote.navigation();
+    pilote.demarrer();
+    await avancer(1000);
+    pilote.navigation();
+    await avancer(1000);
+    pilote.navigation();
+    await avancer(REPRISE_APRES_NAVIGATION_MS - 1);
+    expect(partis, 'trois pages en 2 s : rien ne part').toEqual([]);
+    await avancer(1);
+    expect(partis).toEqual(['taches']);
+  });
+
+  it('ne relance pas ce qui est déjà arrivé, et s’arrête au bout de la liste', async () => {
+    const { options, avancer } = horloge();
+    const arrives = new Set<string>();
+    const importer = vi.fn(async (nom: string) => void arrives.add(nom));
+    const memos = ['taches', 'notes'].map((nom) => memoiserChargeur(() => importer(nom)));
+    const pilote = piloterPrechargement(memos.map((m) => m.charger), options, { departMs: 0, repriseMs: 10 });
+    pilote.demarrer();
+    await avancer(0);
+    expect([...arrives].sort()).toEqual(['notes', 'taches']);
+    pilote.navigation();
+    await avancer(100);
+    expect(importer, 'un import par page, reprise comprise').toHaveBeenCalledTimes(2);
+  });
+
+  it('arreter() coupe tout, minuteur compris (démontage de l’app)', async () => {
+    const { options, avancer } = horloge();
+    const { chargeurs, partis } = chargeursManuels(['taches']);
+    const pilote = piloterPrechargement(chargeurs, options, { departMs: 500 });
+    pilote.demarrer();
+    pilote.arreter();
+    await avancer(5000);
+    expect(partis).toEqual([]);
   });
 });
