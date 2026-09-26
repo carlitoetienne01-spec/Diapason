@@ -375,8 +375,10 @@ export function SettingsPage() {
       if (s.host) setCustomHost(s.host);
       if (s.model) setCustomModel(s.model);
       if (s.engine) setCustomEngine(s.engine);
-    }).catch(() => {});
-  }, []);
+      // 26/09/2026 : un échec de lecture était avalé, et le sélecteur restait
+      // sur « Ollama » — sa valeur initiale, pas celle du Mac. On le dit.
+    }).catch((e: any) => setSrcMsg(e?.message ?? t('common.error')));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const saveSource = useCallback(async () => {
     try {
