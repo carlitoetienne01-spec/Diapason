@@ -19,6 +19,7 @@ import os
 import pathlib
 
 import pytest
+from _depot_mobile import depot_mobile
 
 from diapason.mesh.identity import canonical_bytes
 
@@ -26,7 +27,7 @@ from diapason.mesh.identity import canonical_bytes
 # 25/09/2026 : l'ancien chemin a fait SAUTER ces tests en silence dès le
 # déménagement — le cliquet se taisait exactement quand plus rien ne le
 # vérifiait. Hors CI, son absence est donc un ÉCHEC (voir _vecteurs).
-MOBILE = pathlib.Path.home() / "Projets/diapason_mobile"
+MOBILE = depot_mobile()
 VECTEURS = MOBILE / "test/mesh/canonical_vectors.json"
 
 

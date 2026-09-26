@@ -24,9 +24,10 @@ import pathlib
 import re
 
 import pytest
+from _depot_mobile import depot_mobile
 
 RACINE = pathlib.Path(__file__).resolve().parents[2]
-MOBILE = pathlib.Path.home() / "Projets/diapason_mobile"
+MOBILE = depot_mobile()
 
 
 def _generateur():

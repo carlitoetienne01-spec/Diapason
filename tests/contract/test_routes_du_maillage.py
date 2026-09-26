@@ -31,6 +31,7 @@ import pathlib
 import re
 
 import pytest
+from _depot_mobile import depot_mobile
 
 from diapason.mesh.executor import _MESH_ROUTE, MESH_ROUTE_KINDS, parse_mesh_route
 
@@ -40,7 +41,7 @@ VECTEURS = RACINE / "frontend/src/features/mesh/vecteurs_routes.json"
 
 # Le dépôt Flutter, à côté — le même chemin, et la même règle, que
 # test_succes_client_contract.py : hors CI, son absence est un ÉCHEC.
-MOBILE = pathlib.Path.home() / "Projets/diapason_mobile"
+MOBILE = depot_mobile()
 MESH_ROUTES_DART = MOBILE / "lib/services/mesh/mesh_routes.dart"
 VECTEURS_DART = MOBILE / "test/mesh/vecteurs_routes.json"
 

@@ -23,13 +23,14 @@ import pathlib
 import sqlite3
 
 import pytest
+from _depot_mobile import depot_mobile
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from diapason.vie.routes import monter, set_store_for_tests
 from diapason.vie.sync import VieSyncStore
 
-MOBILE = pathlib.Path.home() / "Projets/diapason_mobile"
+MOBILE = depot_mobile()
 INSTANTANE = MOBILE / "test/import/instantane_life_os.json"
 
 _HABITUDE = "habitude-lecture"

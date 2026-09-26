@@ -19,13 +19,13 @@ from __future__ import annotations
 import base64
 import json
 import os
-import pathlib
 
 import pytest
+from _depot_mobile import depot_mobile
 
 from diapason.mesh.commands import CommandRejected, verify_command
 
-MOBILE = pathlib.Path.home() / "Projets/diapason_mobile"
+MOBILE = depot_mobile()
 FIXTURE = MOBILE / "test/mesh/telecommande_signee.json"
 
 

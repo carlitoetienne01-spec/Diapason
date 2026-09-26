@@ -130,6 +130,23 @@ Diapason). Avant le 25/09/2026 ils se sautaient partout : le déménagement du
 dépôt depuis `~/Desktop/Porfolio/Succes` les avait rendus muets sans que
 rien ne le dise.
 
+Ils lisent l'**arbre de travail** du dépôt mobile, pas un commit : une
+passe faite pendant qu'une autre session y mute un fichier (les `.mutbak`
+d'une contre-épreuve) prouve sur un état qui n'existe nulle part. Depuis le
+26/09/2026, `DIAPASON_MOBILE` désigne le dépôt (`tests/contract/
+_depot_mobile.py`) — une copie propre d'un commit donné, par exemple :
+
+```bash
+git -C ~/Projets/diapason_mobile archive HEAD | tar -x -C /tmp/mobile-propre
+DIAPASON_MOBILE=/tmp/mobile-propre .venv/bin/python -m pytest tests/contract
+```
+
+Sans elle, `~/Projets/diapason_mobile` ; une passe lancée avec un `HOME` de
+banc (le foyer jetable d'un serveur de test) doit la poser, sinon 25 échecs
+sans rapport avec le code. Les sessions de mutation restaurent leurs
+fichiers avant qu'une CI ne parte : le runner auto-hébergé lit ce même
+arbre.
+
 ## Faire évoluer les deux ensemble
 
 1. Changer Diapason, lancer `pytest tests/contract` — il dira ce qui casse.
