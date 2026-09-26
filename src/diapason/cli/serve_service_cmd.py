@@ -53,12 +53,28 @@ def _label():
     type=int,
     help="Port du second socket, celui du maillage.",
 )
+@click.option(
+    "--tailnet",
+    is_flag=True,
+    help="Ouvrir la passerelle du tailnet sur 127.0.0.1 (--tailnet-port), "
+    "que `tailscale serve` relaie en HTTPS vers le téléphone. Session "
+    "d'appareil exigée, clé locale refusée.",
+)
+@click.option(
+    "--tailnet-port",
+    default=8002,
+    show_default=True,
+    type=click.IntRange(1, 65535),
+    help="Port de la passerelle du tailnet.",
+)
 @click.option("--allow-network", is_flag=True, hidden=True)
 def install(
     host: str,
     port: int,
     maillage_reseau: bool,
     lan_port: int,
+    tailnet: bool,
+    tailnet_port: int,
     allow_network: bool,
 ) -> None:
     """Run the API server at login, in the background."""
@@ -104,6 +120,15 @@ def install(
             f"--lan-port et --port valent tous deux {port} : deux serveurs "
             "sur le même port se lient en silence sur macOS et échouent sur "
             "Linux.",
+            err=True,
+        )
+        sys.exit(1)
+
+    if tailnet and tailnet_port in (port, lan_port):
+        click.echo(
+            f"--tailnet-port vaut {tailnet_port}, comme --port ou --lan-port : "
+            "la passerelle du tailnet est un socket à part, jamais celui de "
+            "l'API locale ni celui du maillage.",
             err=True,
         )
         sys.exit(1)
@@ -168,11 +193,22 @@ def install(
             ["--lan-host", "0.0.0.0", "--lan-port", str(lan_port)]
             if maillage_reseau
             else []
-        ),
+        )
+        + (["--tailnet-port", str(tailnet_port)] if tailnet else []),
     )
     click.echo(f"Installed LaunchAgent → {path}")
     if launch_agent.is_loaded(launch_agent.SERVE_LABEL):
         click.echo(f"API server running at http://{host}:{port} — and at every login.")
+        if tailnet:
+            # La commande suivante est celle de Carlito, pas la nôtre : ce
+            # code ne lance jamais `tailscale` en écriture (26/09/2026).
+            click.echo(
+                f"Passerelle du tailnet : http://127.0.0.1:{tailnet_port}.\n"
+                f"  Étape suivante, à la main : tailscale serve --bg {tailnet_port}\n"
+                f"  Jamais `tailscale serve {port}` : ce serait l'API locale "
+                "entière, avec les droits de la boucle locale.\n"
+                "  Jamais `tailscale funnel` : Internet entier."
+            )
     else:
         click.echo(
             "WARNING: launchd did not accept the job. Check "

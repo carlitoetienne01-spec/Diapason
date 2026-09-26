@@ -235,3 +235,30 @@ def test_l_installateur_windows_ne_promet_pas_une_url_morte():
         "le README propose encore une URL GitHub Pages hors encadré "
         f"d'avertissement : {lignes_actives}"
     )
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        ["--port", "8000", "--tailnet-port", "8000"],
+        ["--port", "8000", "--tailnet-port", "8001"],
+        ["--port", "8000", "--lan-port", "8010", "--tailnet-port", "8010"],
+    ],
+)
+def test_la_passerelle_du_tailnet_ne_partage_aucun_port(arguments):
+    """26/09/2026, phase 2 (étape 4) : la passerelle est un socket à part.
+
+    Sur le port de l'API, elle se lierait en silence sous macOS à côté de
+    l'app ENTIÈRE ; sur celui du maillage, ouvrir le LAN plus tard ferait
+    entrer en collision deux sockets qu'on croyait distincts. Refusé avant
+    la recherche d'un moteur, comme --lan-port.
+    """
+    from click.testing import CliRunner
+
+    from diapason.cli.serve import serve
+
+    resultat = CliRunner().invoke(serve, ["--host", "127.0.0.1", *arguments])
+    sortie = resultat.output or ""
+    assert resultat.exit_code == 2, f"attendu 2, obtenu {resultat.exit_code}"
+    assert "--tailnet-port doit différer" in sortie, sortie[-200:]
+    assert "No inference engine" not in sortie

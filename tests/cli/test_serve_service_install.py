@@ -112,3 +112,37 @@ class TestLeMaillagePasseParSaProprePorte:
         resultat = _invoquer("--host", "127.0.0.1", "--maillage-reseau")
         assert "0.0.0.0" in resultat.output
         assert "réseau local pourra l'atteindre" in resultat.output
+
+
+class TestLaPasserelleDuTailnet:
+    """26/09/2026, phase 2 du plan mobile (étape 4)."""
+
+    def test_sans_la_demander_aucune_passerelle(self, _ne_rien_installer):
+        _invoquer("--host", "127.0.0.1", "--port", "8000")
+        args = _ne_rien_installer.call_args.kwargs["args"]
+        assert "--tailnet-port" not in args
+
+    def test_demandee_elle_s_ajoute_sur_8002(self, _ne_rien_installer):
+        resultat = _invoquer("--host", "127.0.0.1", "--port", "8000", "--tailnet")
+        assert resultat.exit_code == 0, resultat.output
+        args = _ne_rien_installer.call_args.kwargs["args"]
+        assert args[args.index("--tailnet-port") + 1] == "8002"
+        assert args[args.index("--host") + 1] == "127.0.0.1"
+        assert "--lan-host" not in args, "le tailnet n'ouvre pas le réseau local"
+
+    def test_elle_se_combine_au_maillage_reseau(self, _ne_rien_installer):
+        _invoquer("--maillage-reseau", "--tailnet")
+        args = _ne_rien_installer.call_args.kwargs["args"]
+        assert "--lan-host" in args and "--tailnet-port" in args
+
+    @pytest.mark.parametrize("collision", ["8000", "8001"])
+    def test_un_port_partage_est_refuse(self, _ne_rien_installer, collision):
+        resultat = _invoquer("--tailnet", "--tailnet-port", collision)
+        assert resultat.exit_code == 1
+        assert "socket à part" in resultat.output
+        _ne_rien_installer.assert_not_called()
+
+    def test_l_etape_suivante_est_dite_et_le_piege_nomme(self):
+        resultat = _invoquer("--tailnet")
+        assert "tailscale serve --bg 8002" in resultat.output
+        assert "Jamais `tailscale serve 8000`" in resultat.output

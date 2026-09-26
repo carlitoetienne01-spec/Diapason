@@ -21,6 +21,8 @@ import pytest
 
 pytest.importorskip("fastapi")
 
+from fastapi import Request  # noqa: E402
+
 from diapason.server.app import _PORTES_LAN, create_lan_app  # noqa: E402
 from diapason.server.auth_middleware import AuthMiddleware  # noqa: E402
 
@@ -222,7 +224,7 @@ class TestLesDeuxSocketsDemarrent:
         import httpx
         from fastapi import FastAPI
 
-        from diapason.cli.serve import _servir_deux_sockets
+        from diapason.cli.serve import _Prise, _servir_les_sockets
 
         def _port_libre() -> int:
             p = socket.socket()
@@ -250,8 +252,14 @@ class TestLesDeuxSocketsDemarrent:
 
         arret = threading.Event()
         fil = threading.Thread(
-            target=_servir_deux_sockets,
-            args=(principal, "127.0.0.1", maison, lan, "127.0.0.1", reseau, arret),
+            target=_servir_les_sockets,
+            args=(
+                [
+                    _Prise("principal", principal, "127.0.0.1", maison),
+                    _Prise("maillage", lan, "127.0.0.1", reseau),
+                ],
+                arret,
+            ),
             daemon=True,
         )
         fil.start()
@@ -286,3 +294,182 @@ class TestLesDeuxSocketsDemarrent:
             arret.set()
             fil.join(timeout=5)
             assert not fil.is_alive(), "les deux sockets ont survécu au test"
+
+
+class TestLesTroisSocketsDemarrent:
+    """Le troisième socket, la passerelle du tailnet (26/09/2026, étape 4).
+
+    Même processus que les deux autres — une commande reçue par le tailnet
+    doit tomber dans la même boîte que celle lue en loopback —, mais avec
+    un cycle de vie éteint et sans croire les en-têtes de relais.
+    """
+
+    @staticmethod
+    def _port_libre() -> int:
+        import socket
+
+        p = socket.socket()
+        p.bind(("127.0.0.1", 0))
+        n = p.getsockname()[1]
+        p.close()
+        return n
+
+    def test_la_prise_du_tailnet_est_bornee_a_la_boucle_sans_cycle_ni_relais(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setenv("DIAPASON_HOME", str(tmp_path))
+        from fastapi import FastAPI
+
+        from diapason.cli.serve import _prises
+        from diapason.server.passerelle_tailnet import PasserelleTailnet
+
+        app = FastAPI()
+        prises = _prises(
+            app,
+            "127.0.0.1",
+            8000,
+            lan_host="0.0.0.0",
+            lan_port=8001,
+            tailnet_port=8002,
+            adresse_tailnet="",
+        )
+        assert [p.nom for p in prises] == ["principal", "maillage", "tailnet"]
+        tailnet = prises[-1]
+        assert tailnet.host == "127.0.0.1", (
+            "sur 0.0.0.0, la passerelle serait joignable en HTTP clair par le Wi-Fi"
+        )
+        assert tailnet.port == 8002
+        assert tailnet.lifespan == "off"
+        assert tailnet.proxy_headers is False
+        assert isinstance(tailnet.app, PasserelleTailnet)
+        assert tailnet.app.app is app, "la passerelle doit envelopper l'app principale"
+        # Les sockets d'avant ne changent pas de forme.
+        assert (prises[0].lifespan, prises[0].proxy_headers) == ("auto", True)
+
+    def test_sans_option_aucune_passerelle(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("DIAPASON_HOME", str(tmp_path))
+        from fastapi import FastAPI
+
+        from diapason.cli.serve import _prises
+
+        prises = _prises(
+            FastAPI(),
+            "127.0.0.1",
+            8000,
+            lan_host=None,
+            lan_port=8001,
+            tailnet_port=None,
+        )
+        assert [p.nom for p in prises] == ["principal"]
+
+    def test_trois_sockets_un_seul_cycle_de_vie_et_aucun_relais_cru(
+        self, tmp_path, monkeypatch
+    ):
+        """Le banc à événement `arret`, étendu à trois sockets.
+
+        Sans lifespan="off", le démarrage de l'app aurait couru deux fois.
+        Sans proxy_headers=False, un X-Forwarded-For posé par n'importe quel
+        processus local réécrirait `request.client`.
+        """
+        import dataclasses
+        import os
+        import threading
+        import time
+        from contextlib import asynccontextmanager
+
+        import httpx
+        from fastapi import FastAPI
+
+        from diapason.cli.serve import _Prise, _prises, _servir_les_sockets
+
+        monkeypatch.setenv("DIAPASON_HOME", str(tmp_path))
+        demarrages: list[int] = []
+        arrets: list[int] = []
+
+        @asynccontextmanager
+        async def _cycle(_app):
+            demarrages.append(os.getpid())
+            yield
+            arrets.append(os.getpid())
+
+        principal = FastAPI(lifespan=_cycle)
+        vu: dict = {}
+
+        @principal.get("/qui")
+        def _qui(request: Request):
+            vu.setdefault("clients", []).append(request.client.host)
+            return {"pid": os.getpid()}
+
+        lan = FastAPI()
+
+        @lan.get("/porte")
+        def _porte():
+            return {"pid": os.getpid()}
+
+        maison, reseau, tailnet = (self._port_libre() for _ in range(3))
+        # La prise telle que `serve` la construit, avec l'app témoin à la
+        # place de la passerelle : c'est la CONFIGURATION du socket qu'on
+        # éprouve ici, la passerelle a ses propres tests.
+        (prise_tailnet,) = [
+            p
+            for p in _prises(
+                principal,
+                "127.0.0.1",
+                maison,
+                lan_host=None,
+                lan_port=reseau,
+                tailnet_port=tailnet,
+                adresse_tailnet="",
+            )
+            if p.nom == "tailnet"
+        ]
+        prise_tailnet = dataclasses.replace(prise_tailnet, app=principal)
+        arret = threading.Event()
+        fil = threading.Thread(
+            target=_servir_les_sockets,
+            args=(
+                [
+                    _Prise("principal", principal, "127.0.0.1", maison),
+                    _Prise("maillage", lan, "127.0.0.1", reseau),
+                    prise_tailnet,
+                ],
+                arret,
+            ),
+            daemon=True,
+        )
+        fil.start()
+        for _ in range(100):
+            try:
+                httpx.get(f"http://127.0.0.1:{tailnet}/qui", timeout=1)
+                break
+            except Exception:  # noqa: BLE001 - les serveurs montent encore
+                time.sleep(0.05)
+        vu.clear()
+        try:
+            forge = {"X-Forwarded-For": "203.0.113.7"}
+            par_tailnet = httpx.get(
+                f"http://127.0.0.1:{tailnet}/qui", headers=forge, timeout=5
+            )
+            par_maison = httpx.get(
+                f"http://127.0.0.1:{maison}/qui", headers=forge, timeout=5
+            )
+            par_reseau = httpx.get(f"http://127.0.0.1:{reseau}/porte", timeout=5)
+        finally:
+            arret.set()
+            fil.join(timeout=10)
+        assert not fil.is_alive(), "les trois sockets ont survécu au test"
+        assert par_tailnet.status_code == 200, par_tailnet.text
+        assert par_maison.status_code == 200, par_maison.text
+        assert par_tailnet.json()["pid"] == par_maison.json()["pid"] == os.getpid()
+        assert par_reseau.status_code == 200
+        assert demarrages == [os.getpid()], (
+            f"le cycle de vie a démarré {len(demarrages)} fois pour trois sockets"
+        )
+        assert arrets == [os.getpid()], "l'arrêt doit courir une fois, et courir"
+        client_tailnet, client_maison = vu["clients"]
+        assert client_tailnet == "127.0.0.1", (
+            "le socket du tailnet a cru un X-Forwarded-For forgé"
+        )
+        # Le contraste qui montre ce que l'option change : le socket
+        # principal, lui, garde le défaut d'uvicorn (piège du §5).
+        assert client_maison == "203.0.113.7"

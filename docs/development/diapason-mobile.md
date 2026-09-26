@@ -412,7 +412,7 @@ Un point est à vérifier sur la machine, faute d'avoir pu le faire : quels en-t
 - 8000 garde `microphone=()` ;
 - la suite existante passe inchangée.
 
-**4. « Le serveur n'avait que deux sockets ».** `diapason serve --tailnet-port 8002` et `serve-service install --tailnet` :
+~~**4. « Le serveur n'avait que deux sockets ».**~~ *Commité le 26/09/2026 (branche `chantier/phase2`). `_servir_deux_sockets` devient `_servir_les_sockets(prises)` ; `_prises()` construit la liste, et la prise du tailnet n'a AUCUNE option d'hôte (`_HOTE_DU_TAILNET = "127.0.0.1"`). `--tailnet-port` refuse aussi le `--lan-port` par défaut (8001) même sans `--lan-host`. Banc réel du 26/09/2026 (`serve --port 18410 --lan-host 127.0.0.1 --lan-port 18411 --tailnet-port 18412`, foyer de test, moteur factice) : `lsof` montre les trois sockets sur 127.0.0.1 ; une seule tâche de battement du maillage et une seule du compte ; jumelage par le socket tailnet (`join_fleet`), session ouverte (303, cookie `HttpOnly; Max-Age=43200; Path=/; SameSite=strict; Secure`), `/v1/models` 401 / 401 avec la clé / 200 avec le cookie, `POST /v1/mesh/pairings` 403, `/v1/voice/live` refusée à la poignée de main (HTTP 403, le 1008 d'avant l'accept), `action_mode=auto` → `lightning: null` ; une commande `notifications.show` livrée à 18412 rend SUCCESS et apparaît dans `/v1/mesh/inbox` lue sur 18410 ; SIGTERM arrête les trois sockets et le processus. Non vu : la page 401 de `/` (le foyer de banc n'a pas de bundle construit : 404).* `diapason serve --tailnet-port 8002` et `serve-service install --tailnet` :
 - `_servir_deux_sockets` (`serve.py:237`) est généralisé à N sockets ;
 - 8002 écoute sur `127.0.0.1` seulement, avec `lifespan="off"` et `proxy_headers=False` ;
 - un port égal à `--port` ou à `--lan-port` est refusé.
@@ -576,7 +576,7 @@ Toute écriture faite après la migration (tâche, note, photo) est perdue par c
 8. Test : Wi-Fi coupé, `http://<nom>:8001/` rend un 404 JSON, rien de plus.
 
 **Pendant la phase 2**
-- Après le commit du troisième socket : `.venv/bin/python -m diapason.cli serve-service install --tailnet` (nom exact à confirmer à ce commit), puis `tailscale serve --bg 8002`. Accepter l'activation de Serve si une URL s'affiche. Vérifier `tailscale serve status` et `tailscale funnel status` (vide). **Ne jamais lancer `tailscale serve 8000` ni `tailscale funnel`.**
+- Après le commit du troisième socket : `.venv/bin/python -m diapason.cli serve-service install --maillage-reseau --tailnet` (nom confirmé le 26/09/2026 ; `--maillage-reseau` garde le socket 8001 du plist actuel — sans lui, l'installation le retire : le téléphone neuf passe par https, mais l'ancienne app « Succès » et pc-bureau visent encore 8001), puis `tailscale serve --bg 8002`. Accepter l'activation de Serve si une URL s'affiche. Vérifier `tailscale serve status` et `tailscale funnel status` (vide). **Ne jamais lancer `tailscale serve 8000` ni `tailscale funnel`.**
 - Test : en données mobiles, `https://<nom>.<tailnet>.ts.net/health` répond ; poser `[tailnet] adresse` ; créer une invitation et appairer la nouvelle app avec cette adresse.
 - Après chaque commit mobile : reconstruire et réinstaller l'APK avec `tool/flutter_avec_secrets.sh`.
 
