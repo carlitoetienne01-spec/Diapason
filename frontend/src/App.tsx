@@ -18,7 +18,7 @@ import { TalkToDiapasonHost } from './components/TalkToDiapasonHost';
 import { track, hashId } from './lib/analytics';
 import { demarrerSyncConversations } from './lib/convSync';
 import { startHabitReminderScheduler } from './features/vie/habitReminders';
-import { cheminHerite, PAGES_VIE, type PageVie } from './features/vie/routesVie';
+import { cibleHeritee, PAGES_VIE, type PageVie } from './features/vie/routesVie';
 import { normaliserZoom, raccourciZoom, zoomSuivant } from './lib/zoom';
 import {
   annoncerLeGlissement,
@@ -117,11 +117,9 @@ const PAGES_VIE_ELEMENTS: Record<PageVie, ReactElement> = {
   sync: <VieSyncPage />,
 };
 
-/** `/succes/*` → `/vie/*`, requête et ancre comprises (voir `cheminHerite`). */
+/** `/succes/*` → `/vie/*`, requête et ancre comprises (voir `cibleHeritee`). */
 function RedirectionHeritee() {
-  const { pathname, search, hash } = useLocation();
-  const cible = cheminHerite(`${pathname}${search}${hash}`) ?? '/';
-  return <Navigate to={cible} replace />;
+  return <Navigate to={cibleHeritee(useLocation())} replace />;
 }
 
 export default function App() {

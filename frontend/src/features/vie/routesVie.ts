@@ -46,3 +46,13 @@ export function cheminHerite(chemin: string): string | null {
   if (texte !== PREFIXE_HERITE && !/^\/succes(?=[/?#])/.test(texte)) return null;
   return PREFIXE_VIE + texte.slice(PREFIXE_HERITE.length);
 }
+
+/**
+ * Où envoyer une ouverture de `/succes/*`, à partir du lieu que donne
+ * `useLocation()`. Tirée d'`App.tsx` le 25/09/2026 : la contre-épreuve y avait
+ * réduit l'appel à `${pathname}` seul — requête et ancre perdues — et les
+ * 1 274 vitest restaient verts, faute de pouvoir monter le composant.
+ */
+export function cibleHeritee(lieu: { pathname: string; search: string; hash: string }): string {
+  return cheminHerite(`${lieu.pathname}${lieu.search}${lieu.hash}`) ?? '/';
+}

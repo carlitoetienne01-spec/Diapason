@@ -3,7 +3,7 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { cheminHerite, PAGES_VIE, ROUTES_VIE } from './routesVie';
+import { cheminHerite, cibleHeritee, PAGES_VIE, ROUTES_VIE } from './routesVie';
 
 /**
  * Étape 9 du plan de la phase 1b (docs/development/diapason-mobile.md) : les
@@ -87,5 +87,39 @@ describe('la réglette et le mini-panneau suivent les routes d’App.tsx', () =>
       const servie = route.startsWith('/succes/') ? cheminHerite(route) : route;
       expect(ROUTES_VIE, `__diapNoms : ${route}`).toContain(servie);
     }
+  });
+});
+
+/**
+ * La redirection elle-même vit dans `App.tsx`, qu'aucun test ne monte (aucun
+ * test de composant dans ce dépôt). Contre-épreuve du 25/09/2026 : retirer les
+ * deux `<Route path="succes…">`, ou ne passer que `${pathname}`, laissait les
+ * 1 274 vitest verts — et la réglette déjà installée, qui ouvre encore
+ * `/succes/tasks`, aurait montré un module vide.
+ */
+describe('App.tsx redirige /succes/* vers /vie/*', () => {
+  const app = readFileSync(join(process.cwd(), 'src/App.tsx'), 'utf-8');
+
+  it('les deux routes héritées mènent à la redirection', () => {
+    for (const chemin of ['succes', 'succes/*']) {
+      expect(app, `<Route path="${chemin}"> manque`).toContain(
+        `<Route path="${chemin}" element={<RedirectionHeritee />} />`,
+      );
+    }
+  });
+
+  it('la redirection donne le lieu ENTIER à cibleHeritee', () => {
+    const corps = app.match(/function RedirectionHeritee\(\) \{([\s\S]*?)\n\}/)?.[1] ?? '';
+    expect(corps, 'RedirectionHeritee est introuvable').not.toBe('');
+    expect(corps, 'le lieu doit passer tel quel, requête et ancre comprises').toMatch(
+      /cibleHeritee\(useLocation\(\)\)/,
+    );
+  });
+
+  it('cibleHeritee garde la requête et l’ancre', () => {
+    expect(cibleHeritee({ pathname: '/succes/notes', search: '?q=a', hash: '#n1' })).toBe(
+      '/vie/notes?q=a#n1',
+    );
+    expect(cibleHeritee({ pathname: '/successeur', search: '', hash: '' }), 'préfixe voisin').toBe('/');
   });
 });
