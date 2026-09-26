@@ -481,7 +481,7 @@ Le plan, tel qu'écrit le 25/09/2026 :
 - un second import rend `alreadyImported: true` ;
 - une note sans titre figure au résumé avec son motif.
 
-**3. « Le bundle ne savait pas qu'il tournait dans un téléphone ».** On crée `frontend/src/lib/natif.ts`, sur le modèle de `lib/compact.ts`.
+**3. « Le bundle ne savait pas qu'il tournait dans un téléphone ».** *Côté bundle commité le 26/09/2026 (`f0eb73e`) ; le côté Flutter (`onNavigationRequest`, et l'implémentation du canal) vient avec la coquille, étape 7.* On crée `frontend/src/lib/natif.ts`, sur le modèle de `lib/compact.ts`.
 - **Détection.** Le bundle repère `window.DiapasonNatif` (un canal JavaScript injecté avant le chargement), pose `data-diapason-mobile="1"` et exporte `estMobile`.
 - **Protocole.** Requête et réponse sont identifiées par `id`, avec un délai limite.
 - **Verbes :** `theme`, `enregistrer`, `ouvrirExterne`, `retour`.
@@ -490,7 +490,14 @@ Le plan, tel qu'écrit le 25/09/2026 :
 *Risque silencieux :* le canal JavaScript d'Android est exposé à **toute** page chargée dans la WebView. Un lien suivi en interne pourrait appeler le pont.
 *Preuve :* des vitest sur les fonctions pures (réponse arrivée avant son attente, délai en français, identifiant inconnu ignoré). En Dart, `https://exemple.com` donne `prevent` et l'origine du Mac donne `navigate`.
 
-**4. « Hors de Tauri, des pages annonçaient un succès qui n'avait pas eu lieu ».**
+Le contrat que la coquille doit tenir, tel que le bundle l'attend (26/09/2026) :
+- **Canal.** Un `JavaScriptChannel` nommé `DiapasonNatif`, injecté avant le chargement. Sa présence — et elle seule — fait `estMobile` : ni la largeur, ni l'agent utilisateur.
+- **Du bundle vers la coquille.** `DiapasonNatif.postMessage(JSON)` avec `{type: "demande", id, verbe, donnees}` ; `id` vaut `b1`, `b2`… La coquille répond par `window.diapasonNatifRecevoir(JSON)` avec `{type: "reponse", id, ok, donnees?, erreur?}`. Une réponse peut arriver avant que l'attente soit posée ; un `id` inconnu ou expiré est ignoré.
+- **Verbes sortants et délais.** `theme` (10 s) : `{theme, skin, fond, encre, clair}`. `ouvrirExterne` (10 s) : `{url}`, http(s) seulement, filtré avant l'envoi. `enregistrer` (120 s, parce qu'il attend une personne dans le sélecteur d'Android) : `{nom, mime, base64}` ; `ok` avec `donnees.nom` = le nom écrit (affiché tel quel) ; `ok: false, erreur: "annule"` = la personne a renoncé, rien n'est annoncé ; toute autre `erreur` est une phrase affichée.
+- **Verbe entrant.** La coquille envoie `{type: "demande", id, verbe: "retour"}` ; le bundle répond `ok: true, donnees: {traite}`. `traite: false` n'est pas un échec : la coquille fait alors `goBack()`, puis passe en arrière-plan. Aucun gestionnaire n'est inscrit dans ce lot (la barre latérale s'y inscrira à l'étape 5) : le bundle répond donc toujours `false` aujourd'hui. Un verbe entrant inconnu reçoit `ok: false, erreur: "verbeInconnu"`.
+- **Aucun verbe ne rend un secret.** La liste est fermée par un test (`natif.test.ts`) : l'élargir est une décision.
+
+**4. « Hors de Tauri, des pages annonçaient un succès qui n'avait pas eu lieu ».** *Côté bundle commité le 26/09/2026 : exports et liens (`70ba5de`), lectures serveur (`4be917d`, `f8ea8bf`), gestes (`77eeac4`), et un correctif de construction (`c71df92`). Reste, à l'étape 7 : la vraie écriture dans Téléchargements, vue à la main.*
 - Les 4 téléchargements `blob:` (`photosExport.ts:72-80`, `exportVisuel.ts:85-87`, `features/vie/api.ts:802`, `SettingsPage.tsx:449`) passent par le verbe `enregistrer` et ne réussissent que sur la réponse de Flutter.
 - `impressionDisponible` rend `false` quand `estMobile` (`compte.ts:989`).
 - `get_cloud_key_status` et `get_inference_source` lisent une route serveur en lecture seule, au lieu de rendre `{}` et `ollama` inventés (`api.ts:17-27`, `:1302-1312`).
@@ -500,6 +507,14 @@ Le plan, tel qu'écrit le 25/09/2026 :
 
 *Risque silencieux :* « exporté » alors qu'aucun fichier n'existe ; une source d'inférence qui contredit celle du Mac.
 *Preuve :* un export mobile ne rend un nom qu'après un `enregistrer` confirmé, et `null` sur refus. `getInferenceSource()` hors Tauri lit le serveur. À la main, une pile exportée en PDF apparaît dans Téléchargements.
+
+Ce que la réalisation a appris ou ajouté (26/09/2026) :
+- les routes serveur sont `GET /v1/cloud/keys` (`{keys: [{key, set}]}`, jamais une valeur) et `GET /v1/inference/source` (l'`inference.json` de l'app, Ollama s'il manque, hôte sans `user:mot@`), synchrones parce que le trousseau passe par `security`. La phase 2 devra les classer dans `tailnet_portee.json` : lecture seule, sans secret. La liste des noms de clés est gardée contre celle de `lib.rs` par un test ;
+- la palette lit l'état des clés partout, mais « Retirer » n'existe que dans l'app de bureau, la seule qui écrive le trousseau ; les Réglages disent un échec de lecture au lieu de laisser « Ollama » affiché (vu à l'écran : un 401 laissait la valeur initiale se faire passer pour celle du Mac) ;
+- les liens externes passent aussi par la coquille (`ouvrirExterne`) : `window.open` est muet dans la WebView d'Android, et « Imprimer » la clé du compte n'est pas proposé ;
+- l'audit des autres commandes Tauri (focus, réglette, dictée en direct, notifications, mise à jour, accessibilité, pointeur, dialogues) les a trouvées toutes gardées par `isTauri()` : aucune ne demande rien hors de Tauri ;
+- **piège de construction** : `document.documentElement?.getAttribute?.('lang')` écrit en valeur par défaut de paramètre était abaissé par esbuild (cible de Vite, safari14) en une référence hors de portée — « n is not defined » dans le bundle, vitest vert. Vu à l'écran, pas par les tests ; `locale.build.test.ts` construit désormais le vrai fichier ;
+- vu à l'écran le 26/09/2026, instance de test sur 127.0.0.1:18100 et pont natif simulé par une page de banc hors dépôt, à 375, 340 et ~700 px : `data-diapason-mobile="1"`, le thème envoyé au chargement puis à chaque changement (Ardéchine : `clair: true`, fond `#beb3a1`), l'export JSON du Bilan annoncé avec le nom rendu par la coquille et silencieux sur `annule`, la sauvegarde des conversations des Réglages, la phrase des gestes à la place du panneau (le panneau reste en `?compact` à 340 px), la source d'inférence du Mac affichée et son refus d'écriture en français. Pas vu : l'export PDF d'une pile et d'un visuel (ni photo ni graphique sur l'instance de test ; même chemin, couvert par les tests).
 
 **5. « À 390 px, la barre latérale cachait deux tiers de la Discussion et ne se refermait jamais ».**
 - `sidebarOpen` démarre fermé sous `md` (`store.ts:367`), lu par `matchMedia` une seule fois à l'amorçage, sans `innerWidth` (règle 2 du mini-panneau).
@@ -511,7 +526,7 @@ Le plan, tel qu'écrit le 25/09/2026 :
 *Risque silencieux :* supprimer une discussion devient impossible au doigt (§82). Une correction faite sur la largeur casserait le mini-panneau, où « compact » est un mode.
 *Preuve :* un vitest sur `barreApresNavigation`, puis chaque page de vie vue dans la vraie WebView, marquée « vue » dans le document. Un banc Chromium ne suffit pas pour le survol.
 
-**6. « La coquille ignorait l'apparence choisie dans la WebView ».** À côté de `reglette_set_theme` (`App.tsx:180`), le bundle envoie le verbe `theme` avec `{theme, skin, fond, encre, clair}`. Flutter en tire `SystemUiOverlayStyle` et le fond de ses écrans natifs, et mémorise le dernier thème pour le démarrage à froid.
+**6. « La coquille ignorait l'apparence choisie dans la WebView ».** *Côté bundle commité le 26/09/2026 (`07cf899`) : le thème part au chargement, à chaque changement, et à chaque bascule d'Android quand l'apparence est « Système ». Côté Flutter (`SystemUiOverlayStyle`, mémoire pour le démarrage à froid) : étape 7.* À côté de `reglette_set_theme` (`App.tsx:180`), le bundle envoie le verbe `theme` avec `{theme, skin, fond, encre, clair}`. Flutter en tire `SystemUiOverlayStyle` et le fond de ses écrans natifs, et mémorise le dernier thème pour le démarrage à froid.
 *Risque silencieux :* une barre d'état illisible en Ardéchine si le drapeau `clair` manque, et un flash blanc au lancement en Phosphore.
 *Preuve :* un vitest vérifie que `terminal/ardechine` donne `clair=true`. En Dart, un thème reçu puis relu donne le même fond.
 
