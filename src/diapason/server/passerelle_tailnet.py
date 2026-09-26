@@ -235,7 +235,7 @@ class PasserelleTailnet:
         entetes = _Entetes(scope.get("headers") or [])
         hote = entetes.hote()
         if not websocket:
-            send = self._reecrire_les_entetes(send, hote)
+            send = self._reecrire_les_entetes(send, hote, scope.get("path", ""))
 
         if _porte_une_cle_locale(scope, entetes):
             await self._refuser(
@@ -658,9 +658,21 @@ class PasserelleTailnet:
             "Aucune session d'appareil valide : ouvre Diapason depuis l'app.",
         )
 
-    def _reecrire_les_entetes(self, send: Envoyer, hote: str | None) -> Envoyer:
-        """Micro et caméra permis à NOTRE origine, ``wss`` dans la CSP, et
-        ``X-Diapason-Passerelle: tailnet`` sur chaque réponse.
+    def _reecrire_les_entetes(
+        self, send: Envoyer, hote: str | None, chemin: str = ""
+    ) -> Envoyer:
+        """Micro et caméra permis à NOTRE origine, ``wss`` dans la CSP,
+        ``X-Diapason-Passerelle: tailnet`` sur chaque réponse, et
+        ``Cache-Control: no-store`` sur chaque réponse de l'API.
+
+        Le ``no-store`` (26/09/2026, contre-épreuve) : aucune route /v1 ne
+        posait de Cache-Control — GET /v1/vie/tasks sortait sans rien, et
+        Chromium garde sur disque toute réponse GET qui ne l'interdit pas.
+        Les tâches, notes et finances de Carlito restaient dans le cache de
+        la WebView, que « Quitter l'appairage » ne vidait pas. Le JSON n'y
+        était jamais réutilisé (ni fraîcheur ni validateur) : l'interdire ne
+        coûte rien. Remplace tout Cache-Control de l'app (le ``no-cache``
+        des flux SSE), jamais pour l'élargir.
 
         Le socket 8000 garde ``microphone=()`` : seul ce chemin, qui porte
         une session d'appareil, s'ouvre au micro de la WebView — et c'est
@@ -672,19 +684,21 @@ class PasserelleTailnet:
         elif hote:
             hote_csp = hote.lower()
 
+        retires = [b"permissions-policy", b"content-security-policy", _ENTETE_SERVI[0]]
+        d_api = chemin.startswith(_ESPACES_D_API)
+        if d_api:
+            retires.append(b"cache-control")
+
         async def envoyer(message: dict) -> None:
             if message.get("type") == "http.response.start":
                 entetes = [
                     (nom, valeur)
                     for nom, valeur in message.get("headers", [])
-                    if nom.lower()
-                    not in (
-                        b"permissions-policy",
-                        b"content-security-policy",
-                        _ENTETE_SERVI[0],
-                    )
+                    if nom.lower() not in retires
                 ]
                 entetes.append(_ENTETE_SERVI)
+                if d_api:
+                    entetes.append((b"cache-control", b"no-store"))
                 entetes.append((b"permissions-policy", _PERMISSIONS.encode("latin-1")))
                 entetes.append(
                     (b"content-security-policy", _csp(hote_csp).encode("latin-1"))

@@ -542,6 +542,54 @@ class TestLesVraisFluxAvecUneSession:
             ws.close()
 
 
+class TestRienDeLApiNeResteSurLeTelephone:
+    """26/09/2026, contre-épreuve : GET /v1/vie/tasks sortait de la passerelle
+    sans aucun Cache-Control. Chromium garde sur disque toute réponse GET qui
+    ne l'interdit pas : les données de Carlito restaient dans le cache de la
+    WebView, et « Quitter l'appairage » ne le vidait pas."""
+
+    def test_une_lecture_de_l_api_n_est_jamais_gardee(self, telephone):
+        for chemin in ("/v1/models", "/v1/vie/tasks?include_done=true", "/health"):
+            reponse = telephone.get(chemin)
+            assert reponse.status_code == 200, (chemin, reponse.text[:200])
+            if chemin.startswith("/v1/"):
+                assert reponse.headers.get("cache-control") == "no-store", chemin
+
+    def test_un_refus_non_plus(self, monde):
+        app, _ = _vraie_app()
+        client = TestClient(monde.passerelle(app), base_url=ICI)
+        reponse = client.get("/v1/models")
+        assert reponse.status_code == 401
+        assert reponse.headers.get("cache-control") == "no-store"
+
+    def test_le_no_cache_d_un_flux_devient_no_store_jamais_l_inverse(self, monde):
+        """Un seul Cache-Control sort, le plus strict : le ``no-cache`` des
+        flux SSE n'empêche pas de garder, ``no-store`` si."""
+        import asyncio
+
+        app, _ = _vraie_app()
+        recus: list[dict] = []
+
+        async def send(message):
+            recus.append(message)
+
+        envoyer = monde.passerelle(app)._reecrire_les_entetes(send, None, "/v1/x")
+        asyncio.run(
+            envoyer(
+                {
+                    "type": "http.response.start",
+                    "status": 200,
+                    "headers": [
+                        (b"cache-control", b"no-cache"),
+                        (b"content-type", b"text/event-stream"),
+                    ],
+                }
+            )
+        )
+        valeurs = [v for n, v in recus[0]["headers"] if n.lower() == b"cache-control"]
+        assert valeurs == [b"no-store"], valeurs
+
+
 class TestLOrigine:
     def test_une_ecriture_d_une_autre_origine_est_refusee(self, telephone):
         reponse = telephone.put(
