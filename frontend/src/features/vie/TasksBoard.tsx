@@ -122,7 +122,11 @@ function BoardSubtaskRow({
             onToggle(task, subtask);
           }}
           onPointerDown={(event) => event.stopPropagation()}
-          className="size-4 rounded flex items-center justify-center shrink-0 cursor-pointer"
+          // 26/09/2026 : sans `data-cible-libre`, la règle des 40 px du
+          // téléphone en faisait un carré vide qui mangeait le titre ; la
+          // case garde ses 16 px et sa surface déborde de 12 px.
+          data-cible-libre=""
+          className="relative size-4 rounded flex items-center justify-center shrink-0 cursor-pointer cible-etendue [--cible-marge:-12px]"
           style={{
             border: `1px solid ${subtask.done ? 'var(--color-accent)' : 'var(--color-border)'}`,
             background: subtask.done ? 'var(--color-accent)' : 'transparent',
@@ -208,7 +212,8 @@ function BoardCard({
             onToggle(task);
           }}
           onPointerDown={(event) => event.stopPropagation()}
-          className="mt-px size-4 rounded flex items-center justify-center shrink-0 cursor-pointer"
+          data-cible-libre=""
+          className="relative mt-px size-4 rounded flex items-center justify-center shrink-0 cursor-pointer cible-etendue [--cible-marge:-12px]"
           style={{
             border: `1px solid ${task.done ? 'var(--color-accent)' : 'var(--color-border)'}`,
             background: task.done ? 'var(--color-accent)' : 'transparent',
@@ -583,6 +588,11 @@ function MoisCompact({
                 const id = event.dataTransfer.getData(MIME) || event.dataTransfer.getData('text/plain');
                 if (id) onDropTask(id, date);
               }}
+              // 26/09/2026 : portées à 40 px de large par la règle du
+              // téléphone, sept cases et six gouttières faisaient 304 px et
+              // la grille débordait de 10 px à 340 px. La case est carrée :
+              // sa hauteur suit sa largeur, et elle fait ~40 px dès 360 px.
+              data-cible-libre=""
               className="relative aspect-square min-w-0 rounded-lg text-xs font-medium cursor-pointer flex flex-col items-center justify-center gap-0.5"
               style={{
                 color: !dansLeMois ? 'var(--color-text-tertiary)' : isToday ? 'var(--color-text)' : 'var(--color-text-secondary)',
@@ -823,7 +833,12 @@ export function TasksBoard({
       : byDate.get(modalDate) ?? [];
 
   return (
-    <div className="grid gap-4">
+    // 26/09/2026 : la colonne implicite (`auto`) prenait la largeur
+    // « contenu » de ses enfants — en Ardéchine, le titre « Septembre 2026 »
+    // de la police d'affichage et des cases-jours aussi hautes que leur
+    // pastille —, et le Mois débordait de 30 px à 320 px, de 10 px à 340 px.
+    // `minmax(0, 1fr)` la borne à la largeur de la page.
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
       <div className="flex items-center justify-between gap-3">
         <button
           type="button"
