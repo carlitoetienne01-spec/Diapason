@@ -1296,7 +1296,11 @@ export function VieNotesPage() {
             </p>
           </CadreVitre>
         ) : (
-          <div className="grid gap-1">
+          /* 26/09/2026 : colonne `auto` implicite — elle prenait la largeur
+             « contenu » d'un nom de catégorie en `nowrap` (805 px pour
+             60 caractères en Ardéchine), et la liste défilait de côté.
+             `minmax(0, 1fr)` la borne à la page ; le nom se coupe. */
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-1">
             {grouperEnSections(sortedNotes, categories).map((section) => (
               <section
                 key={section.nom || '\u2205'}
@@ -1367,8 +1371,14 @@ export function VieNotesPage() {
                         aria-label="Renommer la catégorie"
                       />
                     ) : (
+                      // 26/09/2026 : `shrink-0` sur un nom qui en accepte 60 : à
+                      // 375 px, « Journal intime et réflexions de la semaine »
+                      // poussait Renommer et Dissoudre hors de l'écran, et la
+                      // liste défilait de côté. Le nom se coupe ; le compte et
+                      // les boutons restent.
                       <h2
-                        className="text-xs font-semibold tracking-[0.14em] uppercase shrink-0"
+                        className="text-xs font-semibold tracking-[0.14em] uppercase min-w-0 truncate"
+                        title={section.nom || undefined}
                         style={{ color: section.nom ? 'var(--color-text-secondary)' : 'var(--color-text-tertiary)' }}
                       >
                         {section.nom || 'Sans catégorie'}
@@ -1378,9 +1388,9 @@ export function VieNotesPage() {
                       {section.notes.length}
                     </span>
                     {/* Le trait horizontal demandé : il part du nom et sépare la section. */}
-                    <span aria-hidden="true" className="flex-1 h-px" style={{ background: 'var(--color-border)' }} />
+                    <span aria-hidden="true" className="flex-1 min-w-3 h-px" style={{ background: 'var(--color-border)' }} />
                     {section.nom && (
-                      <span className="flex gap-0.5 max-sm:opacity-100 compact:opacity-100 mobile:opacity-100 opacity-0 transition-opacity group-hover/section:opacity-100 focus-within:opacity-100">
+                      <span className="flex shrink-0 gap-0.5 max-sm:opacity-100 compact:opacity-100 mobile:opacity-100 opacity-0 transition-opacity group-hover/section:opacity-100 focus-within:opacity-100">
                         <button
                           type="button"
                           onClick={() => setRenommage({ nom: section.nom, brouillon: section.nom })}
@@ -1491,7 +1501,14 @@ export function VieNotesPage() {
                     </p>
                   </button>
 
-                  <div className="absolute left-1 top-1 flex gap-0.5 max-sm:opacity-100 compact:opacity-100 mobile:opacity-100 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                  {/* 26/09/2026 : au doigt, les quatre boutons portés à 40 px,
+                      en deux groupes absolus face à face dans une carte de 134
+                      à 157 px, se chevauchaient (« › » sous « Modifier » à
+                      340 px : toucher l'un ouvrait l'autre). Au téléphone ils
+                      passent SOUS la chemise, sur une rangée qui revient à la
+                      ligne ; ailleurs, `contents` garde le dessin d'avant. */}
+                  <div className="contents mobile:flex mobile:w-full mobile:flex-wrap mobile:justify-between mobile:gap-1 mobile:px-1 mobile:pb-1">
+                  <div className="absolute mobile:static left-1 top-1 flex gap-0.5 max-sm:opacity-100 compact:opacity-100 mobile:opacity-100 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
                     <button
                       type="button"
                       onClick={(event) => {
@@ -1520,7 +1537,7 @@ export function VieNotesPage() {
                     </button>
                   </div>
 
-                  <div className="absolute right-1 top-1 flex gap-0.5 max-sm:opacity-100 compact:opacity-100 mobile:opacity-100 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                  <div className="absolute mobile:static right-1 top-1 flex gap-0.5 max-sm:opacity-100 compact:opacity-100 mobile:opacity-100 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
                     <button
                       type="button"
                       onClick={(event) => {
@@ -1545,6 +1562,7 @@ export function VieNotesPage() {
                     >
                       <Trash2 size={13} />
                     </button>
+                  </div>
                   </div>
                 </article>
               );

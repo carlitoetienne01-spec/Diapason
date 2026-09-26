@@ -2048,8 +2048,12 @@ export function VieProjectsPage() {
                   </p>
                 </button>
 
+                {/* 26/09/2026 : au doigt, les boutons portés à 40 px se
+                    chevauchaient (29 px à 340 px) ; au téléphone ils passent
+                    sous la chemise, sur une rangée qui revient à la ligne. */}
+                <div className="contents mobile:flex mobile:w-full mobile:flex-wrap mobile:justify-between mobile:gap-1 mobile:px-1 mobile:pb-1">
                 {!search.trim() && (
-                  <div className="absolute left-1 top-1 flex gap-0.5 max-sm:opacity-100 compact:opacity-100 mobile:opacity-100 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                  <div className="absolute mobile:static left-1 top-1 flex gap-0.5 max-sm:opacity-100 compact:opacity-100 mobile:opacity-100 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
                     <button
                       type="button"
                       onClick={(event) => { event.stopPropagation(); void decalerProjet(project, 'avant'); }}
@@ -2072,7 +2076,7 @@ export function VieProjectsPage() {
                     </button>
                   </div>
                 )}
-                <div className="absolute right-1 top-1 flex gap-0.5 max-sm:opacity-100 compact:opacity-100 mobile:opacity-100 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                <div className="absolute mobile:static right-1 top-1 flex gap-0.5 max-sm:opacity-100 compact:opacity-100 mobile:opacity-100 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
                   <button
                     type="button"
                     onClick={(event) => { event.stopPropagation(); edit(project); }}
@@ -2091,6 +2095,7 @@ export function VieProjectsPage() {
                   >
                     <Trash2 size={13} />
                   </button>
+                </div>
                 </div>
               </article>
             ))}
