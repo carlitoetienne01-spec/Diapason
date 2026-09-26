@@ -25,7 +25,10 @@ Ce que fait la passerelle, dans l'ordre :
    la requête suivante — et la revérifie toutes les 30 s au plus tant
    qu'une réponse ou un WebSocket reste ouvert ;
 5. marque la portée : ``diapason.tailnet``, ``diapason.appareil``, un
-   ``client`` qui n'est plus une adresse de boucle, ``scheme`` https ;
+   ``client`` qui n'est plus une adresse de boucle, ``scheme`` https — et
+   le contexte d'exécution (``core/origine_telephone.py``), que
+   l'exécuteur d'outils lit pour refuser au téléphone ce qui agit sur le
+   Mac ou lit son écran ;
 6. réécrit les en-têtes de permissions et la CSP pour l'origine https.
 """
 
@@ -42,6 +45,7 @@ from starlette.requests import cookie_parser
 from starlette.responses import HTMLResponse, JSONResponse, Response
 from starlette.routing import Match
 
+from diapason.core.origine_telephone import marquer_le_telephone
 from diapason.server.portee_tailnet import (
     OUVERTE,
     SESSION,
@@ -254,7 +258,8 @@ class PasserelleTailnet:
                     scope, receive, send, 403, "Origine refusée par la passerelle."
                 )
                 return
-            await self.app(self._marquer(scope, entetes, None), receive, send)
+            with marquer_le_telephone():
+                await self.app(self._marquer(scope, entetes, None), receive, send)
             return
         if classe != SESSION:
             await self._refuser(scope, receive, send, 403, motif_du_refus(cle))
@@ -457,7 +462,11 @@ class PasserelleTailnet:
 
         garde = asyncio.ensure_future(surveiller())
         try:
-            await self.app(scope, recevoir, envoyer)
+            # Le plafond des outils (core/origine_telephone.py) : posé par la
+            # passerelle, donc par le SOCKET, et suivi par tout ce que
+            # l'application lance dans ce contexte.
+            with marquer_le_telephone():
+                await self.app(scope, recevoir, envoyer)
         except OSError:
             if not coupure.faite:
                 raise

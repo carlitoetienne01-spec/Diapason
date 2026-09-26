@@ -181,8 +181,11 @@ _VIE = _lignes(
 
 # Le reste de ce que le bundle fait dans une WebView : la Discussion, ses
 # conversations et ses pièces jointes, les approbations (décidé le
-# 25/09/2026 : le téléphone PEUT approuver), les modèles, les agents, la
-# mémoire, les tableaux de bord. ``GET /{full_path:path}`` et ``MOUNT
+# 25/09/2026 : le téléphone PEUT approuver), les modèles, les agents EN
+# LECTURE (les lancer est refusé plus bas), la mémoire, les tableaux de
+# bord. La Discussion est ouverte, mais ses outils passent par le plafond
+# du téléphone (core/origine_telephone.py) : ni l'écran, ni le
+# presse-papiers, ni une action sur le Mac. ``GET /{full_path:path}`` et ``MOUNT
 # /assets`` sont le bundle lui-même : ils n'existent que quand
 # ``server/static`` est construit, et sans eux la WebView n'a rien à
 # afficher.
@@ -200,12 +203,10 @@ _PRODUIT = _lignes(
     GET /comparison
     GET /dashboard
     GET /v1/agents
-    POST /v1/agents
     GET /v1/agents/errors
     WS /v1/agents/events
     GET /v1/agents/health
     DELETE /v1/agents/{agent_id}
-    POST /v1/agents/{agent_id}/message
     GET /v1/analytics/identity
     GET /v1/approvals/pending
     POST /v1/approvals/{action_id}/approve
@@ -236,24 +237,15 @@ _PRODUIT = _lignes(
     GET /v1/learning/policy
     GET /v1/learning/stats
     GET /v1/managed-agents
-    POST /v1/managed-agents
     DELETE /v1/managed-agents/{agent_id}
     GET /v1/managed-agents/{agent_id}
-    PATCH /v1/managed-agents/{agent_id}
     GET /v1/managed-agents/{agent_id}/learning
-    POST /v1/managed-agents/{agent_id}/learning/run
     GET /v1/managed-agents/{agent_id}/messages
-    POST /v1/managed-agents/{agent_id}/messages
     POST /v1/managed-agents/{agent_id}/pause
-    POST /v1/managed-agents/{agent_id}/recover
-    POST /v1/managed-agents/{agent_id}/resume
-    POST /v1/managed-agents/{agent_id}/run
     GET /v1/managed-agents/{agent_id}/state
     GET /v1/managed-agents/{agent_id}/tasks
-    POST /v1/managed-agents/{agent_id}/tasks
     DELETE /v1/managed-agents/{agent_id}/tasks/{task_id}
     GET /v1/managed-agents/{agent_id}/tasks/{task_id}
-    PATCH /v1/managed-agents/{agent_id}/tasks/{task_id}
     GET /v1/managed-agents/{agent_id}/traces
     GET /v1/managed-agents/{agent_id}/traces/{trace_id}
     GET /v1/memory/config
@@ -275,7 +267,6 @@ _PRODUIT = _lignes(
     GET /v1/telemetry/energy
     GET /v1/telemetry/stats
     GET /v1/templates
-    POST /v1/templates/{template_id}/instantiate
     GET /v1/tools
     GET /v1/traces
     GET /v1/traces/{trace_id}
@@ -303,6 +294,16 @@ _MOTIF_VOIX = (
     "La voix n'est pas encore ouverte au téléphone : elle attend sa coupure "
     "automatique (phase 4 du plan mobile, §78)."
 )
+# 26/09/2026 : un agent créé, modifié ou relancé depuis le téléphone
+# tourne ENSUITE sur le Mac — dans un threading.Thread à nu ou au prochain
+# battement — hors du contexte de la requête, donc hors du plafond d'outils
+# du téléphone (core/origine_telephone.py). Un agent muni de shell_exec
+# posé depuis le téléphone aurait agi sur le Mac une heure plus tard.
+_MOTIF_AGENTS = (
+    "Les agents du Mac ne se créent, ne se modifient ni ne se lancent depuis "
+    "le téléphone : ils agissent sur le Mac hors de la requête (phase 6 du "
+    "plan mobile)."
+)
 _MOTIF_REGLAGES = "Ce réglage du Mac ne se modifie que depuis le Mac."
 _MOTIF_SECRETS = "Les clés et les secrets ne quittent pas le Mac."
 _MOTIF_ADMIN = "Cette opération d'administration se lance depuis le Mac."
@@ -321,6 +322,18 @@ _MOTIF_ENVOI = (
 )
 
 _REFUSEES: dict[str, str] = {
+    "POST /v1/agents": _MOTIF_AGENTS,
+    "POST /v1/agents/{agent_id}/message": _MOTIF_AGENTS,
+    "POST /v1/managed-agents": _MOTIF_AGENTS,
+    "PATCH /v1/managed-agents/{agent_id}": _MOTIF_AGENTS,
+    "POST /v1/managed-agents/{agent_id}/learning/run": _MOTIF_AGENTS,
+    "POST /v1/managed-agents/{agent_id}/messages": _MOTIF_AGENTS,
+    "POST /v1/managed-agents/{agent_id}/recover": _MOTIF_AGENTS,
+    "POST /v1/managed-agents/{agent_id}/resume": _MOTIF_AGENTS,
+    "POST /v1/managed-agents/{agent_id}/run": _MOTIF_AGENTS,
+    "POST /v1/managed-agents/{agent_id}/tasks": _MOTIF_AGENTS,
+    "PATCH /v1/managed-agents/{agent_id}/tasks/{task_id}": _MOTIF_AGENTS,
+    "POST /v1/templates/{template_id}/instantiate": _MOTIF_AGENTS,
     "POST /v1/config/set": _MOTIF_REGLAGES,
     "PUT /v1/budget/limits": _MOTIF_REGLAGES,
     "POST /v1/skills": _MOTIF_REGLAGES,

@@ -18,6 +18,11 @@ from typing import Any, Callable, Dict, List, Optional
 
 from diapason.core.events import EventBus, EventType
 from diapason.core.noms_outils import nom_canonique
+from diapason.core.origine_telephone import (
+    MOTIF_OUTIL_REFUSE,
+    depuis_le_telephone,
+    outil_permis_au_telephone,
+)
 from diapason.core.types import ToolCall, ToolResult
 
 logger = logging.getLogger(__name__)
@@ -104,6 +109,18 @@ class BaseTool(ABC):
 
         @functools.wraps(execute)
         def _guarded_execute(self: "BaseTool", **params: Any) -> ToolResult:
+            # 26/09/2026 : le même plafond que ToolExecutor.execute, pour les
+            # appelants qui le contournent (voir plus haut). Sans lui, une
+            # route permise au téléphone qui appellerait Tool().execute
+            # rouvrirait ce que la passerelle ferme.
+            if depuis_le_telephone():
+                nom = self.spec.name
+                if not outil_permis_au_telephone(nom):
+                    return ToolResult(
+                        tool_name=nom,
+                        content=MOTIF_OUTIL_REFUSE.format(nom=nom),
+                        success=False,
+                    )
             if not getattr(self, "is_local", True):
                 from diapason.core.local_mode import REFUSAL_HINT, local_only
 
@@ -303,6 +320,26 @@ class ToolExecutor:
         if canonique != tool_call.name:
             tool_call = ToolCall(
                 id=tool_call.id, name=canonique, arguments=tool_call.arguments
+            )
+        # 26/09/2026 : la Discussion du téléphone lisait l'écran et le
+        # presse-papiers du Mac, sans confirmation, alors que la passerelle
+        # du tailnet refusait les routes de l'écran. Le plafond vit ICI, où
+        # passent le chat, les agents et toute autre boucle d'outils — pas
+        # dans une liste qu'un appelant construit (core/origine_telephone.py).
+        if depuis_le_telephone() and not outil_permis_au_telephone(tool_call.name):
+            if self._bus:
+                self._bus.publish(
+                    EventType.CAPABILITY_DENIED,
+                    {
+                        "agent_id": self._agent_id,
+                        "capability": "tailnet",
+                        "tool": tool_call.name,
+                    },
+                )
+            return ToolResult(
+                tool_name=tool_call.name,
+                content=MOTIF_OUTIL_REFUSE.format(nom=tool_call.name),
+                success=False,
             )
         tool = self._tools.get(tool_call.name)
         if tool is None:

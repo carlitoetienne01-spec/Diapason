@@ -491,6 +491,193 @@ class TestLeTelephoneNePilotePasLeMac:
         telephone.engine.generate.assert_called_once()
 
 
+def _espion_d_outil(nom: str):
+    """Une classe d'outil enregistrable sous *nom*, qui note ses exécutions."""
+    from diapason.core.types import ToolResult
+    from diapason.tools._stubs import BaseTool, ToolSpec
+
+    class _Espion(BaseTool):
+        tool_id = nom
+        executions: list = []
+
+        @property
+        def spec(self):
+            return ToolSpec(name=nom, description=f"espion {nom}")
+
+        def execute(self, **params):
+            type(self).executions.append(params)
+            return ToolResult(
+                tool_name=nom, content="TEXTE-DE-L-ECRAN-DU-MAC", success=True
+            )
+
+    return _Espion
+
+
+def _app_de_discussion(outil_reclame: str):
+    """Une vraie app dont le moteur réclame *outil_reclame* au premier tour."""
+    from diapason.core.config import DiapasonConfig
+    from diapason.core.registry import ToolRegistry
+    from diapason.engine._stubs import StreamChunk
+    from diapason.server.app import create_app
+
+    espions = {}
+    for nom in ("screen_read_text", "clipboard_read", "vie_tasks"):
+        espions[nom] = _espion_d_outil(nom)
+        ToolRegistry.register_value(nom, espions[nom])
+
+    engine = MagicMock()
+    engine.engine_id = "mock"
+    engine.health.return_value = True
+    engine.list_models.return_value = ["test-model"]
+    vu: dict = {"schemas": [], "messages": []}
+
+    async def stream_full(messages, **kwargs):
+        vu["messages"].append(list(messages))
+        vu["schemas"].append(
+            [t["function"]["name"] for t in (kwargs.get("tools") or [])]
+        )
+        if len(vu["messages"]) == 1:
+            yield StreamChunk(
+                tool_calls=[
+                    {
+                        "index": 0,
+                        "id": "c0",
+                        "type": "function",
+                        "function": {"name": outil_reclame, "arguments": "{}"},
+                    }
+                ]
+            )
+        else:
+            yield StreamChunk(content="Voilà.")
+
+    engine.stream_full = stream_full
+    config = DiapasonConfig()
+    config.analytics.enabled = False
+    config.traces.enabled = False
+    config.agent.tools = "screen_read_text,clipboard_read,vie_tasks"
+    app = create_app(engine, "test-model", api_key=KEY, config=config)
+    return app, espions, vu
+
+
+def _discuter(client: TestClient, texte: str, **entetes) -> list[tuple[str, dict]]:
+    import json
+
+    reponse = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "test-model",
+            "messages": [{"role": "user", "content": texte}],
+            "stream": True,
+        },
+        headers=entetes,
+    )
+    assert reponse.status_code == 200, reponse.text
+    evenements, nom = [], None
+    for ligne in reponse.text.splitlines():
+        if ligne.startswith("event: "):
+            nom = ligne[7:].strip()
+        elif ligne.startswith("data: ") and ligne[6:] != "[DONE]":
+            try:
+                evenements.append((nom or "chunk", json.loads(ligne[6:])))
+            except ValueError:
+                pass
+            nom = None
+    return evenements
+
+
+class TestLaDiscussionDuTelephoneNeLitPasLeMac:
+    """26/09/2026. La passerelle refusait /v1/context/* et /v1/screen_share/*,
+    mais la Discussion portait screen_read_text et clipboard_read sans
+    confirmation : « lis mon écran » depuis le téléphone rendait l'écran du
+    Mac. Décidé : aucune action ni lecture du Mac depuis la Discussion du
+    téléphone avant la phase 6."""
+
+    @pytest.mark.parametrize("outil", ["screen_read_text", "clipboard_read"])
+    def test_le_modele_qui_reclame_l_ecran_recoit_un_refus(self, monde, outil):
+        app, espions, vu = _app_de_discussion(outil)
+        client = TestClient(monde.passerelle(app), base_url=ICI)
+        _ouvrir_une_session(client, monde)
+        evts = _discuter(client, "lis mon écran", Origin=ICI)
+        fin = next(d for n, d in evts if n == "tool_call_end")
+        assert fin["success"] is False, f"{outil} a répondu au téléphone"
+        assert "TEXTE-DE-L-ECRAN-DU-MAC" not in str(evts)
+        assert espions[outil].executions == [], f"{outil} s'est exécuté"
+        assert outil not in vu["schemas"][0], "le modèle voyait l'outil refusé"
+        assert "vie_tasks" in vu["schemas"][0], "la trousse de données a disparu"
+
+    def test_sur_la_boucle_locale_le_meme_appel_s_execute(self, monde):
+        """La contre-épreuve : c'est bien l'origine qui décide, pas l'outil."""
+        app, espions, vu = _app_de_discussion("screen_read_text")
+        evts = _discuter(
+            TestClient(app), "lis mon écran", Authorization=f"Bearer {KEY}"
+        )
+        fin = next(d for n, d in evts if n == "tool_call_end")
+        assert fin["success"] is True
+        assert espions["screen_read_text"].executions == [{}]
+        assert "screen_read_text" in vu["schemas"][0]
+
+    def test_le_cliche_du_bureau_n_entre_pas_dans_le_prompt(self, monde, monkeypatch):
+        """L'ancre du prompt nomme l'onglet et la fenêtre au premier plan du
+        Mac : le modèle l'aurait récitée au téléphone."""
+        from diapason.desktop import etat_bureau
+
+        cliche = etat_bureau.EtatBureau(
+            premier_plan="Safari",
+            en_marche=("Safari",),
+            quand=0.0,
+            onglet="Gmail — BROUILLON-SECRET",
+        )
+        monkeypatch.setattr(etat_bureau, "_cache", cliche)
+        app, _, vu = _app_de_discussion("vie_tasks")
+        client = TestClient(monde.passerelle(app), base_url=ICI)
+        _ouvrir_une_session(client, monde)
+        _discuter(client, "bonjour", Origin=ICI)
+        assert "BROUILLON-SECRET" not in str(vu["messages"][0])
+        _discuter(TestClient(app), "bonjour", Authorization=f"Bearer {KEY}")
+        assert "BROUILLON-SECRET" in str(vu["messages"][-1]), (
+            "contre-épreuve : sur la boucle locale le cliché doit y être"
+        )
+
+    @pytest.mark.parametrize(
+        ("methode", "chemin"),
+        [
+            ("POST", "/v1/managed-agents"),
+            ("POST", "/v1/managed-agents/a1/run"),
+            ("POST", "/v1/managed-agents/a1/messages"),
+            ("PATCH", "/v1/managed-agents/a1"),
+            ("POST", "/v1/agents"),
+            ("POST", "/v1/templates/t1/instantiate"),
+        ],
+    )
+    def test_un_agent_ne_se_pose_ni_ne_se_lance_depuis_le_telephone(
+        self, monde, methode, chemin
+    ):
+        """Un agent lancé dans un threading.Thread ou au prochain battement
+        tourne hors du contexte de la requête, donc hors du plafond."""
+        from diapason.core.config import DiapasonConfig
+        from diapason.server.app import create_app
+
+        gestionnaire = MagicMock()
+        app = create_app(
+            MagicMock(),
+            "test-model",
+            api_key=KEY,
+            config=DiapasonConfig(),
+            agent_manager=gestionnaire,
+        )
+        client = TestClient(monde.passerelle(app), base_url=ICI)
+        _ouvrir_une_session(client, monde)
+        reponse = client.request(methode, chemin, json={}, headers={"Origin": ICI})
+        assert reponse.status_code == 403, reponse.text
+        assert "agents" in reponse.json()["detail"]
+        lances = [
+            appel
+            for appel in gestionnaire.method_calls
+            if not appel[0].startswith(("list", "get"))
+        ]
+        assert lances == [], f"le gestionnaire a été sollicité : {lances}"
+
+
 class TestLesEntetes:
     def test_la_passerelle_ouvre_le_micro_a_son_origine(self, telephone):
         reponse = telephone.get("/v1/models")
@@ -580,6 +767,56 @@ class TestLeMarquage:
         assert "tailscale-user-login" not in vu["entetes"]
         assert jeton not in vu["cookie"], "le jeton de session a atteint l'app"
         assert "autre=1" in vu["cookie"]
+
+
+class TestLaMarqueDuTelephoneSuitLaRequete:
+    """Le plafond d'outils lit une variable de contexte que seule la
+    passerelle pose. Elle doit atteindre les trois endroits où un outil
+    s'exécute : une route ``def`` (servie dans un fil par Starlette), un
+    ``asyncio.to_thread`` (la boucle d'outils du chat) et le générateur d'une
+    réponse en flux (le chat SSE) — et rester absente sur la boucle locale."""
+
+    def test_route_synchrone_fil_et_flux(self, monde):
+        import asyncio
+
+        from starlette.responses import StreamingResponse
+
+        from diapason.core.origine_telephone import depuis_le_telephone
+
+        vu: dict = {}
+        app = FastAPI()
+
+        @app.get("/v1/models")
+        def _synchrone():
+            vu["def"] = depuis_le_telephone()
+            return {}
+
+        @app.get("/v1/info")
+        async def _fil():
+            vu["to_thread"] = await asyncio.to_thread(depuis_le_telephone)
+            return {}
+
+        @app.get("/v1/traces")
+        async def _flux():
+            async def morceaux():
+                vu["flux"] = depuis_le_telephone()
+                yield b"x"
+
+            return StreamingResponse(morceaux())
+
+        client = TestClient(monde.passerelle(app), base_url=ICI)
+        _ouvrir_une_session(client, monde)
+        for chemin in ("/v1/models", "/v1/info", "/v1/traces"):
+            assert client.get(chemin).status_code == 200
+        assert vu == {"def": True, "to_thread": True, "flux": True}, vu
+
+        vu.clear()
+        direct = TestClient(app)
+        for chemin in ("/v1/models", "/v1/info", "/v1/traces"):
+            direct.get(chemin)
+        assert vu == {"def": False, "to_thread": False, "flux": False}, (
+            "la marque a fui hors de la passerelle"
+        )
 
 
 class TestLaRevocation:

@@ -13,6 +13,10 @@ from typing import Any, Optional
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
+from diapason.core.origine_telephone import (
+    depuis_le_telephone,
+    outil_permis_au_telephone,
+)
 from diapason.core.paths import get_config_dir
 from diapason.core.types import Message, Role, ToolCall
 from diapason.engine.scheduling import interactive_turn
@@ -220,6 +224,24 @@ def _chat_tooling(app_state: Any, config: Any) -> Optional[tuple[list, Any]]:
     return resultat
 
 
+def _trousse_de_l_origine(
+    tooling: Optional[tuple[list, Any]],
+) -> Optional[tuple[list, Any]]:
+    """La trousse que le modèle VOIT, selon d'où vient la requête.
+
+    26/09/2026 : la trousse est un cache partagé, construit sans requête ;
+    elle ne peut pas savoir qu'elle sert le téléphone. Le refus, lui, vit
+    dans l'exécuteur (core/origine_telephone.py) — ceci retire seulement au
+    modèle les schémas d'outils qu'on lui refuserait de toute façon, pour
+    qu'il ne promette pas de lire l'écran du Mac avant d'échouer.
+    """
+    if tooling is None or not depuis_le_telephone():
+        return tooling
+    outils, executeur = tooling
+    permis = [o for o in outils if outil_permis_au_telephone(o.spec.name)]
+    return (permis, executeur) if permis else None
+
+
 async def _chat_tooling_async(app_state: Any, config: Any):
     # 19/09/2026 : importer les outils au premier message bloquait la boucle.
     # Une construction partagée évite que deux fenêtres initialisent la trousse
@@ -393,53 +415,62 @@ def _ensure_identity_prompt(
     # sienne ; laisser l'horloge sauter avec elle est ce qui faisait répondre
     # une date lue dans la mémoire.
     ancre = _now_anchor()
+    # 26/09/2026 : les trois perceptions qui suivent disent ce que le Mac
+    # affiche — l'onglet et la fenêtre au premier plan, la page ouverte dans
+    # Diapason, ce que la main tient. Depuis le téléphone, le modèle les
+    # aurait récitées : l'écran du Mac se serait lu par la Discussion alors
+    # que la passerelle refuse /v1/context/*.
+    percevoir = not depuis_le_telephone()
     # Le cliché du bureau rejoint l'ancre (Atlas, 24 août 2026) : le chat
     # sait ce qui tourne et ce qui est devant, comme la voix. L'ancre
     # volatile est placée près de la demande, après le préfixe réutilisable.
-    try:
-        from diapason.desktop.etat_bureau import decrire, dernier_etat_connu
+    if percevoir:
+        try:
+            from diapason.desktop.etat_bureau import decrire, dernier_etat_connu
 
-        cliche = dernier_etat_connu()
-        if cliche is not None:
-            ancre = f"{ancre}\n{decrire(cliche)}"
-    except Exception:  # noqa: BLE001 - la perception est un bonus
-        pass
+            cliche = dernier_etat_connu()
+            if cliche is not None:
+                ancre = f"{ancre}\n{decrire(cliche)}"
+        except Exception:  # noqa: BLE001 - la perception est un bonus
+            pass
     # Et ce que l'utilisateur regarde DANS Diapason (handoff, 25/08/2026) :
     # « continue ce projet sur mon téléphone » a enfin un référent pour
     # « ce projet ». Même place que le cliché du bureau — près de la demande,
     # après les échanges précédents.
-    try:
-        from diapason.desktop.contexte_app import (
-            decrire as decrire_app,
-        )
-        from diapason.desktop.contexte_app import (
-            dernier_contexte,
-        )
+    if percevoir:
+        try:
+            from diapason.desktop.contexte_app import (
+                decrire as decrire_app,
+            )
+            from diapason.desktop.contexte_app import (
+                dernier_contexte,
+            )
 
-        vue = dernier_contexte()
-        if vue is not None:
-            ancre = f"{ancre}\n{decrire_app(vue)}"
-    except Exception:  # noqa: BLE001 - la perception est un bonus
-        pass
+            vue = dernier_contexte()
+            if vue is not None:
+                ancre = f"{ancre}\n{decrire_app(vue)}"
+        except Exception:  # noqa: BLE001 - la perception est un bonus
+            pass
     # Et ce que la MAIN tient, quand le mode gestes est armé. Attraper un
     # projet puis écrire « envoie ça sur mon téléphone » n'avait aucun
     # référent : le presse-papiers spatial n'était connu que du module des
     # gestes. Main vide, on n'ajoute rien — une phrase qui dirait « ta main
     # est vide » serait présente à presque tous les tours et n'apprendrait
     # rien à personne.
-    try:
-        from diapason.desktop.presse_papiers_spatial import (
-            decrire as decrire_main,
-        )
-        from diapason.desktop.presse_papiers_spatial import (
-            tenu,
-        )
+    if percevoir:
+        try:
+            from diapason.desktop.presse_papiers_spatial import (
+                decrire as decrire_main,
+            )
+            from diapason.desktop.presse_papiers_spatial import (
+                tenu,
+            )
 
-        objet = tenu()
-        if objet is not None:
-            ancre = f"{ancre}\n{decrire_main(objet)}"
-    except Exception:  # noqa: BLE001 - la perception est un bonus
-        pass
+            objet = tenu()
+            if objet is not None:
+                ancre = f"{ancre}\n{decrire_main(objet)}"
+        except Exception:  # noqa: BLE001 - la perception est un bonus
+            pass
     nombre = quantite_du_tour(messages)
     if nombre:
         ancre += "\n" + consigne_quantite(nombre)
@@ -517,12 +548,15 @@ async def chat_completions(request_body: ChatCompletionRequest, request: Request
     # Le cliché du bureau se rafraîchit en parallèle de la requête (~100 ms
     # d'osascript) ; l'ancre du prompt ne lit que le cache — même mécanique
     # que la voix (Atlas, 24 août 2026).
-    try:
-        from diapason.desktop.etat_bureau import etat_du_bureau
+    # Pas pour le téléphone (26/09/2026) : le cliché nomme l'onglet et la
+    # fenêtre au premier plan du Mac, que la passerelle refuse de laisser lire.
+    if not depuis_le_telephone():
+        try:
+            from diapason.desktop.etat_bureau import etat_du_bureau
 
-        asyncio.get_running_loop().run_in_executor(None, etat_du_bureau)
-    except Exception:  # noqa: BLE001 - la perception est un bonus
-        pass
+            asyncio.get_running_loop().run_in_executor(None, etat_du_bureau)
+        except Exception:  # noqa: BLE001 - la perception est un bonus
+            pass
 
     # Trusted desktop fast path.  It runs BEFORE memory retrieval, complexity
     # scoring and inference, turning explicit low-risk commands into one local
@@ -726,7 +760,9 @@ async def chat_completions(request_body: ChatCompletionRequest, request: Request
             )
             return measure_response(response, latency)
         with latency.phase("toolSetupMs"):
-            tooling = await _chat_tooling_async(request.app.state, config)
+            tooling = _trousse_de_l_origine(
+                await _chat_tooling_async(request.app.state, config)
+            )
         response = await _handle_stream(
             engine,
             model,
