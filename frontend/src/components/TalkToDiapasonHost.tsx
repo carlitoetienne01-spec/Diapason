@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { TalkOrb } from './Chat/TalkOrb';
 import { useVoiceLive } from '../hooks/useVoiceLive';
 import { fetchScreenShareStatus, isTauri, pollTriggers } from '../lib/api';
+import { serviParLeTailnet } from '../lib/tailnet';
 
 /** Global Talk-to-Diapason host (Alt+Space / wake-word / button). */
 export function TalkToDiapasonHost() {
@@ -74,9 +75,15 @@ export function TalkToDiapasonHost() {
 
   // Wake-word / clap CLI → local_trigger talk_open
   useEffect(() => {
+    // 26/09/2026 : dans le téléphone, la passerelle refuse cette relève —
+    // le mot d'éveil et les claps sont ceux du micro du Mac. Elle partait
+    // quand même toutes les 2 s, pour un 403 à chaque fois. Relu à chaque
+    // tour : l'en-tête de la passerelle peut arriver après le premier.
+    if (serviParLeTailnet()) return;
     let cancelled = false;
     let timer: number | undefined;
     const tick = async () => {
+      if (serviParLeTailnet()) return;
       try {
         const data = await pollTriggers(triggerOffset.current);
         if (cancelled) return;
@@ -111,9 +118,12 @@ export function TalkToDiapasonHost() {
       setScreenSharing(false);
       return;
     }
+    // Le partage d'écran est celui du Mac, refusé au téléphone.
+    if (serviParLeTailnet()) return;
     let cancelled = false;
     let timer: number | undefined;
     const tick = async () => {
+      if (serviParLeTailnet()) return;
       try {
         const st = await fetchScreenShareStatus();
         if (!cancelled) setScreenSharing(!!st.active);

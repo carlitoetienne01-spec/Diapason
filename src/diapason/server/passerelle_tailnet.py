@@ -95,6 +95,15 @@ _PREFIXE_TAILSCALE = b"tailscale-"
 
 _PERMISSIONS = "camera=(self), microphone=(self), geolocation=()"
 
+# Ce que chaque réponse de ce socket porte, refus compris. 26/09/2026 : le
+# bundle servi au téléphone ne savait pas qu'il l'était autrement que par le
+# pont natif, et relançait sans fin des lectures que la passerelle refuse
+# (/v1/triggers/poll toutes les 2 s, /v1/voice/live/health toutes les 5 s,
+# /v1/account/status toutes les 30 s) — des 403 à la chaîne. Posé ICI, sur le
+# chemin de sortie, jamais par l'application : aucune réponse de 8000 ne
+# peut le porter, et un en-tête reçu du client n'y est pour rien.
+_ENTETE_SERVI = (b"x-diapason-passerelle", b"tailnet")
+
 # La route du bundle (server/app.py, spa_catch_all) et les espaces qui ne
 # sont JAMAIS des pages : un chemin d'API qui n'y trouve que le repli n'existe
 # pas.
@@ -647,7 +656,8 @@ class PasserelleTailnet:
         )
 
     def _reecrire_les_entetes(self, send: Envoyer, hote: str | None) -> Envoyer:
-        """Micro et caméra permis à NOTRE origine, et ``wss`` dans la CSP.
+        """Micro et caméra permis à NOTRE origine, ``wss`` dans la CSP, et
+        ``X-Diapason-Passerelle: tailnet`` sur chaque réponse.
 
         Le socket 8000 garde ``microphone=()`` : seul ce chemin, qui porte
         une session d'appareil, s'ouvre au micro de la WebView — et c'est
@@ -665,8 +675,13 @@ class PasserelleTailnet:
                     (nom, valeur)
                     for nom, valeur in message.get("headers", [])
                     if nom.lower()
-                    not in (b"permissions-policy", b"content-security-policy")
+                    not in (
+                        b"permissions-policy",
+                        b"content-security-policy",
+                        _ENTETE_SERVI[0],
+                    )
                 ]
+                entetes.append(_ENTETE_SERVI)
                 entetes.append((b"permissions-policy", _PERMISSIONS.encode("latin-1")))
                 entetes.append(
                     (b"content-security-policy", _csp(hote_csp).encode("latin-1"))

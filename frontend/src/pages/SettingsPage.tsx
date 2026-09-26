@@ -55,6 +55,7 @@ import { loadDictationStats, type DictationStats } from '../lib/dictationStats';
 import { fetchVoiceLiveHealth } from '../lib/voiceLive';
 import { annonceDEnregistrement, enregistrerHorsBureau } from '../lib/enregistrerFichier';
 import { estMobile } from '../lib/natif';
+import { SondeNonEnvoyee } from '../lib/tailnet';
 import {
   choixDeSourceAffiche,
   etatDeLaCle,
@@ -331,6 +332,7 @@ export function SettingsPage() {
     | { kind: 'ready'; providers: string }
     | { kind: 'needsKey' }
     | { kind: 'unavailable' }
+    | { kind: 'telephone' }
     | null
   >(null);
   const [dictationStats, setDictationStats] = useState<DictationStats>(() => loadDictationStats());
@@ -454,9 +456,12 @@ export function SettingsPage() {
             : { kind: 'needsKey' },
         );
       })
-      .catch(() => {
+      .catch((e: unknown) => {
         setVoiceLiveAvailable(false);
-        setVoiceLiveDetail({ kind: 'unavailable' });
+        // 26/09/2026 : au téléphone, la santé de la voix n'est pas demandée
+        // (la passerelle la refuse, lib/tailnet.ts). « Indisponible » aurait
+        // fait croire le Mac en panne.
+        setVoiceLiveDetail(e instanceof SondeNonEnvoyee ? { kind: 'telephone' } : { kind: 'unavailable' });
       });
     setDictationStats(loadDictationStats());
     getMemoryStats()
@@ -1116,7 +1121,9 @@ export function SettingsPage() {
                       ? t('settings.speech.voiceLiveReady', { providers: voiceLiveDetail.providers })
                       : voiceLiveDetail.kind === 'needsKey'
                         ? t('settings.speech.voiceLiveNeedsKey')
-                        : t('common.unavailable')}
+                        : voiceLiveDetail.kind === 'telephone'
+                          ? t('tailnet.voix')
+                          : t('common.unavailable')}
                 </span>
               </div>
             </SettingRow>

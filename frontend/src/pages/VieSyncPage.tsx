@@ -33,6 +33,8 @@ import type {
 } from '../features/vie/types';
 import { useConfirm } from '../components/ConfirmDialog';
 import { useAppStore } from '../lib/store';
+import { serviParLeTailnet } from '../lib/tailnet';
+import { useTranslation } from '../i18n/useTranslation';
 
 function formatDate(value: number | null | undefined) {
   if (!value) return 'Jamais';
@@ -44,6 +46,7 @@ function formatDate(value: number | null | undefined) {
 
 export function VieSyncPage() {
   const confirm = useConfirm();
+  const { t } = useTranslation();
   const [status, setStatus] = useState<VieSyncStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
@@ -54,7 +57,17 @@ export function VieSyncPage() {
   const [pairingToken, setPairingToken] = useState('');
   const importRef = useRef<HTMLInputElement>(null);
 
+  // 26/09/2026 : au téléphone, la passerelle refuse tout /v1/vie/sync/* —
+  // la synchronisation entre Mac se règle sur le Mac. La page lisait l'état
+  // à l'ouverture et affichait un toast d'erreur à chaque visite ; l'import
+  // d'une sauvegarde Life OS (/v1/vie/import/legacy), lui, reste ouvert.
+  const servi = serviParLeTailnet();
+
   const load = useCallback(async () => {
+    if (serviParLeTailnet()) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const next = await fetchVieSyncStatus();
@@ -334,7 +347,7 @@ export function VieSyncPage() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            {isGuest && (
+            {isGuest && !servi && (
               <button
                 type="button"
                 onClick={() => void syncNow()}
@@ -368,6 +381,7 @@ export function VieSyncPage() {
             >
               <ArchiveRestore size={15} /> Importer Life OS
             </button>
+            {!servi && (
             <button
               type="button"
               onClick={() => void load()}
@@ -381,8 +395,16 @@ export function VieSyncPage() {
             >
               <RefreshCw size={15} className={loading ? 'animate-spin' : ''} /> Actualiser
             </button>
+            )}
           </div>
         </header>
+
+        {servi ? (
+          <p className="text-sm max-w-2xl" style={{ color: 'var(--color-text-secondary)' }}>
+            {t('tailnet.synchro')}
+          </p>
+        ) : (
+        <>
 
         <section className="grid md:grid-cols-3 gap-4 mb-5">
           <article className="rounded-2xl p-5" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
@@ -670,6 +692,8 @@ export function VieSyncPage() {
             ))}
           </div>
         </section>
+        </>
+        )}
       </main>
     </div>
   );

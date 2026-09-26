@@ -1,6 +1,7 @@
 import type { ModelInfo, SavingsData, ServerInfo } from '../types';
 import { isCloudModel } from './cloud-models';
 import { traduire } from '../i18n/translate';
+import { garderLaSonde, noterReponseDuServeur } from './tailnet';
 
 // ---------------------------------------------------------------------------
 // Runtime
@@ -208,6 +209,10 @@ export const apiFetch = async (
   path: string,
   init: RequestInit = {},
 ): Promise<Response> => {
+  // Servi par le tailnet (le téléphone), une lecture que la passerelle
+  // refuse ne part pas : elle lève `SondeNonEnvoyee`, dite une fois par
+  // route, au lieu d'un 403 toutes les deux secondes (lib/tailnet.ts).
+  garderLaSonde(init.method, path);
   const base = getBase();
   // Relative paths are fine in the browser (Vite proxy). Absolute bases must
   // already be sanitized; still guard so WebKit never surfaces its opaque
@@ -247,6 +252,7 @@ export const apiFetch = async (
       response = await fetch(target, { ...init, headers });
     } catch {}
   }
+  noterReponseDuServeur(response);
   return response;
 };
 

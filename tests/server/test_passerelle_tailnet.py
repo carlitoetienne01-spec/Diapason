@@ -800,6 +800,48 @@ class TestLesEntetes:
         reponse = TestClient(app).get("/health")
         assert "microphone=()" in reponse.headers["permissions-policy"]
 
+    def test_chaque_reponse_de_la_passerelle_dit_qu_elle_vient_du_tailnet(
+        self, telephone
+    ):
+        """26/09/2026 : sans ce signal, le bundle servi au téléphone sondait
+        sans relâche les routes refusées — 403 toutes les 2 s. Le refus
+        lui-même doit le porter : c'est souvent la première réponse lue."""
+        servie = telephone.get("/v1/models")
+        refusee = telephone.get("/v1/triggers/poll")
+        sans_session = telephone.get(
+            "/v1/models", headers={"Cookie": f"{COOKIE_APPAREIL}=faux"}
+        )
+        assert servie.status_code == 200, servie.text
+        assert refusee.status_code == 403, "la route doit rester refusée"
+        assert sans_session.status_code == 401
+        for reponse in (servie, refusee, sans_session):
+            assert reponse.headers.get("x-diapason-passerelle") == "tailnet", (
+                f"{reponse.request.url.path} ({reponse.status_code}) ne dit pas "
+                "qu'elle vient de la passerelle"
+            )
+
+    def test_la_boucle_locale_ne_se_dit_jamais_servie_par_le_tailnet(self):
+        """Sur 8000, le Mac ne doit jamais se croire un téléphone : il
+        cesserait de relever ses déclencheurs et sa voix."""
+        app, _ = _vraie_app()
+        reponse = TestClient(app).get("/health")
+        assert "x-diapason-passerelle" not in reponse.headers
+
+    def test_un_en_tete_forge_par_l_application_est_remplace(self, monde):
+        """Un seul en-tête, celui de la passerelle : une valeur posée plus
+        bas ne doit ni s'y ajouter ni le contredire."""
+        app = FastAPI()
+
+        @app.get("/health")
+        def _sante():
+            from fastapi.responses import JSONResponse
+
+            return JSONResponse({"ok": True}, headers={"X-Diapason-Passerelle": "non"})
+
+        client = TestClient(monde.passerelle(app), base_url=ICI)
+        reponse = client.get("/health")
+        assert reponse.headers.get_list("x-diapason-passerelle") == ["tailnet"]
+
     def test_un_hote_forge_n_ecrit_pas_dans_la_csp(self, monde):
         app, _ = _vraie_app()
         client = TestClient(monde.passerelle(app), base_url=ICI)

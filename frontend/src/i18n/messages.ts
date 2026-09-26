@@ -1562,6 +1562,12 @@ export const MESSAGES = {
     "appareils.invitation.copierAdresse": "Copy the address",
     "appareils.invitation.adresseCopiee": "Address copied",
     "appareils.invitation.copieImpossible": "The address could not be copied.",
+    // ── Served through the tailnet: what the phone does not ask (26/09/2026)
+    "tailnet.nonDemande": "Not asked: the Mac keeps this for itself and refuses it to the phone.",
+    "tailnet.voix": "Voice is not open to the phone yet: it stays on the Mac until it can switch itself off.",
+    "tailnet.compte": "The account and its encryption are managed on the Mac.",
+    "tailnet.appareils": "Devices are managed on the Mac: the phone can neither list them, invite one, nor remove one.",
+    "tailnet.synchro": "Sync between Macs is set up on the Mac. Importing a Life OS backup stays possible here.",
   },
 
   fr: {
@@ -3109,5 +3115,11 @@ export const MESSAGES = {
     "appareils.invitation.copierAdresse": "Copier l’adresse",
     "appareils.invitation.adresseCopiee": "Adresse copiée",
     "appareils.invitation.copieImpossible": "L’adresse n’a pas pu être copiée.",
+    // ── Servi par le tailnet : ce que le téléphone ne demande pas (26/09/2026)
+    "tailnet.nonDemande": "Pas demandé : le Mac garde cette lecture pour lui et la refuse au téléphone.",
+    "tailnet.voix": "La voix n’est pas encore ouverte au téléphone : elle reste sur le Mac tant qu’elle ne sait pas se couper seule.",
+    "tailnet.compte": "Le compte et son chiffrement se gèrent sur le Mac.",
+    "tailnet.appareils": "Les appareils se gèrent sur le Mac : le téléphone ne peut ni les lister, ni en inviter, ni en retirer.",
+    "tailnet.synchro": "La synchronisation entre Mac se règle sur le Mac. L’import d’une sauvegarde Life OS reste possible ici.",
   },
 } as const;

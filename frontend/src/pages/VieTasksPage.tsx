@@ -71,6 +71,7 @@ import { useConfirm } from '../components/ConfirmDialog';
 import { useAppStore } from '../lib/store';
 import { useRefreshOnFocus } from '../features/vie/useRefreshOnFocus';
 import { useChargementTemporise } from '../features/vie/useChargementTemporise';
+import { serviParLeTailnet } from '../lib/tailnet';
 
 type ViewMode = VieTasksViewMode;
 
@@ -207,14 +208,20 @@ export function VieTasksPage() {
     // réponde — d'où la capture « Chargement des tâches… » sous « Terminées
     // 37 ». Une sonde indisponible ne doit jamais cacher des tâches lues
     // avec succès dans SQLite.
-    void fetchVieSyncStatus()
-      .then((statut) => { if (actuelle()) setSyncStatus(statut); })
-      .catch((statusError: unknown) => {
-        if (!actuelle()) return;
-        setSyncStatus(null);
-        const statusMessage = statusError instanceof Error ? statusError.message : String(statusError);
-        logVie('error', `État de synchronisation indisponible : ${statusMessage}`);
-      });
+    // 26/09/2026 : au téléphone, la passerelle refuse l'état de la
+    // synchronisation entre Mac ; chaque liste de tâches l'inscrivait au
+    // journal comme une erreur. Le voyant n'a rien à dire là : il n'est pas
+    // demandé.
+    if (!serviParLeTailnet()) {
+      void fetchVieSyncStatus()
+        .then((statut) => { if (actuelle()) setSyncStatus(statut); })
+        .catch((statusError: unknown) => {
+          if (!actuelle()) return;
+          setSyncStatus(null);
+          const statusMessage = statusError instanceof Error ? statusError.message : String(statusError);
+          logVie('error', `État de synchronisation indisponible : ${statusMessage}`);
+        });
+    }
     try {
       // TOUJOURS avec les terminées : le compte de l'onglet Terminées et
       // l'onglet lui-même en ont besoin (17 sept. 2026). La Liste filtre

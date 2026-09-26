@@ -1,4 +1,5 @@
 import { apiFetch } from '../../lib/api';
+import { SondeNonEnvoyee } from '../../lib/tailnet';
 import type {
   MeshAnnounceResult,
   MeshDevice,
@@ -35,6 +36,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     try {
       response = await apiFetch(path, requestInit);
     } catch (error) {
+      // Pas envoyée : la passerelle du tailnet la refuse. La relancer trois
+      // fois ne ferait que la refuser trois fois de plus (26/09/2026).
+      if (error instanceof SondeNonEnvoyee) throw error;
       lastError = error;
       // WebKit reports aborted/network races as "Load failed".
       if (idempotent && attempt < 3) {

@@ -62,6 +62,7 @@ import {
   SaisieMotDePasse,
   useStatutCompte,
 } from './EcranCompte';
+import { serviParLeTailnet } from '../../lib/tailnet';
 
 type Panneau = 'motDePasse' | 'cle' | 'retirerCle' | 'oubliIci' | 'appareils' | 'supprimer' | null;
 
@@ -609,7 +610,15 @@ export function SectionCompte() {
   }, [hash]);
 
   let contenu: React.ReactNode;
-  if (!statut) {
+  if (serviParLeTailnet()) {
+    // Le statut n'est pas lu au téléphone (useStatutCompte) : sans cette
+    // branche, la section restait sur « Chargement… » pour toujours.
+    contenu = (
+      <p className="text-sm leading-6" style={{ color: 'var(--color-text-secondary)' }}>
+        {t('tailnet.compte')}
+      </p>
+    );
+  } else if (!statut) {
     contenu = !lu ? (
       <p className="text-sm" style={{ color: 'var(--color-text-tertiary)' }}>{t('compte.chargement')}</p>
     ) : (

@@ -9,6 +9,7 @@ import {
   type VoiceLiveHealth,
 } from '../lib/voiceLive';
 import { refreshLocalApiKey } from '../lib/api';
+import { serviParLeTailnet } from '../lib/tailnet';
 import { LectureVocale } from '../lib/lectureVocale';
 import { creerCaptureVocale, type CaptureVocale } from '../lib/captureVocale';
 // Le même lecteur et le même badge qu'au chat : deux calculs du même niveau
@@ -100,6 +101,18 @@ export function useVoiceLive() {
   }
 
   const checkService = useCallback(async (showLoading = false) => {
+    // 26/09/2026 : la voix du Mac n'est pas ouverte au téléphone (phase 4 :
+    // §78 exige d'abord sa coupure automatique) et la passerelle refuse sa
+    // santé. Sondée toutes les 5 s, elle rendait un 403 à chaque fois et
+    // l'orbe disait « service indisponible », comme si le Mac était en
+    // panne. Le dire une fois, pour ce que c'est.
+    if (serviParLeTailnet()) {
+      setHealth(null);
+      serviceErrorRef.current = 'voice-phone-later';
+      setServiceError('voice-phone-later');
+      setCheckingService(false);
+      return null;
+    }
     if (showLoading) setCheckingService(true);
     try {
       const current = await fetchVoiceLiveHealth();
@@ -133,7 +146,9 @@ export function useVoiceLive() {
         setProvider(current.default_provider);
       }
     });
-    const timer = window.setInterval(() => void checkService(false), 5000);
+    const timer = window.setInterval(() => {
+      if (!serviParLeTailnet()) void checkService(false);
+    }, 5000);
     return () => {
       cancelled = true;
       window.clearInterval(timer);

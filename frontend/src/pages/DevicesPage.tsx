@@ -43,6 +43,7 @@ import {
 import { useConfirm } from '../components/ConfirmDialog';
 import { PanneauGestes } from '../features/gestes/PanneauGestes';
 import { estMobile } from '../lib/natif';
+import { serviParLeTailnet } from '../lib/tailnet';
 import { useTranslation } from '../i18n/useTranslation';
 import type { Locale } from '../i18n/locale';
 
@@ -119,8 +120,17 @@ export function DevicesPage() {
    * refresh would fire every twenty seconds while the backend is busy, which
    * tells the user nothing they can act on and buries the toasts that matter.
    */
+  // 26/09/2026 : au téléphone, la passerelle refuse tout /v1/mesh/* — les
+  // appareils se gèrent sur le Mac. La page relisait la flotte toutes les
+  // 20 s pour un 403, et l'annonçait par un toast d'erreur à l'ouverture.
+  const servi = serviParLeTailnet();
+
   const load = useCallback(
     async (quiet = false) => {
+      if (serviParLeTailnet()) {
+        setLoading(false);
+        return;
+      }
       try {
         const fleet = await listMeshDevices({ includeRevoked: showRevoked });
         setDevices(fleet);
@@ -142,6 +152,7 @@ export function DevicesPage() {
   // process, so re-reading it on every refresh would double the request cost
   // of the screen for an answer that cannot change.
   useEffect(() => {
+    if (serviParLeTailnet()) return;
     fetchMeshIdentity().then(setIdentity).catch(() => setIdentity(null));
   }, []);
 
@@ -154,6 +165,7 @@ export function DevicesPage() {
   // last time this screen was opened". Twenty seconds sits just inside the
   // 45-second online window without spending the shared request budget.
   useEffect(() => {
+    if (serviParLeTailnet()) return;
     const timer = window.setInterval(() => void load(true), 20000);
     return () => window.clearInterval(timer);
   }, [load]);
@@ -352,6 +364,7 @@ export function DevicesPage() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            {!servi && (
             <button
               type="button"
               onClick={() => void announce()}
@@ -362,6 +375,7 @@ export function DevicesPage() {
               <RefreshCw size={15} className={working ? 'animate-spin' : ''} /> Signaler ma
               présence
             </button>
+            )}
           </div>
         </header>
 
@@ -381,6 +395,12 @@ export function DevicesPage() {
           )}
         </div>
 
+        {servi ? (
+          <p className="text-sm max-w-2xl" style={{ color: 'var(--color-text-secondary)' }}>
+            {t('tailnet.appareils')}
+          </p>
+        ) : (
+        <>
         {identity && (
           <section
             className="rounded-2xl border p-5 mb-5"
@@ -643,6 +663,8 @@ export function DevicesPage() {
             );
           })}
         </ul>
+        </>
+        )}
       </main>
     </div>
   );

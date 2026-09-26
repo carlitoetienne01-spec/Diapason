@@ -1,4 +1,5 @@
 import { apiFetch, getBase, getApiKey } from '../../lib/api';
+import { SondeNonEnvoyee } from '../../lib/tailnet';
 import { enregistrerHorsBureau } from '../../lib/enregistrerFichier';
 import { creerLecturesPartagees } from './lecturesPartagees';
 import type {
@@ -112,6 +113,9 @@ async function executerRequete<T>(path: string, init: RequestInit = {}): Promise
     try {
       response = await apiFetch(path, requestInit);
     } catch (error) {
+      // Pas envoyée : la passerelle du tailnet la refuse. La relancer trois
+      // fois ne ferait que la refuser trois fois de plus (26/09/2026).
+      if (error instanceof SondeNonEnvoyee) throw error;
       lastError = error;
       // WebKit reports aborted/network races as "Load failed".
       // Un POST peut avoir été enregistré avant que sa réponse se perde.

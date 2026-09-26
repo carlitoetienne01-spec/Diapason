@@ -35,6 +35,7 @@ import { useSondeVisible } from '../../lib/useSondeVisible';
 import { ouvrirLienExterne } from '../../lib/lienExterne';
 import { isTauri } from '../../lib/api';
 import { estMobile } from '../../lib/natif';
+import { serviParLeTailnet } from '../../lib/tailnet';
 import {
   actionEchap,
   blocageAdresse,
@@ -150,7 +151,10 @@ export function useStatutCompte(intervalleMs: number, actif = true): LectureStat
       }));
     }
   }, []);
-  const relire = useSondeVisible(lire, intervalleMs, actif);
+  // 26/09/2026 : au téléphone, la passerelle refuse /v1/account/* — le
+  // compte se gère sur le Mac. La sonde partait quand même toutes les 30 s
+  // (le bandeau de Layout et la section des Réglages), pour un 403 chacune.
+  const relire = useSondeVisible(lire, intervalleMs, actif && !serviParLeTailnet());
   useEffect(
     () =>
       surChangementCompte((statut) => {
