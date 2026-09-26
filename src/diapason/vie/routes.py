@@ -14,6 +14,7 @@ from diapason.vie.continuity import VieContinuityStore
 from diapason.vie.dates import normalize_time, resolve_date_expression
 from diapason.vie.emplacement import BaseVieNonMigree, DeuxBasesVie
 from diapason.vie.notes_resume import resumer_note
+from diapason.vie.resume_import import phrase as phrase_import
 from diapason.vie.store import (
     VieError,
     VieNoteConflict,
@@ -1192,13 +1193,10 @@ def import_legacy(body: LegacyImportBody) -> dict[str, Any]:
         summary = get_store().import_legacy_snapshot(body.snapshot, source=body.source)
     except VieError as exc:
         raise _domain_error(exc) from exc
-    return {
-        "summary": summary,
-        "message": (
-            "La sauvegarde a été archivée et les données de la phase 1 ont été "
-            "importées sans écraser les versions plus récentes."
-        ),
-    }
+    # 26/09/2026 : la phrase était fixe — « importées sans écraser les
+    # versions plus récentes » — y compris quand des notes, des habitudes ou
+    # des coches avaient été sautées. Elle se lit désormais dans le résumé.
+    return {"summary": summary, "message": phrase_import(summary)}
 
 
 from diapason.vie.finances_routes import register_finances_routes  # noqa: E402

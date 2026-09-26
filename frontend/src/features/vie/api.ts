@@ -401,15 +401,33 @@ export function clearVieSyncGuest(): Promise<VieSyncStatus> {
   return request('/v1/vie/sync/guest', { method: 'DELETE' });
 }
 
+/** Pourquoi un élément de la sauvegarde n'est pas entré (`vie/resume_import.py`). */
+export type VieImportSkipReason =
+  | 'plusRecentSurLeMac'
+  | 'dejaSurLeMac'
+  | 'titreVide'
+  | 'tropLong'
+  | 'invalide'
+  | 'habitudeAbsente';
+
 export async function importLegacyVieSnapshot(snapshot: unknown): Promise<{
   summary: {
     tasksImported: number;
+    tasksSkipped: number;
     projectsImported: number;
     habitsImported?: number;
     notesImported?: number;
     habitLogsImported?: number;
+    habitLogsWithoutTimestamp?: number;
+    templatesImported?: number;
+    quotesImported?: number;
+    skipped?: Record<string, Partial<Record<VieImportSkipReason, number>>>;
+    skippedItems?: { kind: string; id: string; label: string; reason: VieImportSkipReason }[];
+    truncated?: Record<string, Record<string, number>>;
+    ignoredKeys?: { key: string; reason: string; count?: number }[];
     alreadyImported: boolean;
   };
+  /** La phrase du Mac, tirée du résumé : c'est elle qu'on affiche (§100). */
   message: string;
 }> {
   return request('/v1/vie/import/legacy', {

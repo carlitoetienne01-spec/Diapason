@@ -257,10 +257,11 @@ export function VieSyncPage() {
       const snapshot = JSON.parse(raw) as unknown;
       const result = await importLegacyVieSnapshot(snapshot);
       await load();
-      const summary = result.summary;
-      const message = summary.alreadyImported
-        ? 'Cette sauvegarde avait déjà été importée.'
-        : `${summary.tasksImported} tâche(s) et ${summary.projectsImported} projet(s) importés.`;
+      // 26/09/2026 : la phrase était composée ici à partir des seules tâches
+      // et projets — « 3 tâche(s) et 1 projet(s) importés » — pendant que des
+      // notes, des habitudes et des coches étaient sautées sans un mot. La
+      // phrase vient désormais du Mac, qui compte chaque saut (§100).
+      const message = result.message;
       useAppStore.getState().addLogEntry({
         timestamp: Date.now(),
         level: 'info',

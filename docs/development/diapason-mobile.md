@@ -461,7 +461,15 @@ La passerelle de la phase 2 fixe le modèle de sécurité. **Le secret de sessio
 *Risque silencieux (DÉDUIT) :* le plantage n'arriverait qu'au redémarrage launchd qui suit la première suppression, bien après un import réussi.
 *Preuve :* importer, supprimer la citation, rouvrir `SuccesSyncStore` sur la même base : aucune exception, et la citation reste supprimée.
 
-**2. « L'import perdait des coches d'habitude et des notes sans le dire ».**
+~~**2. « L'import perdait des coches d'habitude et des notes sans le dire ».**~~ *Commité le 26/09/2026 (le commit qui barre cette ligne, et `b9496b5` dans `diapason_mobile`).* Ce que la réalisation a ajouté au plan :
+- l'horodatage de repli est **minuit UTC du jour coché**, fixe : le constructeur rejoue chaque import archivé à chaque démarrage, et un `now_ms()` aurait rajeuni la coche à chaque fois, écrasant une décoche faite depuis sur le Mac (contre-épreuve : avec `now_ms()`, `test_le_rejeu_au_demarrage_ne_rajeunit_pas_une_coche_sans_horodatage` échoue) ;
+- deux motifs de plus que les quatre prévus, parce qu'aucun des quatre ne disait vrai : `dejaSurLeMac` (modèle ou citation déjà présents, même supprimés) et `habitudeAbsente` (coche d'une habitude que le Mac n'a pas) ; et les champs **raccourcis** au plafond du Mac (notes d'une tâche au-delà de 2 000 caractères) sont comptés dans `truncated` ;
+- un nom de projet de plus de 200 caractères faisait tomber l'import ENTIER en 400 : il est désormais sauté et compté `tropLong` ;
+- la ligne archivée ne gardait que tâches et projets (les couches fusionnaient leur résumé après l'archivage) : un second import rendait « déjà importé » avec un résumé amputé. Les couches passent par `_materialiser_import`, et le résumé entier est archivé ;
+- la phrase de la route vient du résumé (`vie/resume_import.py::phrase`), et la page Synchronisation l'affiche au lieu de composer la sienne ;
+- `vie_api_surface.json` n'a pas bougé : l'instantané fige les routes, pas la forme des réponses.
+
+Le plan, tel qu'écrit le 25/09/2026 :
 - Les coches sont importées sur l'union des clés de `habitLogs` et de `habitLogsAt`, avec un horodatage de repli.
 - Chaque saut est compté par motif : `plusRecentSurLeMac`, `titreVide`, `tropLong`, `invalide`.
 - Le résumé déclare les clés ignorées et pourquoi : l'état d'interface, les 5 réglages du site et `sync.deletes` (§5).

@@ -12,11 +12,12 @@ import json
 import re
 import sqlite3
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
 from diapason.vie import reseau as reseau_module
+from diapason.vie import resume_import
 from diapason.vie.dates import normalize_time
 from diapason.vie.project_kits import (
     get_project_kit,
@@ -27,6 +28,7 @@ from diapason.vie.store import (
     VieNoteConflict,
     VieNotFound,
     VieStore,
+    VieTropLong,
     _clean_text,
     _safe_timestamp,
     _validate_iso_date,
@@ -1583,7 +1585,7 @@ class VieWorkspaceStore(VieStore):
         )
         content = str(data.get("content") or "")
         if len(content) > NOTE_CONTENT_MAX:
-            raise VieError(
+            raise VieTropLong(
                 "Le contenu de la note ne peut pas dépasser "
                 f"{NOTE_CONTENT_MAX:,} caractères.".replace(",", " ")
             )
@@ -1944,24 +1946,29 @@ class VieWorkspaceStore(VieStore):
                 continue
             self._materialize_workspace_snapshot(snapshot)
 
-    def import_legacy_snapshot(
-        self, snapshot: Mapping[str, Any], *, source: str = "Life OS PHP/Flutter"
-    ) -> dict[str, Any]:
-        summary = super().import_legacy_snapshot(snapshot, source=source)
-        workspace = self._materialize_workspace_snapshot(snapshot)
-        return {**summary, **workspace}
+    def _materialiser_import(self, snapshot: Mapping[str, Any]) -> dict[str, Any]:
+        return resume_import.fusionner(
+            super()._materialiser_import(snapshot),
+            self._materialize_workspace_snapshot(snapshot),
+        )
 
     def _materialize_workspace_snapshot(
         self, snapshot: Mapping[str, Any]
-    ) -> dict[str, int]:
+    ) -> dict[str, Any]:
         state = (
             snapshot.get("state")
             if isinstance(snapshot.get("state"), Mapping)
             else snapshot
         )
+        summary: dict[str, Any] = {
+            "habitsImported": 0,
+            "notesImported": 0,
+            "habitLogsImported": 0,
+            "habitLogsWithoutTimestamp": 0,
+        }
         if not isinstance(state, Mapping):
-            return {"habitsImported": 0, "notesImported": 0, "habitLogsImported": 0}
-        summary = {"habitsImported": 0, "notesImported": 0, "habitLogsImported": 0}
+            return summary
+        sauts = resume_import.Sauts()
         with self._transaction() as conn:
             for raw in (
                 state.get("habits", []) if isinstance(state.get("habits"), list) else []
@@ -1969,17 +1976,37 @@ class VieWorkspaceStore(VieStore):
                 if not isinstance(raw, Mapping):
                     continue
                 habit_id = str(raw.get("id") or "").strip()
-                if not habit_id or not str(raw.get("name") or "").strip():
+                etiquette = resume_import.libelle(raw.get("name"))
+                if not habit_id:
+                    sauts.noter("habits", resume_import.INVALIDE, "", etiquette)
+                    continue
+                if not str(raw.get("name") or "").strip():
+                    sauts.noter("habits", resume_import.TITRE_VIDE, habit_id)
                     continue
                 timestamp = _safe_timestamp(raw.get("updatedAtMs"), fallback=0)
                 current = conn.execute(
                     "SELECT updated_at_ms FROM vie_habits WHERE id=?", (habit_id,)
                 ).fetchone()
                 if current and current["updated_at_ms"] >= timestamp:
+                    sauts.noter(
+                        "habits",
+                        resume_import.PLUS_RECENT_SUR_LE_MAC,
+                        habit_id,
+                        etiquette,
+                    )
                     continue
                 try:
                     clean = self._validated_habit(raw)
-                except VieError:
+                except (VieError, TypeError, ValueError) as exc:
+                    # 26/09/2026 : une habitude hebdomadaire sans jour — que
+                    # le Dart écrit sans broncher — était refusée ici sans
+                    # laisser de trace ; ses coches suivaient en silence.
+                    sauts.noter(
+                        "habits",
+                        resume_import.motif_de_l_erreur(exc),
+                        habit_id,
+                        etiquette,
+                    )
                     continue
                 conn.execute(
                     """INSERT INTO vie_habits
@@ -2018,17 +2045,36 @@ class VieWorkspaceStore(VieStore):
                 if not isinstance(raw, Mapping):
                     continue
                 note_id = str(raw.get("id") or "").strip()
-                if not note_id or not str(raw.get("title") or "").strip():
+                # Une note sans titre se reconnaît à son début : c'est lui que
+                # le résumé montre.
+                etiquette = resume_import.libelle(raw.get("title"), raw.get("content"))
+                if not note_id:
+                    sauts.noter("notes", resume_import.INVALIDE, "", etiquette)
+                    continue
+                if not str(raw.get("title") or "").strip():
+                    sauts.noter("notes", resume_import.TITRE_VIDE, note_id, etiquette)
                     continue
                 timestamp = _safe_timestamp(raw.get("updatedAtMs"), fallback=0)
                 current = conn.execute(
                     "SELECT updated_at_ms FROM vie_notes WHERE id=?", (note_id,)
                 ).fetchone()
                 if current and current["updated_at_ms"] >= timestamp:
+                    sauts.noter(
+                        "notes",
+                        resume_import.PLUS_RECENT_SUR_LE_MAC,
+                        note_id,
+                        etiquette,
+                    )
                     continue
                 try:
                     title, content, meta = self._note_fields(raw)
-                except VieError:
+                except (VieError, TypeError, ValueError) as exc:
+                    sauts.noter(
+                        "notes",
+                        resume_import.motif_de_l_erreur(exc),
+                        note_id,
+                        etiquette,
+                    )
                     continue
                 conn.execute(
                     """INSERT INTO vie_notes
@@ -2076,27 +2122,53 @@ class VieWorkspaceStore(VieStore):
                 if isinstance(state.get("habitLogsAt"), Mapping)
                 else {}
             )
-            for key, value in logs_at.items():
-                raw_key = str(key)
-                habit_id, separator, iso = raw_key.rpartition("_")
+            # 26/09/2026 : la boucle ne parcourait que `habitLogsAt`. Or le
+            # téléphone n'y inscrit une coche que depuis qu'il horodate ses
+            # bascules : toutes les coches plus anciennes n'existent que dans
+            # `habitLogs`, et elles ne franchissaient pas l'import (2 sur 3
+            # sur la copie de dev), résumé « importé » à l'appui. On parcourt
+            # l'UNION des deux clés.
+            for key in sorted({str(k) for k in logs} | {str(k) for k in logs_at}):
+                habit_id, separator, iso = key.rpartition("_")
                 if not separator or not habit_id:
+                    sauts.noter("habitLogs", resume_import.INVALIDE, key)
                     continue
                 try:
                     _validate_iso_date(iso)
-                except VieError:
+                    jour = date.fromisoformat(iso)
+                except (VieError, ValueError):
+                    sauts.noter("habitLogs", resume_import.INVALIDE, key)
                     continue
                 if not conn.execute(
                     "SELECT 1 FROM vie_habits WHERE id=? AND deleted_at_ms IS NULL",
                     (habit_id,),
                 ).fetchone():
+                    sauts.noter("habitLogs", resume_import.HABITUDE_ABSENTE, key)
                     continue
-                timestamp = _safe_timestamp(value, fallback=0)
+                if key in logs_at:
+                    timestamp = _safe_timestamp(logs_at[key], fallback=0)
+                else:
+                    # Horodatage de repli : minuit (UTC) du jour coché. Il
+                    # doit être FIXE — ce rejeu tourne à chaque démarrage
+                    # (materialize_archived_snapshots) : un `now_ms()`
+                    # rajeunirait la coche à chaque fois et écraserait une
+                    # décoche faite depuis sur le Mac. Et il est ANCIEN :
+                    # toute bascule faite sur le Mac pour ce jour-là, à
+                    # partir de ce jour-là, gagne sur la sauvegarde.
+                    timestamp = int(
+                        datetime(
+                            jour.year, jour.month, jour.day, tzinfo=timezone.utc
+                        ).timestamp()
+                        * 1000
+                    )
+                    summary["habitLogsWithoutTimestamp"] += 1
                 current = conn.execute(
                     """SELECT updated_at_ms FROM vie_habit_logs
                        WHERE habit_id=? AND log_date=?""",
                     (habit_id, iso),
                 ).fetchone()
                 if current and current["updated_at_ms"] >= timestamp:
+                    sauts.noter("habitLogs", resume_import.PLUS_RECENT_SUR_LE_MAC, key)
                     continue
                 conn.execute(
                     """INSERT INTO vie_habit_logs
@@ -2106,7 +2178,7 @@ class VieWorkspaceStore(VieStore):
                     (habit_id, iso, int(bool(logs.get(key))), timestamp),
                 )
                 summary["habitLogsImported"] += 1
-        return summary
+        return resume_import.fusionner(summary, sauts.resume())
 
 
 __all__ = [

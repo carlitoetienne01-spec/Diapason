@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Iterator, Mapping, Sequence
 
 from diapason.core.paths import get_data_dir
+from diapason.vie import resume_import
 
 MAX_FUTURE_SKEW_MS = 5 * 60 * 1000
 MAX_SUBTASK_DEPTH = 24
@@ -47,6 +48,17 @@ def _decode_cadence_raw(raw: Any) -> dict[str, Any] | None:
 
 class VieError(ValueError):
     """Domain validation or conflict error safe to show to the user."""
+
+
+class VieTropLong(VieError):
+    """Un texte dépasse le plafond d'un champ.
+
+    26/09/2026 : l'import de la sauvegarde Life OS comptait tout refus comme
+    « invalide ». Un titre de 201 caractères n'est pas invalide, il est trop
+    long, et l'utilisateur le corrige autrement : le motif le dit.
+    """
+
+    motif = "tropLong"
 
 
 class VieNotFound(VieError):
@@ -165,7 +177,7 @@ def _clean_text(value: Any, *, field: str, maximum: int, required: bool = False)
     if required and not raw:
         raise VieError(f"{field} est obligatoire.")
     if len(raw) > maximum:
-        raise VieError(f"{field} ne peut pas dépasser {maximum} caractères.")
+        raise VieTropLong(f"{field} ne peut pas dépasser {maximum} caractères.")
     return raw
 
 
@@ -1646,12 +1658,13 @@ class VieStore:
         projects = state.get("projects", []) if isinstance(state, Mapping) else []
         if not isinstance(todos, list) or not isinstance(projects, list):
             raise VieError("Cette sauvegarde Life OS n'a pas une structure valide.")
-        summary = {
+        summary: dict[str, Any] = {
             "tasksImported": 0,
             "tasksSkipped": 0,
             "projectsImported": 0,
             "archived": True,
         }
+        sauts = resume_import.Sauts()
         with self._transaction() as conn:
             existing_import = conn.execute(
                 "SELECT summary_json FROM vie_imports WHERE sha256=?", (digest,)
@@ -1662,56 +1675,29 @@ class VieStore:
             for project in projects:
                 if not isinstance(project, Mapping):
                     continue
-                project_id = str(project.get("id") or "").strip()
-                name = _clean_text(
-                    project.get("name"), field="Le nom du projet", maximum=200
-                )
-                if not project_id or not name:
-                    continue
-                ts = _safe_timestamp(project.get("updatedAtMs"), fallback=0)
-                current = conn.execute(
-                    "SELECT updated_at_ms FROM vie_projects WHERE id=?",
-                    (project_id,),
-                ).fetchone()
-                if current and current["updated_at_ms"] > ts:
-                    continue
-                conn.execute(
-                    """INSERT INTO vie_projects
-                       (id,name,description,color,icon,start_date,end_date,created_date,updated_at_ms,deleted_at_ms)
-                       VALUES (?,?,?,?,?,?,?,?,?,NULL)
-                       ON CONFLICT(id) DO UPDATE SET
-                       name=excluded.name,description=excluded.description,
-                       color=excluded.color,icon=excluded.icon,start_date=excluded.start_date,
-                       end_date=excluded.end_date,created_date=excluded.created_date,
-                       updated_at_ms=excluded.updated_at_ms,deleted_at_ms=NULL""",
-                    (
-                        project_id,
-                        name,
-                        str(project.get("desc") or "")[:2000],
-                        str(project.get("color") or "#6366f1")[:32],
-                        str(project.get("icon") or "")[:32],
-                        str(project.get("start") or ""),
-                        str(project.get("end") or ""),
-                        str(project.get("createdAt") or ""),
-                        ts,
-                    ),
-                )
-                summary["projectsImported"] += 1
+                if self._import_project(conn, project, sauts):
+                    summary["projectsImported"] += 1
             for todo in todos:
                 if not isinstance(todo, Mapping):
                     continue
                 try:
-                    imported = self._import_task(conn, todo)
-                except VieError:
-                    summary["tasksSkipped"] += 1
-                    continue
+                    imported = self._import_task(conn, todo, sauts)
+                except VieError as exc:
+                    sauts.noter(
+                        "tasks",
+                        resume_import.motif_de_l_erreur(exc),
+                        todo.get("id"),
+                        resume_import.libelle(todo.get("title")),
+                    )
+                    imported = False
                 summary["tasksImported" if imported else "tasksSkipped"] += 1
+            import_id = str(uuid.uuid4())
             conn.execute(
                 "INSERT INTO vie_imports"
                 "(id,source,sha256,snapshot_json,imported_at_ms,summary_json) "
                 "VALUES(?,?,?,?,?,?)",
                 (
-                    str(uuid.uuid4()),
+                    import_id,
                     source,
                     digest,
                     raw,
@@ -1719,22 +1705,135 @@ class VieStore:
                     json.dumps(summary, ensure_ascii=False),
                 ),
             )
+        # 26/09/2026 : chaque couche (habitudes et notes, modèles et
+        # citations) surchargeait cette méthode et fusionnait son résumé par
+        # `{**a, **b}` APRÈS l'archivage. La ligne archivée ne gardait donc
+        # que tâches et projets, et un second import répondait
+        # « déjà importé » avec un résumé amputé de tout le reste. Les couches
+        # passent désormais par `_materialiser_import`, et la ligne reçoit le
+        # résumé entier.
+        summary = resume_import.fusionner(
+            summary,
+            sauts.resume(),
+            self._materialiser_import(snapshot),
+            {"ignoredKeys": resume_import.cles_ignorees(snapshot)},
+        )
+        with self._transaction() as conn:
+            conn.execute(
+                "UPDATE vie_imports SET summary_json=? WHERE id=?",
+                (json.dumps(summary, ensure_ascii=False), import_id),
+            )
         return {**summary, "alreadyImported": False}
 
-    def _import_task(self, conn: sqlite3.Connection, todo: Mapping[str, Any]) -> bool:
+    def _materialiser_import(self, snapshot: Mapping[str, Any]) -> dict[str, Any]:
+        """Ce que les couches au-dessus importent de la sauvegarde archivée."""
+        return {}
+
+    def _import_project(
+        self,
+        conn: sqlite3.Connection,
+        project: Mapping[str, Any],
+        sauts: resume_import.Sauts,
+    ) -> bool:
+        project_id = str(project.get("id") or "").strip()
+        etiquette = resume_import.libelle(project.get("name"))
+        if not project_id:
+            sauts.noter("projects", resume_import.INVALIDE, "", etiquette)
+            return False
+        try:
+            # 26/09/2026 : un nom de plus de 200 caractères levait ici hors
+            # de tout `try` — et l'import ENTIER tombait en 400, pour un seul
+            # projet.
+            name = _clean_text(
+                project.get("name"), field="Le nom du projet", maximum=200
+            )
+        except VieError as exc:
+            sauts.noter(
+                "projects",
+                resume_import.motif_de_l_erreur(exc),
+                project_id,
+                etiquette,
+            )
+            return False
+        if not name:
+            sauts.noter("projects", resume_import.TITRE_VIDE, project_id)
+            return False
+        ts = _safe_timestamp(project.get("updatedAtMs"), fallback=0)
+        current = conn.execute(
+            "SELECT updated_at_ms FROM vie_projects WHERE id=?",
+            (project_id,),
+        ).fetchone()
+        if current and current["updated_at_ms"] > ts:
+            sauts.noter(
+                "projects", resume_import.PLUS_RECENT_SUR_LE_MAC, project_id, etiquette
+            )
+            return False
+        conn.execute(
+            """INSERT INTO vie_projects
+               (id,name,description,color,icon,start_date,end_date,created_date,updated_at_ms,deleted_at_ms)
+               VALUES (?,?,?,?,?,?,?,?,?,NULL)
+               ON CONFLICT(id) DO UPDATE SET
+               name=excluded.name,description=excluded.description,
+               color=excluded.color,icon=excluded.icon,start_date=excluded.start_date,
+               end_date=excluded.end_date,created_date=excluded.created_date,
+               updated_at_ms=excluded.updated_at_ms,deleted_at_ms=NULL""",
+            (
+                project_id,
+                name,
+                sauts.tronquer("projects", "desc", project.get("desc"), 2000),
+                sauts.tronquer(
+                    "projects", "color", project.get("color") or "#6366f1", 32
+                ),
+                sauts.tronquer("projects", "icon", project.get("icon"), 32),
+                str(project.get("start") or ""),
+                str(project.get("end") or ""),
+                str(project.get("createdAt") or ""),
+                ts,
+            ),
+        )
+        return True
+
+    def _import_task(
+        self,
+        conn: sqlite3.Connection,
+        todo: Mapping[str, Any],
+        sauts: resume_import.Sauts,
+    ) -> bool:
         task_id = str(todo.get("id") or "").strip()
-        title = _clean_text(todo.get("title"), field="Le titre", maximum=200)
-        if not task_id or not title or title.lower() == "input text":
+        etiquette = resume_import.libelle(todo.get("title"))
+        if not task_id:
+            sauts.noter("tasks", resume_import.INVALIDE, "", etiquette)
+            return False
+        try:
+            title = _clean_text(todo.get("title"), field="Le titre", maximum=200)
+        except VieError as exc:
+            sauts.noter(
+                "tasks", resume_import.motif_de_l_erreur(exc), task_id, etiquette
+            )
+            return False
+        # « input text » : le texte d'exemple d'un champ du site, enregistré
+        # tel quel quand on validait sans rien taper. Un titre vide déguisé.
+        if not title or title.lower() == "input text":
+            sauts.noter("tasks", resume_import.TITRE_VIDE, task_id)
             return False
         ts = _safe_timestamp(todo.get("updatedAtMs"), fallback=0)
         current = conn.execute(
             "SELECT updated_at_ms FROM vie_tasks WHERE id=?", (task_id,)
         ).fetchone()
         if current and current["updated_at_ms"] > ts:
+            sauts.noter(
+                "tasks", resume_import.PLUS_RECENT_SUR_LE_MAC, task_id, etiquette
+            )
             return False
         priority = str(todo.get("priority") or "medium").lower()
         if priority not in PRIORITIES:
             priority = "medium"
+        try:
+            order = int(todo.get("order") or 0)
+            postponed = max(0, int(todo.get("postponedCount") or 0))
+        except (TypeError, ValueError, OverflowError):
+            sauts.noter("tasks", resume_import.INVALIDE, task_id, etiquette)
+            return False
         conn.execute(
             """INSERT INTO vie_tasks
                (id,title,done,priority,scheduled_date,scheduled_time,project_id,category,
@@ -1758,15 +1857,15 @@ class VieStore:
                 str(todo.get("date") or ""),
                 str(todo.get("time") or ""),
                 str(todo.get("projectId") or ""),
-                str(todo.get("category") or "")[:100],
-                str(todo.get("notes") or "")[:2000],
-                str(todo.get("emoji") or "")[:16],
+                sauts.tronquer("tasks", "category", todo.get("category"), 100),
+                sauts.tronquer("tasks", "notes", todo.get("notes"), 2000),
+                sauts.tronquer("tasks", "emoji", todo.get("emoji"), 16),
                 str(todo.get("templateId") or ""),
                 str(todo.get("groupId") or ""),
-                int(todo.get("order") or 0),
+                order,
                 str(todo.get("createdAt") or date.today().isoformat()),
                 str(todo.get("completedDate") or ""),
-                max(0, int(todo.get("postponedCount") or 0)),
+                postponed,
                 ts,
                 str(todo.get("parentTaskId") or ""),
             ),
@@ -1851,5 +1950,6 @@ __all__ = [
     "VieError",
     "VieNotFound",
     "VieStore",
+    "VieTropLong",
     "now_ms",
 ]

@@ -14,6 +14,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Mapping
 
+from diapason.vie import resume_import
 from diapason.vie.store import (
     PRIORITIES,
     VieError,
@@ -936,23 +937,24 @@ class VieContinuityStore(VieWorkspaceStore):
                 continue
             self._materialize_continuity_snapshot(snapshot)
 
-    def import_legacy_snapshot(
-        self, snapshot: Mapping[str, Any], *, source: str = "Life OS PHP/Flutter"
-    ) -> dict[str, Any]:
-        summary = super().import_legacy_snapshot(snapshot, source=source)
-        return {**summary, **self._materialize_continuity_snapshot(snapshot)}
+    def _materialiser_import(self, snapshot: Mapping[str, Any]) -> dict[str, Any]:
+        return resume_import.fusionner(
+            super()._materialiser_import(snapshot),
+            self._materialize_continuity_snapshot(snapshot),
+        )
 
     def _materialize_continuity_snapshot(
         self, snapshot: Mapping[str, Any]
-    ) -> dict[str, int]:
+    ) -> dict[str, Any]:
         state = (
             snapshot.get("state")
             if isinstance(snapshot.get("state"), Mapping)
             else snapshot
         )
+        summary: dict[str, Any] = {"templatesImported": 0, "quotesImported": 0}
         if not isinstance(state, Mapping):
-            return {"templatesImported": 0, "quotesImported": 0}
-        summary = {"templatesImported": 0, "quotesImported": 0}
+            return summary
+        sauts = resume_import.Sauts()
         for raw in (
             state.get("todoTemplates", [])
             if isinstance(state.get("todoTemplates"), list)
@@ -960,20 +962,43 @@ class VieContinuityStore(VieWorkspaceStore):
         ):
             if not isinstance(raw, Mapping):
                 continue
+            template_id = str(raw.get("id") or "")
+            etiquette = resume_import.libelle(raw.get("title"), raw.get("name"))
+            # Comme pour les citations ci-dessous : un modèle supprimé sur le
+            # Mac compte comme présent. `get_template` l'ignorait, et
+            # `create_template` refusait alors l'identifiant pris — un refus
+            # qui se serait compté « invalide » au lieu de « déjà sur le Mac ».
+            with self._connect() as conn:
+                exists = (
+                    conn.execute(
+                        "SELECT 1 FROM vie_task_templates WHERE id=?", (template_id,)
+                    ).fetchone()
+                    if template_id
+                    else None
+                )
+            if exists:
+                sauts.noter(
+                    "templates", resume_import.DEJA_SUR_LE_MAC, template_id, etiquette
+                )
+                continue
             try:
-                self.get_template(str(raw.get("id") or ""))
-            except VieNotFound:
-                try:
-                    self.create_template(raw)
-                except VieError:
-                    continue
-                summary["templatesImported"] += 1
+                self.create_template(raw)
+            except (VieError, TypeError, ValueError) as exc:
+                sauts.noter(
+                    "templates",
+                    resume_import.motif_de_l_erreur(exc),
+                    template_id,
+                    etiquette,
+                )
+                continue
+            summary["templatesImported"] += 1
         for raw in (
             state.get("quotes", []) if isinstance(state.get("quotes"), list) else []
         ):
             if not isinstance(raw, Mapping):
                 continue
             quote_id = str(raw.get("id") or "")
+            etiquette = resume_import.libelle(raw.get("text"))
             # 25/09/2026 : `_load_quote` ignore les lignes supprimées. Une
             # citation importée puis supprimée semblait donc absente, et ce
             # rejeu — lancé par le CONSTRUCTEUR à chaque démarrage — la
@@ -990,13 +1015,22 @@ class VieContinuityStore(VieWorkspaceStore):
                     else None
                 )
             if exists:
+                sauts.noter(
+                    "quotes", resume_import.DEJA_SUR_LE_MAC, quote_id, etiquette
+                )
                 continue
             try:
                 self.create_quote(raw)
-            except VieError:
+            except (VieError, TypeError, ValueError) as exc:
+                sauts.noter(
+                    "quotes",
+                    resume_import.motif_de_l_erreur(exc),
+                    quote_id,
+                    etiquette,
+                )
                 continue
             summary["quotesImported"] += 1
-        return summary
+        return resume_import.fusionner(summary, sauts.resume())
 
 
 __all__ = [
