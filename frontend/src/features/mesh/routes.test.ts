@@ -79,3 +79,39 @@ describe('resolveSuccessRoute', () => {
     }
   });
 });
+
+describe('les deux schémas du maillage', () => {
+  // Plan 1b, étape 12 (25/09/2026) : le schéma devient vie://. Une fenêtre qui
+  // ne connaîtrait que success:// laisserait tomber le premier vie:// d'un
+  // émetteur renommé, après que Python eut répondu SUCCESS en son nom. Même
+  // tableau que test_executor.py et mesh_routes_test.dart.
+  const CHEMINS: Array<[string, ReturnType<typeof resolveSuccessRoute>]> = [
+    ['today', { path: MESH_ROUTE_TODAY }],
+    ['tasks', { path: '/vie/tasks' }],
+    ['projects/p-1', { path: '/vie/projects', selection: { kind: 'project', id: 'p-1' } }],
+    ['habits/h7', { path: '/vie/habits' }],
+    ['notes/n%20espace', { path: '/vie/notes', selection: { kind: 'note', id: 'n espace' } }],
+  ];
+
+  for (const schema of ['success', 'vie', 'VIE', 'Success']) {
+    for (const [chemin, attendu] of CHEMINS) {
+      it(`${schema}://${chemin} ouvre le même écran que success://${chemin}`, () => {
+        expect(resolveSuccessRoute(`${schema}://${chemin}`)).toEqual(attendu);
+      });
+    }
+  }
+
+  it("n'ouvre rien de plus sous le nouveau schéma", () => {
+    for (const route of [
+      'vie://reglages',
+      'vie://tasks/../../etc/passwd',
+      'vie://notes/%',
+      'diapason://today',
+      'vies://today',
+      'xvie://today',
+      'succes://today',
+    ]) {
+      expect(resolveSuccessRoute(route), `${route} doit rester refusée`).toBeNull();
+    }
+  });
+});

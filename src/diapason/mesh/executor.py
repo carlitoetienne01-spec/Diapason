@@ -152,7 +152,7 @@ def _no_shell() -> dict[str, Any]:
     }
 
 
-# The screens a `success://` route may name — the keys of `PATHS` in
+# The screens a `success://` or `vie://` route may name — the keys of `PATHS` in
 # `frontend/src/features/mesh/routes.ts`, which is what the shell below us
 # actually opens, and of `_views` in the mobile client's `mesh_routes.dart`.
 # `tests/contract/test_routes_du_maillage.py` reads both files and fails the
@@ -172,7 +172,18 @@ MESH_ROUTE_KINDS = frozenset({"today", "tasks", "projects", "habits", "notes"})
 # folding does: without it, this side would accept a route the shell refuses.
 # `fullmatch` rather than `$`, which in Python also matches before a final
 # newline.
-_MESH_ROUTE = re.compile(r"success://([a-z]+)(?:/([^/?#]+))?/?", re.I | re.ASCII)
+#
+# Two schemes, one vocabulary. 25/09/2026: the domain was renamed `vie`, and
+# the scheme follows — but a receiver that knew only `success://` would answer
+# UNKNOWN_ROUTE to the first `vie://` a renamed sender emits, and the phone
+# would say "route inconnue" for a screen it has. So every receiver (this
+# table, `routes.ts`, `mesh_routes.dart`) accepts both BEFORE any sender
+# switches; `tests/contract/test_routes_du_maillage.py` holds the three to the
+# same set. `diapason://` stays refused: it is the OS deep-link namespace
+# declared in `tauri.conf.json`, not a mesh route.
+_MESH_ROUTE = re.compile(
+    r"(?:success|vie)://([a-z]+)(?:/([^/?#]+))?/?", re.I | re.ASCII
+)
 
 # `decodeURIComponent` throws on a `%` not followed by two hex digits; Python's
 # `unquote` lets it through untouched. The shell would treat such an id as an

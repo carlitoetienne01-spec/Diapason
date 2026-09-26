@@ -125,14 +125,26 @@ class TestLesTroisTablesDisentLesMemesEcrans:
         )
 
     def test_les_trois_acceptent_les_memes_schemas(self):
-        """L'étape 12 fera accepter `vie://` aux trois récepteurs à la fois ;
-        un seul en retard donnerait « route inconnue » d'un côté seulement."""
+        """L'étape 12 (25/09/2026) fait accepter `vie://` aux trois récepteurs
+        à la fois ; un seul en retard donnerait « route inconnue » d'un côté
+        seulement."""
         python = _schemas(_MESH_ROUTE.pattern)
         ts = _schemas(motif_ts(ROUTES_TS.read_text(encoding="utf-8")))
         dart = _schemas(motif_dart(_source_dart()))
         assert python == ts == dart, (
             f"schémas acceptés — Python : {sorted(python)}, TypeScript : "
             f"{sorted(ts)}, Dart : {sorted(dart)}"
+        )
+
+    def test_les_deux_schemas_restent_acceptes(self):
+        """Tant qu'un émetteur peut encore écrire `success://` (le téléphone,
+        une app de bureau non reconstruite) et qu'un autre écrit déjà
+        `vie://`, retirer l'un des deux d'un récepteur — même des trois à la
+        fois, ce que le test précédent laisserait passer — rendrait
+        UNSUPPORTED à une route que l'émetteur croit valide."""
+        assert _schemas(_MESH_ROUTE.pattern) == {"success", "vie"}, (
+            "le récepteur Python doit accepter success:// ET vie:// (plan 1b, "
+            "étape 12) ; diapason:// reste exclu"
         )
 
 

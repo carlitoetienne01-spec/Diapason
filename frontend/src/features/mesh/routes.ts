@@ -1,5 +1,6 @@
 /**
- * Turning a `success://` route from another device into a screen in this one.
+ * Turning a `success://` or `vie://` route from another device into a screen
+ * in this one.
  *
  * The mesh speaks a stable, platform-independent vocabulary (§25) precisely so
  * that a phone and a laptop can name the same thing without knowing each
@@ -13,7 +14,7 @@
  * schemes differs between WebKit and Chromium, and this app ships on both.
  */
 
-/** `success://today` is the day view — the planner, not the stats dashboard. */
+/** `vie://today` (like `success://today`) is the day view, not the dashboard. */
 export const MESH_ROUTE_TODAY = '/vie/planner';
 
 export type MeshSelectionKind = 'project' | 'note';
@@ -33,7 +34,16 @@ export interface MeshNavTarget {
   selection?: MeshSelection;
 }
 
-const SUCCESS_ROUTE = /^success:\/\/([a-z]+)(?:\/([^/?#]+))?\/?$/i;
+/**
+ * Two schemes, one vocabulary. 25/09/2026: the domain was renamed `vie` and the
+ * scheme follows, but a window that knew only `success://` would drop the first
+ * `vie://` a renamed sender emits — after the Python receiver had answered
+ * SUCCESS on its behalf. Every receiver accepts both before any sender
+ * switches; `tests/contract/test_routes_du_maillage.py` holds this pattern,
+ * `mesh/executor.py` and `mesh_routes.dart` to the same set. `diapason://`
+ * stays out: it is the OS deep-link namespace, not a mesh route.
+ */
+const SUCCESS_ROUTE = /^(?:success|vie):\/\/([a-z]+)(?:\/([^/?#]+))?\/?$/i;
 
 /**
  * Screens that can highlight one item. Tasks and habits are absent on

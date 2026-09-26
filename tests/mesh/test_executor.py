@@ -351,3 +351,54 @@ class TestUneRouteInconnueNOuvreRien:
             a_command("app.show_resource", resourceType=genre, resourceId="id-1")
         )
         assert resultat["ok"] is True, f"une ressource « {genre} » doit s'afficher"
+
+
+class TestLesDeuxSchemasOuvrentLesMemesEcrans:
+    """Plan 1b, étape 12 (25/09/2026). Le domaine devient `vie`, et le schéma
+    du maillage `vie://` avec lui. Un récepteur qui ne connaîtrait que
+    `success://` répondrait UNKNOWN_ROUTE au premier émetteur renommé : les
+    récepteurs acceptent donc les deux AVANT que le moindre émetteur change.
+    Même tableau que `routes.test.ts` et `mesh_routes_test.dart`."""
+
+    @pytest.mark.parametrize("schema", ["success", "vie", "VIE", "Success"])
+    @pytest.mark.parametrize(
+        "chemin,attendu",
+        [
+            ("today", ("today", "")),
+            ("tasks", ("tasks", "")),
+            ("projects/p-1", ("projects", "p-1")),
+            ("habits/h7", ("habits", "h7")),
+            ("notes/n%20espace", ("notes", "n espace")),
+        ],
+    )
+    def test_chaque_ecran_s_ouvre_sous_les_deux_schemas(self, schema, chemin, attendu):
+        route = f"{schema}://{chemin}"
+        assert ex.parse_mesh_route(route) == attendu, (
+            f"« {route} » doit ouvrir le même écran que success://{chemin}"
+        )
+
+    def test_un_navigate_en_vie_est_mis_en_file_tel_quel(self):
+        ex.pending_navigations(drain=True)
+        resultat = ex._navigate(a_command("app.navigate", route="vie://notes/n1"))
+        assert resultat["ok"] is True, "vie:// est un schéma accepté depuis l'étape 12"
+        assert ex._pending[0]["route"] == "vie://notes/n1", (
+            "la fenêtre reçoit la route telle qu'émise : routes.ts la lit aussi"
+        )
+
+    @pytest.mark.parametrize(
+        "route",
+        [
+            "vie://reglages",
+            "vie://tasks/../../etc/passwd",
+            "vie://notes/%",
+            "diapason://today",
+            "vies://today",
+            "xvie://today",
+            "succes://today",
+        ],
+    )
+    def test_le_nouveau_schema_n_ouvre_rien_de_plus(self, route):
+        assert ex.parse_mesh_route(route) is None, (
+            f"« {route} » : accepter vie:// n'élargit ni les écrans ni les "
+            "schémas — diapason:// reste l'espace des liens profonds du système"
+        )
