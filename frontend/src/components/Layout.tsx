@@ -138,7 +138,13 @@ export function Layout() {
           />
         )}
         <main className="flex-1 flex flex-col min-w-0 h-full relative overflow-hidden" style={{ background: 'transparent' }}>
-          <div className="flex-1 flex flex-col min-w-0 min-h-0 relative z-[2]">
+          {/* La Discussion réserve la place du bouton de la barre dans son
+              propre en-tête ; les autres pages reçoivent une bande au-dessus
+              d'elles (index.css, `--bande-barre-fermee`). */}
+          <div
+            className="flex-1 flex flex-col min-w-0 min-h-0 relative z-[2]"
+            style={{ paddingTop: pathname === '/' ? 0 : 'var(--bande-barre-fermee, 0px)' }}
+          >
             <Outlet />
           </div>
         </main>
