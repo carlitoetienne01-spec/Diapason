@@ -794,6 +794,36 @@ class TestLesEntetes:
         assert "microphone=(self)" in reponse.headers["permissions-policy"]
         assert "wss://testserver" in reponse.headers["content-security-policy"]
 
+    def test_la_csp_est_la_seule_garde_des_cadres_et_des_formulaires(self, telephone):
+        """26/09/2026, contre-épreuve : la coquille ne voit ni les cadres
+        (le greffon ne lui passe que le cadre principal) ni les navigations
+        POST (Android n'appelle pas ``shouldOverrideUrlLoading`` pour elles).
+        Un formulaire de la page du Mac posté vers un tiers aurait chargé
+        sa page là où ``DiapasonNatif`` est injecté. ``form-action`` ne
+        retombe pas sur ``default-src`` : sans lui, rien ne l'interdit."""
+        for reponse in (
+            telephone.get("/v1/models"),
+            telephone.get("/v1/triggers/poll"),
+        ):
+            directives = {
+                morceau.strip().split()[0]: morceau.strip().split()[1:]
+                for morceau in reponse.headers["content-security-policy"].split(";")
+                if morceau.strip()
+            }
+            assert directives.get("default-src") == ["'self'"], (
+                "default-src 'self' est ce qui ferme les cadres d'une autre origine"
+            )
+            assert directives.get("frame-src", ["'self'"]) == ["'self'"], (
+                "un frame-src plus large rouvrirait les cadres"
+            )
+            assert directives.get("child-src", ["'self'"]) == ["'self'"]
+            assert directives.get("form-action") == ["'self'"], (
+                f"{reponse.status_code} : un formulaire peut emmener la coquille "
+                "ailleurs"
+            )
+            assert directives.get("object-src") == ["'none'"]
+            assert directives.get("frame-ancestors") == ["'none'"]
+
     def test_la_boucle_locale_garde_le_micro_ferme(self):
         """Le plan : 8000 garde microphone=()."""
         app, _ = _vraie_app()

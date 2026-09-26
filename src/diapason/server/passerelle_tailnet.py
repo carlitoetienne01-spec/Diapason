@@ -776,12 +776,25 @@ def _porte_une_cle_locale(scope: dict, entetes: _Entetes) -> bool:
 
 
 def _csp(hote: str | None) -> str:
+    """La CSP de toute réponse servie au téléphone.
+
+    C'est la SEULE garde des cadres : la coquille Android n'en voit aucun
+    (webview_flutter_android 4.12.0 ne rend à ``onNavigationRequest`` que
+    le cadre principal) ; ``default-src 'self'`` vaut ``frame-src 'self'``.
+
+    ``form-action 'self'`` (26/09/2026, contre-épreuve) : Android n'appelle
+    pas ``shouldOverrideUrlLoading`` pour une navigation POST. Sans cette
+    directive, un ``<form method=post action=https://tiers>`` dans la page
+    du Mac chargeait une page tierce DANS la coquille — là où le canal
+    ``DiapasonNatif`` est injecté — sans que la coquille le décide.
+    ``form-action`` ne retombe pas sur ``default-src`` : il faut l'écrire.
+    """
     connexions = "'self'" + (f" wss://{hote}" if hote else "")
     return (
         "default-src 'self'; script-src 'self'; "
         "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
         f"connect-src {connexions}; object-src 'none'; "
-        "base-uri 'self'; frame-ancestors 'none'"
+        "base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
     )
 
 
