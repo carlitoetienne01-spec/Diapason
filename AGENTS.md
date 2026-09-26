@@ -253,6 +253,8 @@ jusqu'à ce que l'app et l'APK reconstruites l'acceptent.
 | `tests/contract/vecteurs_compte.json` | `scripts/gen_vecteurs_compte.py` |
 | `tests/contract/compte_api_surface.json` | `scripts/gen_compte_surface.py` |
 | `tests/contract/tailnet_portee.json` (ce que le téléphone atteint par le tailnet : chaque route classée, une route non classée est refusée) | `scripts/gen_tailnet_portee.py`, APRÈS l'avoir classée dans `server/portee_tailnet.py` |
+| `frontend/src/features/mesh/vecteurs_routes.json` (route du maillage → chemin React ; copie À L'OCTET dans `diapason_mobile/test/mesh/`) | à la main, c'est la spécification, puis recopié ; `routes.ts` et `mesh_routes.dart` suivent dans le même thème |
+| `test/rappels/vie_rappels.json` (dépôt `diapason_mobile` : ce que `/v1/vie` rend aux rappels du téléphone) | `scripts/gen_vie_rappels.py` |
 
 Régénère **dans le même commit** que le changement qui l'a causé, jamais
 après. Voir [`docs/client-mobile.md`](docs/client-mobile.md).

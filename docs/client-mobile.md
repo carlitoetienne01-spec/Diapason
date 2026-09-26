@@ -65,12 +65,37 @@ système.
 `tests/contract/test_routes_du_maillage.py` lit les deux fichiers sources
 et exige les mêmes écrans et les mêmes schémas des trois côtés.
 
+Depuis le 26/09/2026 (phase 3, étape 9), le téléphone n'ouvre plus une vue
+de sa Life OS native : la coquille traduit la route en **chemin React**
+(`cheminReact`, table `_chemins`) et demande l'écran au bundle du Mac par le
+verbe `naviguer` du pont ; elle n'acquitte SUCCESS qu'une fois la page
+montée. Les chemins sont tenus d'accord par un fichier de vecteurs écrit à
+la main, `frontend/src/features/mesh/vecteurs_routes.json`, copié **à
+l'octet** dans `diapason_mobile/test/mesh/vecteurs_routes.json` : vitest et
+`flutter test` le lisent contre leur table, pytest exige les deux copies
+égales, `parse_mesh_route` d'accord sur chaque refus et les chemins de
+`_chemins` égaux à ceux de `PATHS`.
+
 ### 3. Les 100 routes `/v1/vie`
 
-Le Dart n'en appelle **aucune** aujourd'hui (inventaire du 25/09/2026 : la
-Life OS de l'app se synchronisait avec le site PHP). La WebView de la
-phase 3 les appellera toutes, par la passerelle de la phase 2. Deux
-instantanés les figent :
+La WebView les appelle toutes, par la passerelle de la phase 2. Le Dart en
+appelle six depuis le 26/09/2026, par sa **propre** session d'appareil
+(`SessionNative` : la même enveloppe signée que la coquille, le cookie
+gardé dans le trousseau, jamais celui de la WebView) : l'import unique
+(`POST /v1/vie/import/legacy`), puis, une fois la Life OS sur le Mac, les
+trois lectures des rappels (`GET /v1/vie/tasks?include_done=false`,
+`/v1/vie/habits`, `/v1/vie/habits/logs`) et les deux gestes « Marquer
+fait » (`POST /v1/vie/tasks/{id}/done`, `/v1/vie/habits/{id}/log`, avec un
+`opId`). La forme des lectures est figée par une fixture réelle :
+
+```bash
+.venv/bin/python scripts/gen_vie_rappels.py   # diapason_mobile/test/rappels/vie_rappels.json
+```
+
+(l'état `test/rappels/etat_rappels.json`, écrit par le Dart, importé par la
+vraie route puis relu ; `tests/contract/test_vie_rappels.py` exige le
+fichier identique à ce que les routes rendent). Deux instantanés figent les
+routes :
 
 ```bash
 .venv/bin/python scripts/gen_vie_surface.py      # tests/contract/vie_api_surface.json
@@ -95,6 +120,8 @@ se manifester au téléphone, loin du commit qui l'a causée.
 | une route `/v1/vie` disparaît ou est renommée | régénérer les deux instantanés **dans le même commit**, et prévoir la version mobile qui cessera de fonctionner |
 | une route neuve n'est pas dans l'instantané | régénérer — ajouter est inoffensif, mais l'instantané doit rester un miroir exact |
 | un écran ou un schéma de route n'est accepté que d'un côté | corriger la table en retard, dans les deux dépôts s'il le faut |
+| les deux copies de `vecteurs_routes.json` diffèrent, ou un chemin de `_chemins` n'est plus celui de `PATHS` | éditer le fichier du bundle, le recopier à l'octet côté mobile, adapter la table en retard — même thème |
+| `vie_rappels.json` n'est plus ce que `/v1/vie` rend | relancer `gen_vie_rappels.py`, puis `flutter test test/rappels` : l'adaptateur doit suivre dans le même thème |
 
 Les tests qui lisent le dépôt mobile **échouent** quand il est absent de
 `~/Projets/diapason_mobile`, et ne se **sautent** que si la variable
