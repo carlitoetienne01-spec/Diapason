@@ -76,6 +76,14 @@ import { useConfirm } from '../components/ConfirmDialog';
 import { useNavigate } from 'react-router';
 
 import { NoteFolderVisual } from '../features/vie/NoteFolderVisual';
+import {
+  DOSSIER_PLAT,
+  perspectiveDuDossier,
+  profondeur,
+  reliefDuDossier,
+  survolDuDossier,
+  transitionDeSurvol,
+} from '../features/vie/dossierRelief';
 import { listVieNoteResumes } from '../features/vie/api';
 import type { VieNoteResume } from '../features/vie/types';
 import { deplacerVers } from '../features/vie/photos';
@@ -384,9 +392,14 @@ function ProjectFolderVisual({
     <div
       aria-hidden="true"
       className={`relative grid w-full place-items-center ${height}`}
-      onPointerEnter={() => setActive(true)}
-      onPointerMove={followPointer}
-      onPointerLeave={reset}
+      // Au téléphone, à plat comme celui des Notes (dossierRelief.ts,
+      // 26/09/2026) : cette copie gardait 149 calques et 16 transitions de
+      // 320 à 460 ms au banc.
+      {...survolDuDossier(DOSSIER_PLAT, {
+        onPointerEnter: () => setActive(true),
+        onPointerMove: followPointer,
+        onPointerLeave: reset,
+      })}
       // 26/09/2026 : à 375 px (et à 340 dans le mini-panneau), la colonne
       // d'une grille à deux cartes fait ~167 px ; l'objet, haut de toute la
       // boîte, en réclamait 192 et poussait la page de 13 px vers la droite —
@@ -394,17 +407,14 @@ function ProjectFolderVisual({
       // boîte devient un conteneur de taille : l'objet prend la plus petite
       // de sa largeur et de sa hauteur × le ratio, sans jamais se déformer
       // (les masques sont posés à 100 % × 100 % et suivraient l'étirement).
-      style={{ perspective: '760px', background: 'transparent', containerType: 'size' }}
+      style={{ perspective: perspectiveDuDossier(DOSSIER_PLAT), background: 'transparent', containerType: 'size' }}
     >
       <div
         className="relative"
         style={{
           aspectRatio: '135 / 138',
           width: 'min(100cqw, calc(100cqh * 135 / 138))',
-          transform: `rotateX(${tilt.y}deg) rotateY(${tilt.x}deg) scale(${active ? 1.02 : 1})`,
-          transformStyle: 'preserve-3d',
-          transition: active ? 'transform 90ms linear' : 'transform 460ms cubic-bezier(.2,.8,.2,1)',
-          willChange: 'transform',
+          ...reliefDuDossier(DOSSIER_PLAT, tilt, active, 1.02),
         }}
       >
         {/* Sheet: the only opaque colored body, sitting behind the glass */}
@@ -459,7 +469,7 @@ function ProjectFolderVisual({
               fill="rgba(15,23,42,0.22)"
               filter={`url(#${ref('bloom')})`}
               opacity={active ? 0.9 : 0.7}
-              style={{ transition: 'opacity 320ms ease' }}
+              style={{ transition: transitionDeSurvol(DOSSIER_PLAT, 'opacity 320ms ease') }}
             />
           )}
 
@@ -472,7 +482,7 @@ function ProjectFolderVisual({
             fill={alpha(tone, palette.glowOpacity)}
             filter={`url(#${ref('bloom')})`}
             opacity={active ? palette.bloomActive : palette.bloomIdle}
-            style={{ transition: 'opacity 320ms ease' }}
+            style={{ transition: transitionDeSurvol(DOSSIER_PLAT, 'opacity 320ms ease') }}
           />
 
           <g filter={`url(#${ref('sheetShadow')})`}>
@@ -511,7 +521,7 @@ function ProjectFolderVisual({
             WebkitMaskSize: '100% 100%',
             maskRepeat: 'no-repeat',
             WebkitMaskRepeat: 'no-repeat',
-            transform: 'translateZ(16px)',
+            transform: profondeur(DOSSIER_PLAT, 16),
           }}
         />
 
@@ -519,7 +529,7 @@ function ProjectFolderVisual({
         <svg
           viewBox={ART_VIEWBOX}
           className="pointer-events-none absolute inset-0 h-full w-full"
-          style={{ transform: 'translateZ(18px)' }}
+          style={{ transform: profondeur(DOSSIER_PLAT, 18) }}
         >
           <defs>
             <linearGradient id={ref('rim')} x1="0.2" y1="0" x2="0.6" y2="1">
@@ -611,8 +621,8 @@ function ProjectFolderVisual({
             WebkitMaskSize: '100% 100%',
             maskRepeat: 'no-repeat',
             WebkitMaskRepeat: 'no-repeat',
-            transform: 'translateZ(22px)',
-            transition: active ? 'none' : 'background 300ms ease',
+            transform: profondeur(DOSSIER_PLAT, 22),
+            transition: transitionDeSurvol(DOSSIER_PLAT, active ? 'none' : 'background 300ms ease'),
           }}
         />
 
@@ -621,9 +631,9 @@ function ProjectFolderVisual({
             viewBox={ART_VIEWBOX}
             className="pointer-events-none absolute inset-0 h-full w-full"
             style={{
-              transform: 'translateZ(24px)',
+              transform: profondeur(DOSSIER_PLAT, 24),
               opacity: showGlyph ? 1 : 0,
-              transition: 'opacity 220ms ease',
+              transition: transitionDeSurvol(DOSSIER_PLAT, 'opacity 220ms ease'),
             }}
             aria-hidden="true"
           >

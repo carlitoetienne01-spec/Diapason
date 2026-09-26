@@ -1,5 +1,12 @@
 import { useEffect, useId, useState, type PointerEvent } from 'react';
-import { estMobile } from '../../lib/natif';
+import {
+  DOSSIER_PLAT,
+  perspectiveDuDossier,
+  profondeur,
+  reliefDuDossier,
+  survolDuDossier,
+  transitionDeSurvol,
+} from './dossierRelief';
 
 const FALLBACK_COLOR = '#6366f1';
 
@@ -182,17 +189,6 @@ type Props = {
  * its mouth, then a real backdrop-filtered pocket masked to the front panel,
  * finished with rim light, specular sweep and a pointer-driven hotspot.
  */
-/**
- * Au téléphone, le dossier est posé À PLAT (26/09/2026, chantier de la
- * fluidité, lot 3) : ni perspective, ni `preserve-3d`, ni `will-change`, ni
- * couches en `translateZ`, ni inclinaison au pointeur — un doigt ne survole
- * rien. Chaque dossier en relief forçait ses propres calques composés : au
- * banc (processeur ×4), la page des Notes et ses 61 dossiers en tenait 371,
- * 9,1 millions de pixels de textures à garder en mémoire graphique ; à plat,
- * 35 calques et 4,7 millions. Le Mac garde son dossier en relief.
- */
-const DOSSIER_PLAT = estMobile;
-
 export function NoteFolderVisual({ color, sheets, height = 'h-40' }: Props) {
   const isLight = useIsLightTheme();
   const tone = color || FALLBACK_COLOR;
@@ -225,9 +221,14 @@ export function NoteFolderVisual({ color, sheets, height = 'h-40' }: Props) {
     <div
       aria-hidden="true"
       className={`relative grid w-full place-items-center ${height}`}
-      onPointerEnter={DOSSIER_PLAT ? undefined : () => setActive(true)}
-      onPointerMove={DOSSIER_PLAT ? undefined : followPointer}
-      onPointerLeave={DOSSIER_PLAT ? undefined : reset}
+      // Au téléphone, à plat (dossierRelief.ts) : au banc du 26/09/2026, la
+      // page des Notes et ses 61 dossiers tenaient 371 calques composés en
+      // relief, 35 à plat.
+      {...survolDuDossier(DOSSIER_PLAT, {
+        onPointerEnter: () => setActive(true),
+        onPointerMove: followPointer,
+        onPointerLeave: reset,
+      })}
       // 26/09/2026 : à 375 px (et à 340 dans le mini-panneau), la colonne
       // d'une grille à deux cartes fait ~167 px ; l'objet, haut de toute la
       // boîte, en réclamait 192 et poussait la page de 13 px vers la droite —
@@ -235,21 +236,14 @@ export function NoteFolderVisual({ color, sheets, height = 'h-40' }: Props) {
       // boîte devient un conteneur de taille : l'objet prend la plus petite
       // de sa largeur et de sa hauteur × le ratio, sans jamais se déformer
       // (les masques sont posés à 100 % × 100 % et suivraient l'étirement).
-      style={{ perspective: DOSSIER_PLAT ? undefined : '760px', background: 'transparent', containerType: 'size' }}
+      style={{ perspective: perspectiveDuDossier(DOSSIER_PLAT), background: 'transparent', containerType: 'size' }}
     >
       <div
         className="relative"
         style={{
           aspectRatio: '6 / 5',
           width: 'min(100cqw, calc(100cqh * 6 / 5))',
-          ...(DOSSIER_PLAT
-            ? {}
-            : {
-                transform: `rotateX(${tilt.y}deg) rotateY(${tilt.x}deg) scale(${active ? 1.03 : 1})`,
-                transformStyle: 'preserve-3d' as const,
-                transition: active ? 'transform 90ms linear' : 'transform 460ms cubic-bezier(.2,.8,.2,1)',
-                willChange: 'transform',
-              }),
+          ...reliefDuDossier(DOSSIER_PLAT, tilt, active, 1.03),
         }}
       >
         {/* Shell + sheets */}
@@ -291,7 +285,7 @@ export function NoteFolderVisual({ color, sheets, height = 'h-40' }: Props) {
             fill="#0b1020"
             filter={`url(#${ref('contact')})`}
             opacity={active ? palette.contactOpacity + 0.1 : palette.contactOpacity}
-            style={{ transition: 'opacity 320ms ease' }}
+            style={{ transition: transitionDeSurvol(DOSSIER_PLAT, 'opacity 320ms ease') }}
           />
 
           <g filter={`url(#${ref('drop')})`}>
@@ -348,7 +342,7 @@ export function NoteFolderVisual({ color, sheets, height = 'h-40' }: Props) {
             WebkitMaskSize: '100% 100%',
             maskRepeat: 'no-repeat',
             WebkitMaskRepeat: 'no-repeat',
-            transform: DOSSIER_PLAT ? undefined : 'translateZ(16px)',
+            transform: profondeur(DOSSIER_PLAT, 16),
           }}
         />
 
@@ -356,7 +350,7 @@ export function NoteFolderVisual({ color, sheets, height = 'h-40' }: Props) {
         <svg
           viewBox={ART_VIEWBOX}
           className="pointer-events-none absolute inset-0 h-full w-full"
-          style={{ transform: DOSSIER_PLAT ? undefined : 'translateZ(18px)' }}
+          style={{ transform: profondeur(DOSSIER_PLAT, 18) }}
         >
           <defs>
             <linearGradient id={ref('rim')} x1="0.18" y1="0" x2="0.62" y2="1">
@@ -423,8 +417,8 @@ export function NoteFolderVisual({ color, sheets, height = 'h-40' }: Props) {
             WebkitMaskSize: '100% 100%',
             maskRepeat: 'no-repeat',
             WebkitMaskRepeat: 'no-repeat',
-            transform: DOSSIER_PLAT ? undefined : 'translateZ(22px)',
-            transition: active ? 'none' : 'background 300ms ease',
+            transform: profondeur(DOSSIER_PLAT, 22),
+            transition: transitionDeSurvol(DOSSIER_PLAT, active ? 'none' : 'background 300ms ease'),
           }}
         />
       </div>
