@@ -244,16 +244,22 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
+// 26/09/2026 : à 375 px, l'étiquette et son contrôle se disputaient une
+// seule ligne — « URL de l'API » tombait à 45 px de large, un mot par ligne,
+// et le sélecteur de thème (359 px) poussait la page de 99 px vers la droite.
+// Sous sm, la rangée passe à la ligne quand les deux ne tiennent pas côte à
+// côte (12rem pour l'étiquette) ; au-delà, elle reste celle du bureau, où la
+// liste des modèles tient à droite de son étiquette.
 function SettingRow({ label, description, children }: { label: string; description?: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between py-3" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
-      <div>
+    <div className="flex items-center justify-between py-3 max-sm:flex-wrap max-sm:gap-x-4 max-sm:gap-y-2" style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
+      <div className="max-sm:min-w-0 max-sm:flex-[1_1_12rem]">
         <div className="text-sm" style={{ color: 'var(--color-text)' }}>{label}</div>
         {description && (
           <div className="text-xs mt-0.5" style={{ color: 'var(--color-text-tertiary)' }}>{description}</div>
         )}
       </div>
-      <div>{children}</div>
+      <div className="max-sm:min-w-0 max-sm:max-w-full">{children}</div>
     </div>
   );
 }
@@ -563,7 +569,7 @@ export function SettingsPage() {
               </select>
             </SettingRow>
             <SettingRow label={t('settings.theme.label')} description={t('settings.theme.description')}>
-              <div className="flex gap-1 p-0.5 rounded-lg" style={{ background: 'var(--color-bg-secondary)' }}>
+              <div className="flex flex-wrap gap-1 p-0.5 rounded-lg" style={{ background: 'var(--color-bg-secondary)' }}>
                 {themeOptions.map((opt) => {
                   const isActive = settings.theme === opt.value;
                   return (
@@ -589,7 +595,7 @@ export function SettingsPage() {
                 label={t('settings.terminalSkin.label')}
                 description={t('settings.terminalSkin.description')}
               >
-                <div className="flex gap-1 p-0.5 rounded-lg" style={{ background: 'var(--color-bg-secondary)' }}>
+                <div className="flex flex-wrap gap-1 p-0.5 rounded-lg" style={{ background: 'var(--color-bg-secondary)' }}>
                   {TERMINAL_SKINS.map((skin) => {
                     const isActive = (settings.terminalSkin ?? 'phosphor') === skin;
                     const swatch = TERMINAL_SKIN_SWATCHES[skin];
