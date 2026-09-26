@@ -1,4 +1,4 @@
-"""Le bundle servi au téléphone : ce qui se garde, ce qui se revalide.
+"""Le bundle servi au téléphone : cache, revalidation, variantes précomprimées.
 
 Chantier de la fluidité, lot 1 (26/09/2026). Au banc (4G simulée, 110 ms
 d'aller-retour, 10 Mbit/s), le téléphone retéléchargeait 2 480 Ko à chaque
@@ -10,6 +10,10 @@ du Mac.
 
 from __future__ import annotations
 
+import gzip
+import json
+import os
+import re
 import time
 from pathlib import Path
 
@@ -23,16 +27,22 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from diapason.server.bundle_statique import (  # noqa: E402
     CACHE_IMMUABLE,
+    COMPRESSIBLES,
+    encodages_acceptes,
     monter_le_bundle,
     porte_une_empreinte,
 )
 
+brotli = pytest.importorskip("brotli")
+
+RACINE = Path(__file__).resolve().parents[2]
 JS_V1 = "console.log('bundle du premier build');" * 200
 JS_V2 = "console.log('bundle du second build');" * 200
 
 
 def _construire(static: Path, empreinte: str, contenu: str) -> None:
-    """Un « build » : index.html qui nomme son fichier à empreinte."""
+    """Un « build » : index.html qui nomme son fichier à empreinte, et les
+    variantes .br/.gz posées comme precomprimer.mjs les pose."""
     assets = static / "assets"
     assets.mkdir(parents=True, exist_ok=True)
     js = assets / f"index-{empreinte}.js"
@@ -41,6 +51,9 @@ def _construire(static: Path, empreinte: str, contenu: str) -> None:
         f'<!doctype html><html><head><script type="module" '
         f'src="/assets/index-{empreinte}.js"></script></head><body></body></html>'
     )
+    brut = js.read_bytes()
+    (assets / f"index-{empreinte}.js.br").write_bytes(brotli.compress(brut))
+    (assets / f"index-{empreinte}.js.gz").write_bytes(gzip.compress(brut))
 
 
 def _client(static: Path) -> TestClient:
@@ -120,8 +133,10 @@ class TestLeCache:
         assert "index-Ab1_cD-2.js" not in nouveau.text, (
             "l'ancien bundle n'est plus nommé"
         )
-        js = client.get("/assets/index-Zz9-yY_8.js")
-        assert js.text == JS_V2, "le nouveau fichier est servi"
+        js = client.get("/assets/index-Zz9-yY_8.js", headers={"Accept-Encoding": "br"})
+        assert js.text == JS_V2, (
+            "le nouveau fichier est servi, décomprimé à l'identique"
+        )
 
     def test_aucune_reponse_de_l_api_ne_devient_cachable(self, bundle):
         """La confidentialité avant la vitesse : /v1 porte les données de
@@ -143,3 +158,102 @@ class TestLeCache:
             assert porte_une_empreinte(nom), nom
         for nom in ("index.html", "sw.js", "manifest.webmanifest", "app.js", "a-b.js"):
             assert not porte_une_empreinte(nom), nom
+
+
+class TestLesVariantesPrecomprimees:
+    def test_brotli_est_servi_quand_le_client_l_accepte(self, bundle):
+        """Sans variante, 1 422 181 octets partent au lieu de 353 108."""
+        reponse = _client(bundle).get(
+            "/assets/index-Ab1_cD-2.js",
+            headers={"Accept-Encoding": "gzip, deflate, br"},
+        )
+        assert reponse.headers["content-encoding"] == "br"
+        assert reponse.headers["content-type"].startswith("text/javascript"), (
+            "le type est celui du fichier, pas celui de la variante"
+        )
+        assert "accept-encoding" in reponse.headers["vary"].lower()
+        assert reponse.text == JS_V1
+
+    def test_gzip_quand_brotli_n_est_pas_accepte(self, bundle):
+        """Chromium n'annonce pas brotli en http : gzip, pas le brut."""
+        reponse = _client(bundle).get(
+            "/assets/index-Ab1_cD-2.js", headers={"Accept-Encoding": "gzip, deflate"}
+        )
+        assert reponse.headers["content-encoding"] == "gzip"
+        assert reponse.text == JS_V1
+
+    def test_le_brut_quand_rien_n_est_accepte_ou_que_br_est_refuse(self, bundle):
+        client = _client(bundle)
+        for entete in ("identity", "br;q=0, gzip;q=0", ""):
+            reponse = client.get(
+                "/assets/index-Ab1_cD-2.js", headers={"Accept-Encoding": entete}
+            )
+            assert "content-encoding" not in reponse.headers, entete
+            assert reponse.text == JS_V1, entete
+            assert "accept-encoding" in reponse.headers["vary"].lower(), (
+                "même le brut varie : un cache ne doit pas le resservir à un autre"
+            )
+
+    def test_chaque_variante_a_son_etag_et_son_304(self, bundle):
+        """Un ETag partagé ferait valider par 304 une copie gzip auprès d'un
+        client qui attend du brotli."""
+        client = _client(bundle)
+        br = client.get("/assets/index-Ab1_cD-2.js", headers={"Accept-Encoding": "br"})
+        gz = client.get(
+            "/assets/index-Ab1_cD-2.js", headers={"Accept-Encoding": "gzip"}
+        )
+        assert br.headers["etag"] != gz.headers["etag"]
+        revalide = client.get(
+            "/assets/index-Ab1_cD-2.js",
+            headers={"Accept-Encoding": "br", "If-None-Match": br.headers["etag"]},
+        )
+        assert revalide.status_code == 304
+        assert revalide.headers["cache-control"] == CACHE_IMMUABLE
+
+    def test_une_variante_plus_vieille_que_son_original_n_est_pas_servie(self, bundle):
+        """Un `vite build` sans `npm run build` réécrit le fichier sans ses
+        variantes : servir l'ancien .br, ce serait exécuter au téléphone un
+        bundle que le Mac n'a plus."""
+        js = bundle / "assets" / "index-Ab1_cD-2.js"
+        js.write_text(JS_V2)
+        passe = time.time() - 60
+        for suffixe in (".br", ".gz"):
+            os.utime(str(js) + suffixe, (passe, passe))
+        reponse = _client(bundle).get(
+            "/assets/index-Ab1_cD-2.js", headers={"Accept-Encoding": "br, gzip"}
+        )
+        assert "content-encoding" not in reponse.headers
+        assert reponse.text == JS_V2, "l'original à jour, pas la variante périmée"
+
+    def test_la_liste_des_extensions_est_la_meme_des_deux_cotes(self):
+        """precomprimer.mjs pose des variantes que le serveur doit savoir
+        servir : une extension d'un seul côté, et elle part brute."""
+        script = (RACINE / "frontend" / "scripts" / "precomprimer.mjs").read_text()
+        bloc = script.split("export const EXTENSIONS = new Set([", 1)[1].split("]);")[0]
+        du_script = set(re.findall(r"'(\.[a-z0-9]+)'", bloc))
+        assert du_script == set(COMPRESSIBLES), du_script ^ set(COMPRESSIBLES)
+
+    def test_la_construction_du_serveur_precomprime(self):
+        """`npm run build` écrit server/static ; sans l'étape, aucune variante."""
+        paquet = json.loads((RACINE / "frontend" / "package.json").read_text())
+        assert "precomprimer.mjs" in paquet["scripts"]["build"]
+        assert "precomprimer.mjs" not in paquet["scripts"]["build:tauri"], (
+            "l'app de bureau embarque dist/ : des .br/.gz l'alourdiraient"
+        )
+        installe = (RACINE / "scripts" / "install-desktop.sh").read_text()
+        rsync = installe.index('rsync -a --delete "$RACINE/frontend/dist/"')
+        assert installe.index("precomprimer.mjs", rsync) > rsync, (
+            "la copie de dist/ efface les variantes : il faut les reposer après"
+        )
+
+
+class TestLAcceptEncoding:
+    def test_les_q_nuls_excluent_et_le_joker_inclut(self):
+        assert encodages_acceptes("gzip, deflate, br, zstd") >= {"br", "gzip"}
+        assert "br" not in encodages_acceptes("gzip, br;q=0")
+        assert encodages_acceptes("*") >= {"br", "gzip"}
+        assert "gzip" not in encodages_acceptes("*, gzip;q=0")
+        assert encodages_acceptes(None) == frozenset()
+        assert encodages_acceptes("br;q=abc") == frozenset(), (
+            "un q illisible ne vaut rien"
+        )

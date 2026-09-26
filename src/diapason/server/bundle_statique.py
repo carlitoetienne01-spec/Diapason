@@ -1,14 +1,16 @@
-"""Le bundle servi par le serveur : ce qui se garde, ce qui se revalide.
+"""Le bundle servi par le serveur : ce qui se garde, ce qui se revalide,
+ce qui se comprime.
 
 26/09/2026, chantier de la fluidité (lot 1, le réseau). Le téléphone ouvre
 le bundle React par la passerelle du tailnet, à 110 ms d'aller-retour en 4G.
 Jusqu'ici, CHAQUE fichier partait en ``no-cache, no-store, must-revalidate``,
 sans ETag ni Last-Modified, et sans compression : 2 480 Ko retéléchargés à
 chaque ouverture de l'app (2 350 ms jusqu'à la Discussion, mesuré au banc à
-processeur ×4). Rien dans l'historique ne justifiait le ``no-store`` : il
+processeur ×4), dont un ``index-*.js`` de 1 422 181 octets qui en pèse
+353 108 en brotli. Rien dans l'historique ne justifiait le ``no-store`` : il
 datait du renommage du dépôt.
 
-Deux règles, et elles tiennent ensemble :
+Trois règles, et elles tiennent ensemble :
 
 1. **Les fichiers à empreinte sont immuables.** ``/assets/<nom>-<hash>.<ext>``
    : Vite change le nom dès que le contenu change, donc un nom donné n'a
@@ -20,6 +22,11 @@ Deux règles, et elles tiennent ensemble :
    répond quand rien n'a changé. C'est ce qui garantit que le téléphone
    exécute EXACTEMENT le bundle du Mac : un nouveau build réécrit
    ``index.html`` (nouvel ETag), qui ne nomme que les nouvelles empreintes.
+3. **Les variantes précomprimées sont choisies, jamais fabriquées ici.**
+   ``frontend/scripts/precomprimer.mjs`` pose ``.br`` et ``.gz`` à côté de
+   chaque fichier texte au build ; on sert la meilleure que le client
+   accepte, avec ``Vary: Accept-Encoding``. Comprimer à la volée un fichier
+   de 1,4 Mo en brotli 11 prendrait plus d'une seconde sur la boucle.
 
 Les réponses de l'API ne passent jamais par ici : ``/v1/*`` n'est ni monté
 ni rattrapé par ce module (voir ``passerelle_tailnet._ESPACES_D_API``).
@@ -30,7 +37,9 @@ from __future__ import annotations
 import asyncio
 import os
 import re
+import stat
 from email.utils import parsedate
+from mimetypes import guess_type
 from pathlib import Path
 from typing import Any
 
@@ -41,8 +50,11 @@ from starlette.staticfiles import NotModifiedResponse, StaticFiles
 __all__ = [
     "CACHE_IMMUABLE",
     "CACHE_REVALIDE",
+    "COMPRESSIBLES",
     "FichiersDuBundle",
     "ReponseDuBundle",
+    "choisir_encodage",
+    "encodages_acceptes",
     "fichier_du_bundle",
     "monter_le_bundle",
     "porte_une_empreinte",
@@ -55,10 +67,80 @@ CACHE_REVALIDE = "no-cache"
 # l'extension (« index-DP3oxbgi.css », « KaTeX_Main-Regular-CTRA-rTL.woff »).
 _EMPREINTE_RE = re.compile(r"-[A-Za-z0-9_-]{8}\.[A-Za-z0-9]+$")
 
+# Les extensions que precomprimer.mjs traite — la même liste des deux côtés,
+# vérifiée par tests/server/test_bundle_statique.py. Les woff2, png et autres
+# formats déjà comprimés n'y sont pas : les recomprimer ne gagne rien.
+COMPRESSIBLES = frozenset(
+    {
+        ".js",
+        ".mjs",
+        ".css",
+        ".html",
+        ".svg",
+        ".json",
+        ".webmanifest",
+        ".txt",
+        ".xml",
+        ".map",
+        ".ttf",
+        ".otf",
+        ".ico",
+        ".wasm",
+    }
+)
+
+# L'ordre est la préférence : brotli gagne ~17 % sur gzip (626 Ko contre
+# 752 Ko pour l'ouverture de l'app, node zlib, 26/09/2026).
+_VARIANTES = (("br", ".br"), ("gzip", ".gz"))
+
 
 def porte_une_empreinte(nom: str) -> bool:
     """Vrai quand le nom du fichier porte une empreinte de contenu Vite."""
     return bool(_EMPREINTE_RE.search(nom))
+
+
+def encodages_acceptes(entete: str | None) -> frozenset[str]:
+    """Les codages qu'un ``Accept-Encoding`` autorise (``q=0`` exclut).
+
+    Un ``*`` accepté vaut pour br et gzip, sauf s'ils sont nommés à ``q=0``.
+    """
+    if not entete:
+        return frozenset()
+    acceptes: set[str] = set()
+    refuses: set[str] = set()
+    joker = False
+    for morceau in entete.split(","):
+        nom, _, params = morceau.strip().partition(";")
+        nom = nom.strip().lower()
+        if not nom:
+            continue
+        q = 1.0
+        for param in params.split(";"):
+            cle, _, valeur = param.strip().partition("=")
+            if cle.strip().lower() == "q":
+                try:
+                    q = float(valeur)
+                except ValueError:
+                    q = 0.0
+        if q <= 0:
+            refuses.add(nom)
+        elif nom == "*":
+            joker = True
+        else:
+            acceptes.add(nom)
+    if joker:
+        acceptes |= {"br", "gzip"} - refuses
+    return frozenset(acceptes - refuses)
+
+
+def choisir_encodage(
+    acceptes: frozenset[str], disponibles: tuple[str, ...] = ("br", "gzip")
+) -> str | None:
+    """Le premier codage de ``disponibles`` que le client accepte."""
+    for encodage in disponibles:
+        if encodage in acceptes:
+            return encodage
+    return None
 
 
 def fichier_du_bundle(racine: Path, chemin: str) -> Path:
@@ -69,6 +151,33 @@ def fichier_du_bundle(racine: Path, chemin: str) -> Path:
         if candidat.is_relative_to(racine.resolve()) and candidat.is_file():
             return candidat
     return racine / "index.html"
+
+
+def _variante(
+    chemin: str, stat_brut: os.stat_result | None, acceptes: frozenset[str]
+) -> tuple[str, os.stat_result, str | None]:
+    """Le fichier à envoyer : la variante précomprimée si elle est là, à jour,
+    et acceptée ; sinon l'original. Appelée dans un fil (des ``stat``)."""
+    if stat_brut is None:
+        stat_brut = os.stat(chemin)
+    if os.path.splitext(chemin)[1].lower() in COMPRESSIBLES:
+        for encodage, suffixe in _VARIANTES:
+            if encodage not in acceptes:
+                continue
+            try:
+                stat_variante = os.stat(chemin + suffixe)
+            except OSError:
+                continue
+            # Une variante plus vieille que son original vient d'un build
+            # précédent (un `vite build` lancé sans `npm run build`, une copie
+            # qui a remplacé le fichier sans elle) : la servir, ce serait
+            # exécuter au téléphone un bundle que le Mac n'a plus.
+            if (
+                stat.S_ISREG(stat_variante.st_mode)
+                and stat_variante.st_mtime >= stat_brut.st_mtime
+            ):
+                return chemin + suffixe, stat_variante, encodage
+    return chemin, stat_brut, None
 
 
 def _non_modifie(reponse: Headers, requete: Headers) -> bool:
@@ -87,9 +196,9 @@ def _non_modifie(reponse: Headers, requete: Headers) -> bool:
 
 
 class ReponseDuBundle(Response):
-    """Un fichier du bundle : cache posé, 304 si l'ETag concorde. Le ``stat``
-    se fait à l'envoi, dans un fil : une route ``async`` qui lit le disque
-    sur la boucle gèle tout (CLAUDE.md §5)."""
+    """Un fichier du bundle : variante choisie, cache posé, 304 si l'ETag
+    concorde. Le choix se fait à l'envoi, dans un fil : une route ``async``
+    qui lit le disque sur la boucle gèle tout (CLAUDE.md §5)."""
 
     def __init__(
         self,
@@ -105,12 +214,21 @@ class ReponseDuBundle(Response):
 
     async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
         requete = Headers(scope=scope)
-        stat_servi = self.stat_result or await asyncio.to_thread(os.stat, self.chemin)
+        acceptes = encodages_acceptes(requete.get("accept-encoding"))
+        servi, stat_servi, encodage = await asyncio.to_thread(
+            _variante, self.chemin, self.stat_result, acceptes
+        )
+        entetes = {"cache-control": self.cache_control}
+        if os.path.splitext(self.chemin)[1].lower() in COMPRESSIBLES:
+            entetes["vary"] = "Accept-Encoding"
+        if encodage is not None:
+            entetes["content-encoding"] = encodage
         reponse: Response = FileResponse(
-            self.chemin,
+            servi,
             status_code=self.status_code,
             stat_result=stat_servi,
-            headers={"cache-control": self.cache_control},
+            media_type=guess_type(self.chemin)[0] or "text/plain",
+            headers=entetes,
         )
         if self.status_code == 200 and _non_modifie(reponse.headers, requete):
             reponse = NotModifiedResponse(reponse.headers)
@@ -119,7 +237,7 @@ class ReponseDuBundle(Response):
 
 class FichiersDuBundle(StaticFiles):
     """``/assets`` : immuable quand le nom porte une empreinte, revalidé
-    sinon."""
+    sinon ; variantes précomprimées servies selon ``Accept-Encoding``."""
 
     def file_response(
         self,

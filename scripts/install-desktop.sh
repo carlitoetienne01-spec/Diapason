@@ -58,6 +58,13 @@ fi
 if [ -d "$RACINE/frontend/dist" ] && [ -f "$RACINE/frontend/dist/index.html" ]; then
   echo "→ synchronisation de l'interface web du serveur"
   rsync -a --delete "$RACINE/frontend/dist/" "$RACINE/src/diapason/server/static/"
+  # 26/09/2026 : dist/ n'a pas de variantes .br/.gz (l'app de bureau n'en
+  # veut pas), et --delete vient d'effacer celles du build précédent. Sans
+  # cette ligne, le téléphone recevait le bundle brut : 2,5 Mo au lieu de
+  # 626 Ko pour ouvrir l'app. Un échec ici laisse un serveur qui marche,
+  # seulement plus lent — il ne doit pas arrêter l'installation.
+  node "$RACINE/frontend/scripts/precomprimer.mjs" "$RACINE/src/diapason/server/static" \
+    || echo "✗ précompression échouée — le serveur enverra le bundle non comprimé" >&2
 else
   echo "✗ frontend/dist absent après la construction — interface du serveur NON rafraîchie" >&2
 fi
