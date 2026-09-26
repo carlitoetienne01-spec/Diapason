@@ -29,15 +29,22 @@ import hashlib
 import secrets
 import sqlite3
 from contextlib import closing
-from typing import Any
+from typing import Any, Mapping
 
 from diapason.mesh.registry import TRUST_TRUSTED, DeviceRegistry, MeshError, now_ms
+from diapason.mesh.signed import MAX_SIGNED_SKEW_MS, SignedRejected, signable
 
 __all__ = [
     "DeviceSessions",
     "SESSION_TTL_MS",
     "TICKET_TTL_MS",
     "SESSION_TOUCH_INTERVAL_MS",
+    "SESSION_REQUEST_VERSION",
+    "SESSION_REQUEST_PURPOSE",
+    "SESSION_REQUEST_FIELDS",
+    "SESSION_REQUEST_MAX_TTL_MS",
+    "build_session_request",
+    "verify_session_request",
 ]
 
 # Twelve hours, renewed when the app comes back to the foreground (decided
@@ -274,3 +281,182 @@ class DeviceSessions:
             }
             for row in rows
         ]
+
+
+# ── the envelope that asks for a session ─────────────────────────────────
+#
+# 26/09/2026, phase 2 step 2. A type of its own, NOT a command: reusing the
+# command envelope would let a captured order (« ouvre mes tâches ») be
+# replayed as a login, or a login be executed as an order. Two things keep
+# them apart, and both are tested: ``purpose`` is inside the signed bytes —
+# no command, poll, ack or beacon ever signs a field of that name — and the
+# set of keys must be exactly this one, so a command's ``commandId`` or
+# ``arguments`` is refused before any cryptography.
+#
+# Its own version number, too. COMMAND_VERSION and PULL_VERSION are frozen
+# by the Dart client (CLAUDE.md §4); this one starts at 1 and moves alone.
+SESSION_REQUEST_VERSION = 1
+SESSION_REQUEST_PURPOSE = "webview-session"
+
+# Sixty seconds, the same as the ticket it buys. The phone signs right
+# before sending; anything that needs longer is not the phone opening its
+# WebView, it is someone holding on to a signed request for later.
+SESSION_REQUEST_MAX_TTL_MS = 60_000
+
+SESSION_REQUEST_FIELDS = (
+    "version",
+    "purpose",
+    "ownerId",
+    "deviceId",
+    "audience",
+    "issuedAtMs",
+    "expiresAtMs",
+    "nonce",
+)
+_INT_FIELDS = frozenset({"version", "issuedAtMs", "expiresAtMs"})
+_ALLOWED_KEYS = frozenset(SESSION_REQUEST_FIELDS) | {"signature"}
+
+# 24 bytes of token_urlsafe are 32 characters; the Dart side draws the same.
+# Below 16 characters a nonce is guessable enough to be pre-spent by a
+# stranger; above 200 it is somebody filling mesh_nonces for us.
+_NONCE_MIN_LENGTH = 16
+_NONCE_MAX_LENGTH = 200
+
+_SUBJECT = "ouverture de session"
+
+
+def build_session_request(
+    *,
+    owner_id: str,
+    device_id: str,
+    audience: str,
+    ttl_ms: int = SESSION_REQUEST_MAX_TTL_MS,
+    now: int | None = None,
+) -> dict[str, Any]:
+    """The unsigned request a device sends to open a session on *audience*.
+
+    Integers and strings only: CLAUDE.md §4 — Python writes ``1e-07`` where
+    Dart writes ``1e-7``, and a float would make every signature invalid
+    without a word.
+    """
+    issued = now_ms() if now is None else int(now)
+    return {
+        "version": SESSION_REQUEST_VERSION,
+        "purpose": SESSION_REQUEST_PURPOSE,
+        "ownerId": str(owner_id),
+        "deviceId": str(device_id),
+        "audience": str(audience),
+        "issuedAtMs": issued,
+        "expiresAtMs": issued + int(ttl_ms),
+        "nonce": secrets.token_urlsafe(24),
+    }
+
+
+def verify_session_request(
+    raw: Any,
+    *,
+    registry: Any,
+    local_device_id: str,
+    local_owner_id: str,
+    nonces: Any,
+    now: int | None = None,
+) -> str:
+    """Check a signed session request. Returns the device id, or raises.
+
+    ``SignedRejected`` carries a code and a French sentence for the user.
+    The order is the one ``verify_command`` uses: cheap structural checks
+    first, so a malformed or misaddressed request never reaches the
+    cryptography, and the nonce spent LAST — a request refused for another
+    reason must not burn a nonce its legitimate sender still needs.
+    """
+    stamp = now_ms() if now is None else int(now)
+
+    # 1. shape — this route is reached by strangers, so every oddity is a
+    #    refusal and never an exception.
+    if not isinstance(raw, Mapping):
+        raise SignedRejected("DENIED", f"Cette {_SUBJECT} est illisible.")
+    for value in raw.values():
+        if isinstance(value, float):
+            raise SignedRejected(
+                "DENIED",
+                f"Cette {_SUBJECT} contient un nombre à virgule, "
+                "qu'aucune signature ne peut couvrir.",
+            )
+    if set(raw.keys()) != _ALLOWED_KEYS:
+        # A command (commandId, tool, arguments…) or a poll (sentAtMs…)
+        # stops here: it is not a session request, whatever it signs.
+        raise SignedRejected("DENIED", f"Cette {_SUBJECT} n'a pas la forme attendue.")
+    for key in SESSION_REQUEST_FIELDS:
+        value = raw[key]
+        if key in _INT_FIELDS:
+            # `type(...) is int`, not isinstance: True is an int in Python
+            # and would be canonicalised as `true`, never as a number.
+            if type(value) is not int:  # noqa: E721 - bool must not pass
+                raise SignedRejected("DENIED", f"Cette {_SUBJECT} est mal formée.")
+        elif not isinstance(value, str) or not value:
+            raise SignedRejected("DENIED", f"Cette {_SUBJECT} est mal formée.")
+
+    # 2. version and purpose
+    if raw["version"] != SESSION_REQUEST_VERSION:
+        raise SignedRejected(
+            "UNSUPPORTED", f"Cette {_SUBJECT} utilise une version non prise en charge."
+        )
+    if raw["purpose"] != SESSION_REQUEST_PURPOSE:
+        raise SignedRejected("DENIED", f"Cette {_SUBJECT} ne demande pas une session.")
+
+    # 3. same fleet, addressed to THIS machine
+    if raw["ownerId"] != local_owner_id:
+        raise SignedRejected(
+            "DENIED", f"Cette {_SUBJECT} vient d'un autre ensemble d'appareils."
+        )
+    if raw["audience"] != local_device_id:
+        raise SignedRejected(
+            "DENIED", f"Cette {_SUBJECT} s'adresse à un autre appareil."
+        )
+
+    # 4. a device we trust right now — a revoked one has no key here
+    device_id = raw["deviceId"]
+    if device_id == local_device_id:
+        raise SignedRejected(
+            "DENIED", "Un appareil n'ouvre pas de session chez lui-même."
+        )
+    public_key = registry.public_key_of(device_id)
+    if public_key is None:
+        raise SignedRejected(
+            "DENIED", "Cet appareil n'est pas autorisé sur cette machine."
+        )
+
+    # 5. a short, current validity window
+    issued, expires = raw["issuedAtMs"], raw["expiresAtMs"]
+    if expires <= issued:
+        raise SignedRejected("EXPIRED", f"Cette {_SUBJECT} a une validité invalide.")
+    if expires - issued > SESSION_REQUEST_MAX_TTL_MS:
+        raise SignedRejected(
+            "DENIED",
+            f"Cette {_SUBJECT} est valable trop longtemps "
+            f"(plus de {SESSION_REQUEST_MAX_TTL_MS // 1000} s).",
+        )
+    if issued - MAX_SIGNED_SKEW_MS > stamp:
+        raise SignedRejected("DENIED", f"Cette {_SUBJECT} est datée du futur.")
+    if expires + MAX_SIGNED_SKEW_MS < stamp:
+        raise SignedRejected("EXPIRED", f"Cette {_SUBJECT} a expiré.")
+
+    nonce = raw["nonce"]
+    if not _NONCE_MIN_LENGTH <= len(nonce) <= _NONCE_MAX_LENGTH:
+        raise SignedRejected("DENIED", f"Cette {_SUBJECT} est mal formée.")
+
+    # 6. signature, over the listed fields only
+    from diapason.mesh.identity import verify_envelope
+
+    if not verify_envelope(
+        signable(raw, SESSION_REQUEST_FIELDS), raw["signature"], public_key
+    ):
+        raise SignedRejected(
+            "DENIED", f"La signature de cette {_SUBJECT} est invalide."
+        )
+
+    # 7. nonce — spent last, and only once
+    if not nonces.spend(nonce, device_id):
+        raise SignedRejected("DENIED", f"Cette {_SUBJECT} a déjà été reçue.")
+
+    return device_id
