@@ -358,7 +358,7 @@ La classe `succes-page-break` reste lue (`notePages.ts:29`, `notes_resume.py:25`
 
 **14. Retraits, un commit chacun, chacun à sa condition.**
 - (a) Les émetteurs passent au nouveau schéma quand l'APK et Diapason.app reconstruites l'acceptent.
-- (b) L'invité de synchro passe à `/v1/vie/sync/*` une fois pc-bureau à jour.
+- ~~(b) L'invité de synchro passe à `/v1/vie/sync/*` une fois pc-bureau à jour.~~ *Fait dès l'étape 4 (`fea8c4e`) : pc-bureau ne sert plus que de CI, aucun hôte ancien n'était à ménager. Le 25/09/2026, un cliquet (`TestLInviteNAppellePlusLAlias`, `tests/vie/test_vie_sync.py`) exige que l'appairage et l'échange passent par `/v1/vie/sync/*` sans toucher le compteur de l'alias.*
 - (c) L'alias `/v1/succes` est retiré quand trois conditions sont réunies : `synchroniser.py` corrigé, app reconstruite et service worker renouvelé ; pc-bureau à jour ; et le compteur de l'étape 4 à zéro depuis N jours. Le cliquet `succes_api_surface.json` est alors retiré volontairement.
 - (d) Les redirections `succes/*` et les clés `/succes` de `__diapNoms` sont retirées.
 

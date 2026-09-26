@@ -210,6 +210,54 @@ def test_guest_join_and_exchange_through_http_relay(tmp_path) -> None:
         set_store_for_tests(None)
 
 
+class TestLInviteNAppellePlusLAlias:
+    """Plan 1b, étape 14b (25/09/2026). pc-bureau, le seul pair qui ait
+    jamais servi d'hôte, ne sert plus que de CI : l'invité appelle
+    /v1/vie/sync/* directement. Le test précédent n'en dit rien, puisque
+    `monter` sert les deux préfixes. Un retour à /v1/succes ferait monter le
+    compteur de l'alias à chaque échange — l'étape 14c, qui attend ce
+    compteur à zéro N jours, n'arriverait jamais — puis casserait la synchro
+    en 404 le jour où l'alias partirait."""
+
+    def test_l_appairage_et_l_echange_passent_par_v1_vie(self, tmp_path) -> None:
+        from diapason.vie import routes as routes_mod
+        from diapason.vie import sync as sync_mod
+
+        host = store(tmp_path, "host")
+        guest = store(tmp_path, "guest")
+        set_store_for_tests(host)
+        app = FastAPI()
+        monter(app)
+        client = TestClient(app)
+        chemins: list[str] = []
+        original_post = sync_mod.relay_post
+
+        def _asgi_post(base_url: str, path: str, payload: dict):
+            chemins.append(path)
+            response = client.post(path, json=payload)
+            assert response.status_code < 400, f"{path} : HTTP {response.status_code}"
+            return response.json()
+
+        routes_mod.compteur_alias.remettre_a_zero()
+        sync_mod.relay_post = _asgi_post  # type: ignore[assignment]
+        try:
+            invitation = host.create_pairing("Mac secondaire")
+            guest.set_relay_url("http://testserver")
+            guest.join_remote(invitation["pairingToken"], device_name="Invité")
+            guest.run_exchange()
+        finally:
+            sync_mod.relay_post = original_post  # type: ignore[assignment]
+            set_store_for_tests(None)
+
+        assert chemins == ["/v1/vie/sync/pair", "/v1/vie/sync/exchange"], (
+            f"l'invité doit appeler le nom neuf, pas l'alias : {chemins}"
+        )
+        assert routes_mod.compteur_alias.total == 0, (
+            "une synchro d'invité ne doit compter aucun accès à /v1/succes : "
+            f"{routes_mod.compteur_alias.par_chemin}"
+        )
+
+
 def test_normalize_relay_url_rejects_credentials_and_metadata() -> None:
     from diapason.vie.relay import normalize_relay_url
 
