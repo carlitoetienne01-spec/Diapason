@@ -389,6 +389,52 @@ class TestLesRoutes:
         morte = client.post(f"/v1/vie/projects/{pid}/photo-piles", json={"name": "B"})
         assert morte.status_code == 404
 
+    def test_l_ocr_lit_le_fichier_sous_les_donnees_et_non_sous_le_dossier_courant(
+        self,
+        client: TestClient,
+        magasin: ViePhotosStore,
+        projet: dict,
+        tmp_path: Path,
+        monkeypatch,
+    ) -> None:
+        """Étape 5 du plan 1b : les chemins de photos sont RELATIFS en base.
+
+        Le 25/09/2026, la route /ocr passait la valeur brute de la base à
+        Vision, qui la résolvait depuis le dossier courant — /Users/carlito.e
+        pour launchd : 502 sur toutes les photos migrées, et l'OCR automatique
+        des nouvelles échouait sans un mot."""
+        import diapason.desktop.ocr as ocr
+
+        recus: list[str] = []
+
+        def lire(chemin: str, **_: object) -> list[dict]:
+            recus.append(chemin)
+            assert Path(chemin).is_file(), f"fichier absent pour Vision : {chemin}"
+            return [{"text": "BONJOUR OCR", "confidence": 1.0, "x": 0.0, "y": 0.0}]
+
+        monkeypatch.setattr(ocr, "ocr_available", lambda: True)
+        monkeypatch.setattr(ocr, "recognize_text", lire)
+        pile = magasin.create_photo_pile(projet["id"], "Tableau")
+        photo = magasin.add_photo(
+            pile["id"], {"dataBase64": b64(PNG), "thumbBase64": b64(JPEG)}
+        )
+        with magasin._connect() as conn:
+            en_base = magasin._photo_row(conn, photo["id"])["file_path"]
+        assert not Path(en_base).is_absolute(), "le magasin écrit un chemin relatif"
+        ailleurs = tmp_path / "ailleurs"
+        ailleurs.mkdir()
+        monkeypatch.chdir(ailleurs)
+
+        reponse = client.post(f"/v1/vie/photos/{photo['id']}/ocr")
+
+        assert reponse.status_code == 200, reponse.text
+        assert len(recus) == 1 and Path(recus[0]).is_absolute(), (
+            f"Vision doit recevoir un chemin absolu, pas {recus}"
+        )
+        assert reponse.json()["photo"]["ocrText"] == "BONJOUR OCR"
+        absente = client.post("/v1/vie/photos/inconnue/ocr")
+        assert absente.status_code == 404, "une photo absente reste un 404"
+
 
 class TestLeRangement:
     def _trois(self, magasin: ViePhotosStore, projet: dict) -> tuple[dict, list[str]]:

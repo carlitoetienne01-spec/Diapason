@@ -184,17 +184,15 @@ def register_photos_routes(router: APIRouter, *, get_store, domain_error) -> Non
                 status_code=503,
                 detail="La lecture de texte (Vision) n'est pas disponible ici.",
             )
+        magasin = _photos()
         try:
-            contenu = _photos().photo_content(photo_id)
+            fichier = magasin.fichier_original(photo_id)
         except VieError as exc:
             raise domain_error(exc) from exc
-        magasin = _photos()
-        with magasin._connect() as conn:
-            row = magasin._photo_row(conn, photo_id)
         try:
-            lignes = recognize_text(row["file_path"])
+            lignes = recognize_text(str(fichier))
         except Exception as exc:  # noqa: BLE001 — Vision parle en NSError
-            logger.warning("OCR impossible sur %s : %s", contenu["fileName"], exc)
+            logger.warning("OCR impossible sur la photo %s : %s", photo_id, exc)
             raise HTTPException(
                 status_code=502, detail="La lecture de texte a échoué sur cette photo."
             ) from exc

@@ -746,6 +746,18 @@ class ViePhotosStore(VieFinancesStore):
                 for row in self._photos_de_pile(conn, pile_id)
             ]
 
+    def fichier_original(self, photo_id: str) -> Path:
+        """Le fichier original d'une photo vivante, en chemin ABSOLU.
+
+        Pour qui passe le fichier hors du magasin (Vision). Le 25/09/2026,
+        la route /ocr donnait à Vision le chemin relatif de la base, résolu
+        depuis le dossier courant du processus (/Users/carlito.e sous
+        launchd) : 502 sur chaque photo depuis que les chemins sont relatifs.
+        """
+        with self._connect() as conn:
+            row = self._photo_row(conn, photo_id)
+        return self._sur_disque(row["file_path"])
+
     def set_photo_ocr(self, photo_id: str, texte: str) -> dict[str, Any]:
         propre = " ".join(str(texte or "").split())[:OCR_TEXTE_MAX]
         stamp = now_ms()
