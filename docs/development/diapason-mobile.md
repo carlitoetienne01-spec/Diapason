@@ -187,6 +187,85 @@ fois `chantier/phases45` fusionnée : rien de ceci n'a été vu sur l'appareil.*
 
 ### Phase 5 — Photo, partage, notifications, verrou
 
+*Fait le 26/09/2026 (branche `chantier/phases45` ici, `main` de
+`diapason_mobile`). Quatre ajouts, et deux défauts du Mac trouvés en les
+éprouvant sur l'émulateur :*
+
+1. *Verrou (mobile `60192fd`) : empreinte ou code du téléphone
+   (`local_auth`, `biometricOnly: false`) à l'ouverture et au retour après
+   **deux minutes** d'absence (l'aller-retour de l'appareil photo pour une
+   pièce jointe, estimé ; horloge murale, parce que la monotone d'Android
+   s'arrête en veille profonde). Le cadenas couvre TOUTE l'app, menu natif
+   compris ; la coquille ne sonde, n'ouvre de session ni ne charge rien avant
+   le premier déverrouillage ; un échec, quel qu'il soit, ne donne rien — un
+   téléphone sans aucun verrou le dit et Diapason reste fermé. Limite dite :
+   la vignette des apps récentes peut garder la dernière image de la page
+   (le cadenas est posé au départ, sans garantie qu'Android le redessine à
+   temps ; `FLAG_SECURE` interdirait aussi les captures d'écran — non posé,
+   à décider).*
+2. *Approbations (mobile `4f80e31`, bundle `a081cd78`) : la session native
+   lit `GET /v1/approvals/pending` toutes les **30 s** app au premier plan
+   (une confirmation d'outil refuse seule au bout de 120 s : il reste 90 s),
+   et par une tâche Workmanager de **15 min AU MIEUX** en arrière-plan (le
+   plancher d'Android ; la veille peut espacer davantage — une confirmation
+   d'outil y a toujours expiré, seules les demandes de l'agent proactif,
+   24 h, arrivent à temps). La notification ne dit que le NOMBRE, n'a aucun
+   bouton, n'est montrée qu'une fois par demande ; touchée, elle ouvre l'app,
+   le verrou passe, puis la coquille demande `approbations` au bundle, qui
+   relit la liste et ouvre la cloche. Elle n'approuve jamais. **La question
+   d'un service de premier plan (notification permanente, approbations en
+   quelques secondes) reste à Carlito.***
+3. *Partage (mobile `810fd57`, bundle `2b74b865`) : filtres SEND et
+   SEND_MULTIPLE (texte, image, PDF), lus par `PartageEntrant.kt` —
+   `receive_sharing_intent` aurait téléchargé son greffon Gradle ;
+   `launchMode="singleTask"`, sinon Android créait une seconde activité dans
+   la tâche de l'app qui partage. Le partage attend le verrou et la page,
+   puis le verbe `partager` le DÉPOSE dans le compositeur de la Discussion en
+   cours (texte à la suite du brouillon, fichiers par le trombone) ; rien
+   n'est envoyé.*
+4. *Appareil photo vers les piles (mobile `7efd44f`) : rien à corriger, vu
+   sur l'émulateur ; l'`accept` exact de la pile est désormais tenu par un
+   test.*
+5. *Trouvés en éprouvant : les routes de la cloche lisaient SQLite sur la
+   boucle d'événements (`491ae0b7`) ; la cloche relue chaque seconde vidait
+   le seau du limiteur que TOUT le téléphone partage, et la notification
+   touchée ouvrait la cloche sur un 429 (`9bc7afa7`).*
+
+*Compatibilités : un bundle d'avant ce jour répond `verbeInconnu` à
+`approbations` et `partager`, et la coquille le dit (« Diapason est à mettre
+à jour sur le Mac ») ; l'APK `c8d0d09` ignore ces deux verbes, sans effet.
+Aucune route nouvelle : `/v1/approvals/*` et `/v1/chat/documents` étaient
+déjà `session` ; `tailnet_portee.json` ne bouge pas.*
+
+*Vu sur l'émulateur (Android 15, WebView 124, APK construit SANS le fichier
+de secrets hors de l'arbre de `diapason_mobile`, serveur de banc 18610-18612
+avec moteur factice, `adb reverse`) : l'invite « Ouvrir Diapason » au
+lancement, rien du Mac avant elle (même lancée par un partage), et de
+retour après plus de deux minutes ; la notification « Le Mac attend ton
+accord (3 demandes) », touchée → la cloche ouverte sur les demandes (même à
+travers un « Mac injoignable » puis « Réessayer »), un refus fait depuis le
+téléphone (`POST …/deny` 200) ; la tâche de fond, processus tué, qui annonce
+« 4 demandes » ; « Diapason dev » dans la
+feuille de partage de Photos et de Fichiers, la photo et le PDF déposés, un
+lien avec son titre ; la photo prise dans une pile. Au banc seulement, le
+lanceur élargissait l'origine de la passerelle à `http://localhost` : la
+WebView de l'émulateur y parle en http, la vraie passerelle n'accepte que
+https. **Pas vu** : un vrai téléphone, l'empreinte (le banc a un code), la
+vignette des apps récentes.*
+
+*Trouvé au banc, NON corrigé (à trancher avec la question du service de
+premier plan) : quand le processus de l'app vit encore en cache,
+WorkManager exécute la tâche de fond DANS ce processus, sans l'exemption
+réseau que JobScheduler donne à ses tâches, et Android 15 bloque le réseau
+des apps en arrière-plan (`dumpsys netpolicy` : `blocked=APP_BACKGROUND`).
+La tâche rend alors « injoignable » et ne touche à rien. Vu à 11:53 ; après
+un processus tué (comme le fait le système), la même tâche a annoncé à
+12:11. Sur le téléphone, une demande arrivée app fermée peut donc attendre
+que le système ait tué l'app, en plus des 15 min. Et l'émulateur, sous une
+charge de 12 à 14 sur le Mac, a eu un ANR au retour de l'app : le fil
+principal dessinait (`HardwareRenderer.syncAndDrawFrame`, rendu logiciel),
+aucune pile de ce chantier.*
+
 ### Phase 6 — Télécommande des fonctions du Mac
 
 ## 4. Les plans détaillés (conception du 25/09/2026)
@@ -226,7 +305,9 @@ indépendante de celle du Mac.
 
 Reste ouverte, pour la phase 5 : sans push, une approbation n'arrive qu'app
 ouverte ou au mieux toutes les 15 min — acceptable, ou service de premier plan
-Android avec sa notification permanente ?
+Android avec sa notification permanente ? *(26/09/2026 : la phase 5 est
+livrée SANS service de premier plan — 30 s app ouverte, 15 min au mieux
+sinon ; la question reste à Carlito.)*
 
 ### Ce que le sondage a vérifié (25/09/2026, lecture seule)
 
@@ -855,5 +936,11 @@ Toute écriture faite après la migration (tâche, note, photo) est perdue par c
 
 *Le pont lié (constat 2)* — seulement avec un APK construit à partir de mobile `6430a3f` ou après, et seulement après la fusion ci-dessus (un bundle plus ancien n'écoute pas le canal lié) :
 22. **Le pont.** Refaire les étapes 8 (le retour d'Android ferme d'abord le tiroir) et 11 (un export arrive dans Téléchargements et son nom s'affiche). Aucune bande « pont coupé » au-dessus de la page ; si elle apparaît, noter sa phrase et la version d'« Android System WebView » (Réglages → Applis).
+
+*Le banc de la phase 5* — seulement avec un APK construit à partir de mobile `810fd57` ou après, et après la fusion de `chantier/phases45` (le bundle doit connaître `approbations` et `partager`, le Mac l'exemption du limiteur) :
+23. **Le verrou.** Lancer l'app : l'invite d'Android « Ouvrir Diapason » vient avant toute page du Mac. L'annuler : « Déverrouillage annulé : Diapason reste fermé », et le menu « ⋮ » n'est pas atteignable. Déverrouiller (empreinte, puis une fois avec le code). Joindre une photo par l'appareil photo : au retour, rien n'est redemandé. Laisser l'app plus de deux minutes en arrière-plan : au retour, l'invite revient. Noter ce que montre la vignette de Diapason dans les apps récentes.
+24. **L'approbation.** Sur le Mac, provoquer une demande (une Discussion qui veut lancer un outil à confirmer). App ouverte : dans les 30 s, « Le Mac attend ton accord » ; la toucher → la cloche s'ouvre, relue. Décider depuis le téléphone ; sur le Mac, la cloche se vide. App en arrière-plan : noter l'heure de la demande et celle de la notification (15 min au mieux ; une confirmation d'outil aura expiré avant).
+25. **Le partage.** Depuis Chrome, partager une page → « Diapason dev » : le titre et le lien dans le compositeur, rien d'envoyé. Depuis Photos, une photo ; depuis Fichiers, un PDF : pièces jointes au compositeur. Un fichier de plus de 10 Mo : sa phrase. Vérifier dans les apps récentes qu'il n'y a qu'un Diapason.
+26. **L'appareil photo vers une pile.** Projets → un projet → une pile → « Ajouter des photos » → Appareil photo → la photo est dans la pile.
 
 **À dire à Carlito (constat 19 de la seconde contre-épreuve)** : ouvert SANS la coquille (un navigateur sur l'adresse https, après un cookie posé), le bundle envoie une fois au premier chargement `POST /v1/context/view` et `GET /v1/voice/live/health` (celle-ci rouverte en phase 4, 26/09/2026 : elle rend désormais 200), que la passerelle refuse en 403 — avant d'avoir vu l'en-tête `X-Diapason-Passerelle`. Ensuite, plus rien. Au téléphone, le pont existe avant tout module : 0 réponse 403 sur 24 routes au banc. La coquille est le seul client prévu ; ce n'est pas corrigé.
