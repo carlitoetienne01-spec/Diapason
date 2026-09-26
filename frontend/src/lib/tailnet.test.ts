@@ -145,6 +145,27 @@ describe('creerEtatDuTailnet — le signal de la passerelle', () => {
     ).toBe(true);
   });
 
+  it('servi dès le chargement quand le pont est là, avant tout en-tête', async () => {
+    // 26/09/2026, contre-épreuve (mutant V11 : `creerEtatDuTailnet(false)`
+    // au lieu d'`estMobile`) : au téléphone, les premières sondes seraient
+    // parties avant la première réponse de la passerelle.
+    const fenetre = window as unknown as Record<string, unknown>;
+    fenetre.DiapasonNatif = { postMessage: () => {} };
+    vi.resetModules();
+    try {
+      const module = await import('./tailnet');
+      expect(module.serviParLeTailnet(), 'le pont natif dit « téléphone » dès le chargement').toBe(true);
+      expect(() => module.garderLaSonde('GET', '/v1/triggers/poll', undefined, () => true)).toThrow(
+        module.SondeNonEnvoyee,
+      );
+    } finally {
+      delete fenetre.DiapasonNatif;
+      delete fenetre.diapasonNatifRecevoir;
+      document.documentElement.removeAttribute('data-diapason-mobile');
+      vi.resetModules();
+    }
+  });
+
   it('survit à des en-têtes illisibles', () => {
     const etat = creerEtatDuTailnet(false);
     const casse = {

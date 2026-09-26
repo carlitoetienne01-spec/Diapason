@@ -113,6 +113,25 @@ describe('Requête et réponse, appariées par identifiant', () => {
     }
   });
 
+  it('enregistrer attend la personne dans le sélecteur deux minutes, pas dix secondes', async () => {
+    // 26/09/2026, contre-épreuve (mutant NB3) : à 10 s, l'export échouait
+    // pendant que la personne choisissait encore où l'écrire (sélecteur
+    // « Enregistrer sous » d'Android avant la version 10).
+    const { canal } = canalEspion();
+    const pont = new PontNatif(canal);
+    let fini = false;
+    const promesse = pont.demander('enregistrer', { nom: 'bilan.json' }).then(
+      () => (fini = true),
+      () => (fini = true),
+    );
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(fini, 'une minute dans le sélecteur n’est pas un échec').toBe(false);
+    await vi.advanceTimersByTimeAsync(60_000);
+    await promesse;
+    expect(fini).toBe(true);
+    expect(DELAIS_MS.enregistrer).toBe(120_000);
+  });
+
   it('ignore un identifiant jamais émis', async () => {
     const { canal, envoyes } = canalEspion();
     const pont = new PontNatif(canal);
@@ -216,6 +235,22 @@ describe('La coquille demande un écran (naviguer, phase 3 étape 9)', () => {
         ok: false,
         erreur: 'L’écran n’a pas fini de s’afficher sur le téléphone.',
       },
+    ]);
+  });
+
+  it('retirer un ancien navigateur ne retire pas celui inscrit depuis', async () => {
+    // 26/09/2026, contre-épreuve (mutant N4) : un NavigationDuTelephone
+    // remonté (StrictMode, changement de routeur) s'inscrit avant que
+    // l'ancien ne se retire ; tout retirer laissait « pasPret » pour de bon.
+    const { canal, envoyes } = canalEspion();
+    const pont = new PontNatif(canal);
+    const retirerAncien = pont.surNaviguer(async () => ({ path: '/ancien' }));
+    pont.surNaviguer(async () => ({ path: '/vie/tasks', selection: null }));
+    retirerAncien();
+    pont.recevoir({ type: 'demande', id: 'n1', verbe: 'naviguer', donnees: {} });
+    await attendreLeCanal();
+    expect(envoyes).toEqual([
+      { type: 'reponse', id: 'n1', ok: true, donnees: { path: '/vie/tasks', selection: null } },
     ]);
   });
 

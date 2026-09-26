@@ -18,6 +18,13 @@ describe('client vie et réessais',()=>{
   it('ne rejoue pas une création quand la réponse réseau est perdue',async()=>{
     reseau.mockRejectedValue(Error('Load failed'));await expect(api.createVieNote({title:'Unique'})).rejects.toThrow();expect(reseau).toHaveBeenCalledTimes(1);
   });
+  it('une lecture que la passerelle refuse n’est pas relancée',async()=>{
+    // 26/09/2026, contre-épreuve (mutant V9) : SondeNonEnvoyee sort au premier essai.
+    const {SondeNonEnvoyee}=await import('../../lib/tailnet');
+    vi.useFakeTimers();reseau.mockRejectedValue(new SondeNonEnvoyee('GET /v1/vie/sync/status'));
+    const p=api.listVieNoteResumes();const verdict=expect(p).rejects.toBeInstanceOf(SondeNonEnvoyee);
+    await vi.advanceTimersByTimeAsync(2000);await verdict;expect(reseau).toHaveBeenCalledTimes(1);
+  });
   it('une panne de lecture temporaire est réessayée',async()=>{
     vi.useFakeTimers();reseau.mockRejectedValueOnce(Error('Load failed')).mockResolvedValue(response({notes:[]}));
     const p=api.listVieNoteResumes();await vi.advanceTimersByTimeAsync(250);expect(await p).toEqual([]);expect(reseau).toHaveBeenCalledTimes(2);
