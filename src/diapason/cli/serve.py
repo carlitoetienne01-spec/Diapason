@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import sys
 import time
-from typing import Callable
+from typing import Callable, Iterable
 
 import click
 from rich.console import Console
@@ -74,19 +74,59 @@ def sonder_diapason(host: str, port: int) -> str | None:
     return None
 
 
-def migrer_la_base_de_vie(console: Console | None = None):
+def _voisin_qui_repond(ports: Iterable[int]) -> int | None:
+    """Le premier de ``ports`` où un Diapason répond (sain ou qui charge)."""
+    for port in ports:
+        if sonder_diapason("127.0.0.1", port) is not None:
+            return port
+    return None
+
+
+def migrer_la_base_de_vie(
+    console: Console | None = None, *, ports_voisins: Iterable[int] = ()
+):
     """Migre succes.db → vie.db avant toute construction de magasin.
 
     Ne lève jamais : une migration reportée garde succes.db pour cette
     exécution (et le dit), deux bases pleines font répondre 503 aux routes de
     vie. Dans les deux cas, le reste du serveur démarre.
+
+    ``ports_voisins`` : les ports où un AUTRE serveur Diapason pourrait
+    tenir cette base. 25/09/2026 : attendre_le_port ne garantit la mort de
+    l'ancien serveur que sur le port qu'on lie. Un `serve --port 8010` lancé
+    par une session parallèle migrait la base sous le serveur launchd de
+    :8000, qui répondait ensuite 500 (« no such table: succes_tasks »)
+    jusqu'au kickstart suivant. Si l'un d'eux répond, la migration lui
+    revient.
     """
     from diapason.core.paths import get_data_dir
     from diapason.vie import routes as routes_vie
-    from diapason.vie.emplacement import migrer_base_vie
+    from diapason.vie.emplacement import (
+        NOM_BASE,
+        NOM_BASE_HERITE,
+        Migration,
+        migration_en_attente,
+        migrer_base_vie,
+    )
 
     try:
-        resultat = migrer_base_vie(get_data_dir())
+        data_dir = get_data_dir()
+        voisin = (
+            _voisin_qui_repond(ports_voisins)
+            if migration_en_attente(data_dir)
+            else None
+        )
+        if voisin is not None:
+            detail = (
+                f"un autre serveur Diapason tourne sur :{voisin} ; la migration "
+                "lui revient (relance-le), ce serveur-ci ne touche pas à sa base"
+            )
+            logger.warning("vie : migration reportée — %s", detail)
+            herite = data_dir / NOM_BASE_HERITE
+            chemin = herite if herite.exists() else data_dir / NOM_BASE
+            resultat = Migration("reportee", chemin, detail)
+        else:
+            resultat = migrer_base_vie(data_dir)
     except Exception:  # noqa: BLE001 - le serveur démarre, la vie reste sur succes.db
         logger.exception("vie : migration de la base impossible")
         return None
@@ -401,11 +441,17 @@ def serve(
     attendre_le_port(bind_host, bind_port, console=console)
 
     # La base de vie (succes.db → vie.db, 25/09/2026). ICI et nulle part
-    # ailleurs : le port vient d'être rendu, donc l'ancien serveur est mort et
-    # ne recréera pas de succes.db vide derrière la migration ; et rien n'a
-    # encore construit de magasin qui garderait l'ancien chemin. `tick`,
-    # le briefing et la CLI lisent seulement (vie/emplacement.py).
-    migrer_la_base_de_vie(console)
+    # ailleurs : le port vient d'être rendu, donc l'ancien serveur DE CE PORT
+    # est mort et ne recréera pas de succes.db vide derrière la migration ; et
+    # rien n'a encore construit de magasin qui garderait l'ancien chemin.
+    # `tick`, le briefing et la CLI lisent seulement (vie/emplacement.py).
+    # Limite : un serveur sur un AUTRE port (launchd sur :8000 quand on lance
+    # `serve --port 8010`) n'est pas couvert par attendre_le_port ; on sonde
+    # donc le port configuré, et s'il répond, la migration lui revient.
+    migrer_la_base_de_vie(
+        console,
+        ports_voisins=[p for p in {config.server.port} if p != bind_port],
+    )
 
     # Set up engine
     register_builtin_models()

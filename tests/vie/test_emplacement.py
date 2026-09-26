@@ -725,7 +725,7 @@ class TestLeServeur:
             serve_mod, "attendre_le_port", lambda *a, **k: ordre.append("port")
         )
 
-        def migrer(console=None):
+        def migrer(console=None, **_):
             ordre.append("migration")
             raise SystemExit(0)
 

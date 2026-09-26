@@ -166,6 +166,28 @@ def a_des_donnees(chemin: Path) -> bool:
     return False
 
 
+def migration_en_attente(data_dir: Path) -> bool:
+    """Reste-t-il une succes.db, ou des tables succes_* dans vie.db ?
+
+    Lecture seule, rien ne se crée (``mode=rw``, voir :func:`a_des_donnees`).
+    Une base illisible compte comme « en attente » : c'est la prudence qui
+    fait sonder un serveur voisin avant d'y toucher.
+    """
+    data_dir = Path(data_dir)
+    if (data_dir / NOM_BASE_HERITE).exists():
+        return True
+    neuve = data_dir / NOM_BASE
+    if not neuve.exists():
+        return False
+    try:
+        with closing(
+            sqlite3.connect(f"{neuve.absolute().as_uri()}?mode=rw", uri=True, timeout=5)
+        ) as conn:
+            return bool(tables_heritees(conn))
+    except sqlite3.DatabaseError:
+        return True
+
+
 def chemin_base_vie(data_dir: Path, *, migrer: bool = False) -> Path:
     """Le fichier de la base vie dans ``data_dir``.
 
