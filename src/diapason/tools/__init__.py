@@ -195,6 +195,19 @@ try:
 except ImportError:
     pass
 
+# 25/09/2026 : `geste_deposer` figure dans la trousse du chat
+# (server/routes.py) depuis le 25 août, mais seul le chargeur de la VOIX
+# importait son module. Le chat, qui ne charge que ce paquet, l'écartait
+# donc sans un mot (`_chat_tooling` : « outil de chat inconnu, ignoré », au
+# niveau DEBUG) — sauf si une session vocale était passée avant le premier
+# message, puisque la trousse est mise en cache. Le test-fusible
+# tests/tools/test_listes_d_outils.py l'a trouvé. Le module n'importe que
+# mesh_tools, déjà chargé juste au-dessus.
+try:
+    import diapason.tools.gestes_spatiaux  # noqa: F401
+except ImportError:
+    pass
+
 # Pas de garde ici : lire l'horloge n'a aucune dépendance optionnelle, et un
 # assistant sans horloge invente l'heure plutôt que de l'avouer.
 # Onglets du navigateur de l'utilisateur — stdlib + osascript, pas de garde.
