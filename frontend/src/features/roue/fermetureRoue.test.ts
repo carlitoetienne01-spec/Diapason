@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { freresARendreInertes, rendreInertes, reponseAuRetour, toucherDuVoile } from './fermetureRoue';
+import { cibleEstUnBouton, freresARendreInertes, rendreInertes, reponseAuRetour, toucherDuVoile } from './fermetureRoue';
 
 /**
  * La roue et le bouton retour d'Android, et la page sous l'écran « Aller à »
@@ -35,6 +35,43 @@ describe('toucherDuVoile', () => {
   it('le clic fantôme qui suit un glissé ne ferme pas la roue que le pouce vient d’ouvrir', () => {
     expect(toucherDuVoile(false, true)).toBe('rien');
     expect(toucherDuVoile(true, true)).toBe('rien');
+  });
+});
+
+describe('cibleEstUnBouton', () => {
+  // 27/09/2026, contre-épreuve « soyeux » (mutant G) : `closest('button')`
+  // devenu `closest('.roue-element')` faisait fermer la roue par Liste et
+  // Parler, et laissait vitest vert. Monté comme la roue : les actions de
+  // l'en-tête, la capsule d'un nom, le vide de la zone.
+  function monter() {
+    document.body.innerHTML = `
+      <div role="dialog" id="voile">
+        <div class="roue-entete"><div class="roue-actions">
+          <button id="liste" class="roue-action"><svg id="icone-liste"></svg>Liste</button>
+          <button id="parler" class="roue-action">Parler</button>
+        </div></div>
+        <div class="roue-zone" id="zone"><ul><li class="roue-place">
+          <button id="nom" class="roue-element"><span id="texte" class="roue-nom">Tâches</span></button>
+        </li></ul></div>
+      </div>
+      <button id="x" class="roue-bouton">X</button>`;
+  }
+  const el = (id: string) => document.getElementById(id);
+
+  it('une action de l’en-tête, son icône, le X et la capsule d’un nom sont des boutons : le voile ne ferme pas', () => {
+    monter();
+    for (const id of ['liste', 'icone-liste', 'parler', 'x', 'nom', 'texte']) {
+      expect(cibleEstUnBouton(el(id)), `« ${id} » doit compter comme un bouton`).toBe(true);
+    }
+  });
+
+  it('le vide de la zone et le voile lui-même ne sont pas des boutons : le voile ferme', () => {
+    monter();
+    for (const id of ['zone', 'voile']) {
+      expect(cibleEstUnBouton(el(id)), `« ${id} » n’est pas un bouton`).toBe(false);
+    }
+    expect(cibleEstUnBouton(null)).toBe(false);
+    expect(cibleEstUnBouton(window), 'une cible qui n’est pas un élément').toBe(false);
   });
 });
 

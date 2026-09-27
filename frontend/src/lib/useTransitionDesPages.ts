@@ -1,15 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react';
 
 import { estMobile } from './natif';
-import {
-  IMAGES_ENTREE,
-  OPTIONS_ENTREE,
-  SELECTEUR_DEFILEUR_PAGE,
-  creerMemoireDefilement,
-  decisionRestauration,
-  doitAnimerLEntree,
-  pageRetientSaPosition,
-} from './transitionPage';
+import { creerSuiviDesPages, type SuiviDesPages } from './suiviDesPages';
 
 function mouvementReduit(): boolean {
   try {
@@ -19,12 +11,11 @@ function mouvementReduit(): boolean {
   }
 }
 
-/** Ce qui annonce que la personne a repris la main sur la page. */
-const REPRISES = ['touchstart', 'wheel', 'pointerdown', 'keydown'] as const;
-
 /**
  * Les transitions entre pages, au téléphone seulement (lot 2 du chantier
- * « soyeux », 27/09/2026) — lib/transitionPage.ts dit pourquoi et combien.
+ * « soyeux », 27/09/2026) — lib/transitionPage.ts dit pourquoi et combien,
+ * lib/suiviDesPages.ts le fait (sorti d'ici le 27/09/2026 pour que vitest
+ * l'exécute).
  *
  * - La page qui ARRIVE glisse de 12 px et se révèle en 180 ms (Web
  *   Animations, transform/opacity : le compositeur seul). C'est la COLONNE
@@ -47,22 +38,15 @@ const REPRISES = ['touchstart', 'wheel', 'pointerdown', 'keydown'] as const;
  * Au bureau et au mini-panneau, rien : aucun écouteur, aucune animation.
  */
 export function useTransitionDesPages(colonneRef: RefObject<HTMLElement | null>, chemin: string) {
-  const memoire = useRef(creerMemoireDefilement());
-  const cheminCourant = useRef(chemin);
-  const cheminPrecedent = useRef<string | null>(null);
-  const entree = useRef<Animation | null>(null);
+  const suivi = useRef<SuiviDesPages | null>(null);
+  suivi.current ??= creerSuiviDesPages({ mobile: estMobile, mouvementReduit });
 
   // Retenir : l'événement `scroll` ne remonte pas, mais se capte sur la
   // colonne. Passif — rien sur le chemin du doigt n'attend ce code.
   useEffect(() => {
     const colonne = colonneRef.current;
     if (!estMobile || !colonne) return undefined;
-    const surDefilement = (e: Event) => {
-      const cible = e.target;
-      if (cible instanceof HTMLElement && cible.parentElement === colonne) {
-        memoire.current.retenir(cheminCourant.current, cible.scrollTop);
-      }
-    };
+    const surDefilement = (e: Event) => suivi.current?.surDefilement(colonne, e);
     colonne.addEventListener('scroll', surDefilement, { capture: true, passive: true });
     return () => colonne.removeEventListener('scroll', surDefilement, { capture: true });
   }, [colonneRef]);
@@ -72,72 +56,6 @@ export function useTransitionDesPages(colonneRef: RefObject<HTMLElement | null>,
   // s'appliquent une image trop tard.
   useLayoutEffect(() => {
     if (!estMobile) return undefined;
-    const precedent = cheminPrecedent.current;
-    cheminPrecedent.current = chemin;
-    cheminCourant.current = chemin;
-    const colonne = colonneRef.current;
-    if (!colonne || precedent === null || precedent === chemin) return undefined;
-
-    // Une navigation arrivée pendant l'entrée de la précédente la remplace :
-    // deux entrées empilées finiraient chacune à son heure.
-    entree.current?.cancel();
-    entree.current = null;
-    if (
-      typeof colonne.animate === 'function' &&
-      doitAnimerLEntree({ mobile: estMobile, mouvementReduit: mouvementReduit(), cheminPrecedent: precedent, chemin })
-    ) {
-      entree.current = colonne.animate(IMAGES_ENTREE, OPTIONS_ENTREE);
-    }
-
-    const cible = pageRetientSaPosition(chemin) ? memoire.current.lire(chemin) : undefined;
-    if (!cible) return undefined;
-    return reprendrePosition(colonne, cible);
+    return suivi.current?.naviguer(colonneRef.current, chemin);
   }, [chemin, colonneRef]);
-}
-
-/**
- * Rend `cible` au défileur de la page dès qu'il peut l'atteindre en entier :
- * tout de suite si la liste est déjà là (le cas du retour), sinon à l'image
- * où elle le devient — ou au plus près si la page, plus courte, ne bouge
- * plus —, jusqu'au plafond. Rend la fonction qui abandonne.
- */
-function reprendrePosition(colonne: HTMLElement, cible: number): () => void {
-  const debut = performance.now();
-  let image = 0;
-  let fini = false;
-  const arreter = () => {
-    if (fini) return;
-    fini = true;
-    cancelAnimationFrame(image);
-    for (const type of REPRISES) colonne.removeEventListener(type, arreter, { capture: true });
-  };
-  let defilablePrecedent = -1;
-  let stableDepuis = debut;
-  const essayer = () => {
-    if (fini) return;
-    const maintenant = performance.now();
-    const defileur = colonne.querySelector<HTMLElement>(SELECTEUR_DEFILEUR_PAGE);
-    const defilable = defileur ? defileur.scrollHeight - defileur.clientHeight : 0;
-    if (defilable !== defilablePrecedent) {
-      defilablePrecedent = defilable;
-      stableDepuis = maintenant;
-    }
-    const decision = decisionRestauration({
-      cible,
-      defilable,
-      ecouleMs: maintenant - debut,
-      stableDepuisMs: maintenant - stableDepuis,
-    });
-    if (decision.action === 'poser' && defileur) {
-      defileur.scrollTop = decision.haut;
-      arreter();
-    } else if (decision.action === 'renoncer') {
-      arreter();
-    } else {
-      image = requestAnimationFrame(essayer);
-    }
-  };
-  for (const type of REPRISES) colonne.addEventListener(type, arreter, { capture: true, passive: true });
-  essayer();
-  return arreter;
 }

@@ -30,6 +30,18 @@ export function toucherDuVoile(surUnBouton: boolean, clicApresGlisse: boolean): 
 }
 
 /**
+ * Le toucher du voile a-t-il atteint un bouton ? La roue, une action (Liste,
+ * Parler, Menu de l'app), le X : chacun sait quoi faire, et le voile ne doit
+ * pas fermer par-dessus. 27/09/2026, contre-épreuve du chantier « soyeux »
+ * (mutant G) : écrit en ligne dans RoueNavigation.tsx, `closest('button')`
+ * pouvait devenir `closest('.roue-element')` — Liste et Parler se mettaient
+ * alors à fermer la roue — sans qu'aucun test ne rougisse.
+ */
+export function cibleEstUnBouton(cible: EventTarget | null): boolean {
+  return cible instanceof Element && cible.closest('button') !== null;
+}
+
+/**
  * Les éléments à rendre inertes sous l'écran « Aller à » : les frères de
  * `moi` (la cloche, la colonne de la page…), sauf ceux déjà inertes — que
  * la roue ne doit pas réveiller en se refermant.

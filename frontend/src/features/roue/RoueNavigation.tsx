@@ -59,7 +59,7 @@ import {
 } from './geometrieRoue';
 import { clavierOuvert, estUneSaisie, suivreHauteurMax } from './clavier';
 import { opaciteMinimale } from './contraste';
-import { freresARendreInertes, rendreInertes, reponseAuRetour, toucherDuVoile } from './fermetureRoue';
+import { cibleEstUnBouton, freresARendreInertes, rendreInertes, reponseAuRetour, toucherDuVoile } from './fermetureRoue';
 import { annoncerLeMenuDeLApp, OUVRIR_MENU_APP } from './menuDeLApp';
 import { PAGES_ROUE, indexDeLaPage } from './pagesRoue';
 import './roue.css';
@@ -628,8 +628,7 @@ export function RoueNavigation() {
   // 26/09/2026 : Échap, retour et le voile ferment). Pas sur un bouton, pas
   // sur le clic fantôme d'un glissé (fermetureRoue.ts, `toucherDuVoile`).
   const surVoile = (e: { target: EventTarget }) => {
-    const surUnBouton = e.target instanceof Element && e.target.closest('button') !== null;
-    if (toucherDuVoile(surUnBouton, clicAIgnorer()) === 'fermer') fermerEtRendreLeFocus();
+    if (toucherDuVoile(cibleEstUnBouton(e.target), clicAIgnorer()) === 'fermer') fermerEtRendreLeFocus();
   };
 
   const nomAllume = t(PAGES_ROUE[allume].cle);
