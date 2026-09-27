@@ -12,13 +12,15 @@ import { describe, expect, it } from 'vitest';
  * App.tsx ni ApprovalBell.tsx : on les lit ici comme du texte, à la manière
  * de routesVie.test.ts, faute de tests de composants dans ce dépôt.
  */
+/** Le début du rendu hors mini-panneau (le téléphone et le bureau). */
+const RETOUR_TELEPHONE_ET_BUREAU = '  return (\n    <div className="h-full w-full overflow-hidden mobile:overflow-visible relative">';
 const lire = (chemin: string) => readFileSync(join(__dirname, chemin), 'utf8');
 const sansCommentaires = (code: string) =>
   code.replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 
 describe('Layout.tsx', () => {
   const layout = sansCommentaires(lire('components/Layout.tsx'));
-  const compact = layout.slice(layout.indexOf('if (estCompact) {\n    return ('), layout.indexOf('  return (\n    <div className="h-full w-full overflow-hidden relative">'));
+  const compact = layout.slice(layout.indexOf('if (estCompact) {\n    return ('), layout.indexOf(RETOUR_TELEPHONE_ET_BUREAU));
 
   it('ne monte la roue qu’au téléphone, une seule fois, hors du mini-panneau', () => {
     expect(layout.match(/<RoueNavigation\b/g)?.length, 'une seule roue').toBe(1);
@@ -81,7 +83,7 @@ describe('useTransitionDesPages.ts', () => {
     // animation, ni position reprise.
     expect(layout, 'Layout branche le crochet sur la colonne').toContain('useTransitionDesPages(colonneRef, pathname);');
     expect(layout.match(/ref=\{colonneRef\}/g)?.length, 'une seule colonne visée, celle du téléphone et du bureau').toBe(1);
-    const compact = layout.slice(layout.indexOf('if (estCompact) {\n    return ('), layout.indexOf('  return (\n    <div className="h-full w-full overflow-hidden relative">'));
+    const compact = layout.slice(layout.indexOf('if (estCompact) {\n    return ('), layout.indexOf(RETOUR_TELEPHONE_ET_BUREAU));
     expect(compact, 'le mini-panneau n’a pas de colonne visée').not.toContain('colonneRef');
     const effets = crochet.match(/use(?:Layout)?Effect\(\(\) => \{\s*[^\n]*\n\s*[^\n]*/g) ?? [];
     expect(effets.length, 'deux effets').toBe(2);
@@ -125,6 +127,43 @@ describe('index.css — la barre de défilement (lot 3 « soyeux »)', () => {
     expect(css, 'la barre du bureau garde ses 6 px').toMatch(
       /html:not\(\[data-diapason-mobile='1'\]\) ::-webkit-scrollbar \{\s*width: 6px;\s*height: 6px;/,
     );
+  });
+});
+
+describe('index.css — l’élan du défilement (lot 3 « soyeux »)', () => {
+  // 27/09/2026. Au téléphone, le rebond de fin de liste d'Android (l'étirement)
+  // ne joue que sur le défileur RACINE ; Chromium n'y promeut le défileur d'une
+  // page que s'il remplit la fenêtre, qu'aucun ancêtre ne le coupe et qu'il n'a
+  // pas de barre dessinée. Mesuré sur l'émulateur : chacune des trois
+  // conditions, seule, suffisait à tout bloquer (la barre dessinée : le bloc
+  // précédent).
+  const css = sansCommentaires(lire('index.css'));
+  const layout = sansCommentaires(lire('components/Layout.tsx'));
+  const MOBILE = "html[data-diapason-mobile='1']";
+
+  it('au téléphone, rien ne coupe entre le défileur de la page et la fenêtre', () => {
+    expect(css, 'html, body et #root ne coupent plus au téléphone').toContain(
+      `${MOBILE},\n${MOBILE} body,\n${MOBILE} #root {\n  overflow: visible;\n}`,
+    );
+    expect(css, 'au bureau, ils coupent toujours').toMatch(/html, body, #root \{\s*height: 100%;\s*width: 100%;\s*overflow: hidden;/);
+    expect(layout, 'le cadre de Layout ne coupe pas au téléphone').toContain(RETOUR_TELEPHONE_ET_BUREAU);
+    expect(layout, '<main> non plus').toMatch(/<main className="[^"]*\boverflow-hidden mobile:overflow-visible\b/);
+  });
+
+  it('au téléphone, le défileur de la page touche le haut de la fenêtre et porte les bandes du voyant et de la cloche', () => {
+    expect(css, 'la colonne et le bloc qui recule rendent leur marge haute, seulement quand la page a un défileur').toContain(
+      `${MOBILE} [data-recul-page]:has([data-colonne-page] > .overflow-y-auto),\n${MOBILE} [data-colonne-page]:has(> .overflow-y-auto) {\n  padding-top: 0 !important;\n}`,
+    );
+    const bande = css.match(/html\[data-diapason-mobile='1'\] \[data-colonne-page\] > \.overflow-y-auto::before \{\s*content: '';\s*display: block;\s*height: calc\((\d+)px \+ var\(--bande-barre-fermee, 0px\)\);/);
+    expect(bande, 'la bande passe DANS le défileur').not.toBeNull();
+    const voyant = layout.match(/data-recul-page="" className="[^"]*" style=\{\{ paddingTop: '(\d+)px' \}\}/);
+    expect(voyant, 'Layout réserve la bande du voyant').not.toBeNull();
+    expect(bande?.[1], 'la bande du voyant a la même hauteur dans le défileur que dans Layout').toBe(voyant?.[1]);
+  });
+
+  it('au téléphone, le voile modal assombrit aussi la bande où la page défile', () => {
+    expect(css).toContain(`${MOBILE} .voile-modal {\n  top: 0;\n  border-top: var(--bande-barre-fermee, 0px) solid transparent;\n}`);
+    expect(css, 'au bureau, il part toujours sous la bande').toMatch(/\.voile-modal \{\s*position: fixed;\s*top: var\(--bande-barre-fermee, 0px\);/);
   });
 });
 

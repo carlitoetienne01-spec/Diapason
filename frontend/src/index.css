@@ -120,6 +120,54 @@ html[data-diapason-mobile='1'][data-clavier-ouvert] {
   --reserve-roue: 0px;
 }
 
+/* L'élan du défilement (27/09/2026, chantier « soyeux », lot 3). Retour de
+ * Carlito : « le geste s'arrête sec ». Mesuré sur l'émulateur (WebView 124,
+ * hôte Flutter monté comme la coquille) : lancé vers le bas des Notes, la
+ * liste s'arrêtait à la dernière image, 0 image étirée sur 3 lancers ; tirée
+ * en fin de liste, rien ne bougeait. Le rebond d'Android 12 (l'étirement) ne
+ * joue que sur le défileur RACINE — et Chromium ne promeut un défileur
+ * intérieur à ce rang que s'il remplit toute la fenêtre, qu'aucun ancêtre ne
+ * le coupe (overflow hidden ou clip, même sur #root) et qu'il n'a pas de barre
+ * dessinée (::-webkit-scrollbar). Les trois conditions manquaient, chacune
+ * suffisait à tout bloquer (vérifié une par une, docs/development/
+ * diapason-mobile.md). Au téléphone seulement :
+ * 1. rien ne coupe entre le défileur de la page et la fenêtre — ici pour
+ *    html, body et #root ; Layout.tsx pour son cadre et <main> ;
+ * 2. le défileur descend jusqu'en haut de la fenêtre : la bande du voyant
+ *    (3 px, Layout.tsx) et celle de la cloche (--bande-barre-fermee) passent
+ *    DEDANS, avant le contenu, comme la bande du bas ; le contenu se pose au
+ *    même endroit, puis passe sous la cloche en défilant ;
+ * 3. pas de barre dessinée (plus bas, les règles ::-webkit-scrollbar ne
+ *    visent que le bureau) : celle d'Android, qui s'efface, la remplace.
+ * La Discussion et les Journaux, dont le défileur n'est pas un enfant
+ * direct de la colonne, gardent leurs bandes et leur défilement d'avant. */
+html[data-diapason-mobile='1'],
+html[data-diapason-mobile='1'] body,
+html[data-diapason-mobile='1'] #root {
+  overflow: visible;
+}
+html[data-diapason-mobile='1'] [data-recul-page]:has([data-colonne-page] > .overflow-y-auto),
+html[data-diapason-mobile='1'] [data-colonne-page]:has(> .overflow-y-auto) {
+  padding-top: 0 !important;
+}
+html[data-diapason-mobile='1'] [data-colonne-page] > .overflow-y-auto::before {
+  content: '';
+  display: block;
+  height: calc(3px + var(--bande-barre-fermee, 0px));
+}
+/* Le voile d'une fenêtre modale part sous la bande de la cloche (plus bas,
+ * `.voile-modal`). Tant que la bande était vide, cela ne se voyait pas ; dès
+ * que la page y défile, le contenu y restait en clair au-dessus du voile
+ * (vu sur l'émulateur le 27/09/2026, le jour des Tâches ouvert, liste
+ * descendue). Au téléphone, le voile couvre donc toute la hauteur, et la
+ * bande devient une bordure TRANSPARENTE : son fond y assombrit la page,
+ * mais la fenêtre modale, posée dans la boîte intérieure, ne remonte
+ * toujours pas sous la cloche. */
+html[data-diapason-mobile='1'] .voile-modal {
+  top: 0;
+  border-top: var(--bande-barre-fermee, 0px) solid transparent;
+}
+
 /*
  * Diapason design tokens.
  * Zinc/slate neutrals, blue accent. Light default, dark via class or system pref.
@@ -825,8 +873,10 @@ html[data-diapason-mobile='1'][data-clavier-ouvert] {
   /* La barre dessinée est celle du BUREAU et du mini-panneau (une souris).
      Au téléphone (27/09/2026, chantier « soyeux », lot 3), le fil principal
      la repeignait à chaque image d'un défilement : trace CDP à ×4, six
-     glissés, 170 à 211 Paint avec elle, 0 à 11 sans elle. Android y met la
-     sienne, qui s'efface. */
+     glissés, 170 à 211 Paint avec elle, 0 à 11 sans elle. Et elle empêchait
+     le défileur de la page de devenir la racine, donc le rebond de fin de
+     liste (plus haut, « L'élan du défilement »). Android y met la sienne,
+     qui s'efface. */
   html:not([data-diapason-mobile='1']) ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
