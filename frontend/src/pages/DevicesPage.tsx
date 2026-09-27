@@ -337,13 +337,10 @@ export function DevicesPage() {
       <main className="max-w-5xl mx-auto w-full">
         <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between mb-7">
           <div>
-            <div className="flex items-center gap-2 mb-2">
-              <span
-                className="text-xs font-medium tracking-[0.16em] uppercase"
-                style={{ color: 'var(--color-accent)' }}
-              >
-                Diapason
-              </span>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-semibold" style={{ color: 'var(--color-text)' }}>
+                Appareils
+              </h1>
               {(loading || working) && (
                 <Loader2
                   size={13}
@@ -352,9 +349,6 @@ export function DevicesPage() {
                 />
               )}
             </div>
-            <h1 className="text-2xl font-semibold" style={{ color: 'var(--color-text)' }}>
-              Appareils
-            </h1>
             <p
               className="text-sm mt-2 max-w-2xl"
               style={{ color: 'var(--color-text-secondary)' }}

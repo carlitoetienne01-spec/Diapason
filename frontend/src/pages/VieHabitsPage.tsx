@@ -382,26 +382,21 @@ export function VieHabitsPage() {
   return (
     <div className="habitudes-verre flex-1 overflow-y-auto px-3 py-4 sm:px-5 sm:py-8 md:px-8 md:py-10" data-verre-defilement>
       <main className="max-w-6xl mx-auto w-full">
-        {/* En miniature (sous sm), l'en-tête tient sur UNE rangée : la
-            description se tait et les deux boutons deviennent des icônes —
-            empilés sous le titre, ils coûtaient ~170 px du panneau avant le
-            premier chiffre (16 sept. 2026, audit du mini-panneau). */}
+        {/* En miniature, l'en-tête tient sur UNE rangée : les deux boutons
+            deviennent des icônes — empilés sous le titre, ils coûtaient
+            ~170 px du panneau avant le premier chiffre (16 sept. 2026, audit
+            du mini-panneau). Surtitre et description retirés le 27 septembre
+            2026. */}
         <header className="flex flex-row items-end justify-between gap-3 mb-4 sm:mb-7">
           <div className="min-w-0">
-            <div className="flex items-center gap-2 mb-1 sm:mb-2">
-              <span className="text-xs font-medium tracking-[0.16em] uppercase" style={{ color: 'var(--color-accent)' }}>
-                Diapason
-              </span>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-semibold" style={{ color: 'var(--color-text)' }}>
+                Habitudes
+              </h1>
               {(loading || rafraichit || saving) && (
                 <Loader2 size={13} className="animate-spin" style={{ color: 'var(--color-accent)' }} />
               )}
             </div>
-            <h1 className="text-2xl font-semibold" style={{ color: 'var(--color-text)' }}>
-              Habitudes
-            </h1>
-            <p className="hidden sm:block text-sm mt-2" style={{ color: 'var(--color-text-secondary)' }}>
-              Grilles mensuelle et annuelle — cochez un jour pour valider, directement sur ce Mac.
-            </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {isTauri() && (

@@ -330,17 +330,14 @@ export function VieSyncPage() {
       <main className="max-w-5xl mx-auto w-full">
         <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between mb-7">
           <div>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-xs font-medium tracking-[0.16em] uppercase" style={{ color: 'var(--color-accent)' }}>
-                Diapason
-              </span>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-semibold" style={{ color: 'var(--color-text)' }}>
+                Synchronisation
+              </h1>
               {(loading || working) && (
                 <Loader2 size={13} className="animate-spin" style={{ color: 'var(--color-accent)' }} />
               )}
             </div>
-            <h1 className="text-2xl font-semibold" style={{ color: 'var(--color-text)' }}>
-              Synchronisation
-            </h1>
             <p className="text-sm mt-2 max-w-2xl" style={{ color: 'var(--color-text-secondary)' }}>
               Relais HTTPS de confiance, invitation, puis échange d’opérations — vos données restent chiffrées en transit
               par TLS et ne quittent Diapason que vers l’URL que vous indiquez.

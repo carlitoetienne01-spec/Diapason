@@ -681,26 +681,18 @@ export function VieFinancesPage() {
       <main className="max-w-6xl mx-auto w-full" data-chargement={loading ? '' : undefined}>
         {/* À 460 px, ~1 400 px de décor précédaient la première donnée
             actionnable (audit du 16 sept. 2026). Sous sm l'en-tête tient sur
-            une rangée : sous-titre tu, bouton réduit à son icône. */}
+            une rangée, bouton réduit à son icône ; surtitre et sous-titre
+            sont partis le 27 septembre 2026. */}
         <header className="flex flex-row items-end justify-between gap-3 mb-4 sm:mb-7">
           <div className="min-w-0">
-            <div className="flex items-center gap-2 mb-1 sm:mb-2">
-              <span
-                className="text-xs font-medium tracking-[0.16em] uppercase"
-                style={{ color: 'var(--color-accent)' }}
-              >
-                Diapason
-              </span>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-semibold" style={{ color: 'var(--color-text)' }}>
+                Finances
+              </h1>
               {(loading || rafraichit || saving) && (
                 <Loader2 size={13} className="animate-spin" style={{ color: 'var(--color-accent)' }} />
               )}
             </div>
-            <h1 className="text-2xl font-semibold" style={{ color: 'var(--color-text)' }}>
-              Finances
-            </h1>
-            <p className="hidden sm:block text-sm mt-2" style={{ color: 'var(--color-text-secondary)' }}>
-              Budget CAD local — revenus, dépenses, abonnements et objectifs sur ce Mac.
-            </p>
           </div>
           <button
             type="button"
