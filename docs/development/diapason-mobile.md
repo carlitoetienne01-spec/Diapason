@@ -1226,3 +1226,103 @@ les fixes.
    le recul apparaissent sans mouvement. Au banc, préférence émulée :
    aucune animation en cours après le toucher. Non vérifié sur le
    téléphone.
+
+### Les transitions entre pages (27/09/2026, chantier « soyeux », lot 2)
+
+Retour de Carlito sur l'APK d6052bde : « je le veux plus smooth, la
+navigation entre les pages ». Avant, chaque page remplaçait l'autre d'une
+image à la suivante, et revenir sur une page ramenait en haut. Maintenant,
+au téléphone seulement (`lib/useTransitionDesPages.ts`, décisions pures
+dans `lib/transitionPage.ts`) :
+
+- **La page qui arrive** glisse de 12 px vers le haut en se révélant,
+  180 ms, `transform` et `opacity` seuls (Web Animations, rien ne reste
+  posé après). C'est la **colonne** (`[data-colonne-page]`) qu'on anime,
+  pas la racine de la page : animer la racine, qui est le défileur, fait
+  repeindre tout son contenu.
+- **La page qui part** n'est pas animée : la garder à l'écran pour
+  l'estomper, c'est la rendre deux fois (mesuré ci-dessous).
+- **La position** de défilement de la page quittée est retenue, et rendue
+  au retour, par la roue, un lien ou le retour d'Android. La Discussion
+  garde sa propre règle (collée au dernier message). Tout toucher, molette
+  ou touche pendant la reprise l'annule ; au-delà de 1,2 s, on y renonce.
+- **« Supprimer les animations »** : aucune animation, la position est
+  quand même rendue.
+- Le document ne défile toujours pas : la position vit sur le défileur de
+  chaque page. La mise en garde du lot 1 (les `position:fixed` sous le
+  recul) reste donc valable pour le lot du défilement.
+
+Mesures au banc (Brave sans tête, 375 × 812, DPR 3, ×4, charge sur 1 min
+entre 0,9 et 2,9). Avant = `e95a5546`, série alternée de trois passes,
+14 navigations chacune (Tâches, Notes, Planificateur, Projets, Réglages,
+Habitudes, Discussion, deux fois) :
+
+| Mesure | Avant | Après |
+|---|---|---|
+| Contenu affiché (`contenuMs`), médiane / moyenne, 42 navigations | 18,5 / 19,2 ms | 19,0 / 20,8 ms |
+| Écart le plus grand par page (moyennes) | — | +6,3 ms (Notes) |
+| Images rAF au-delà de 20 ms dans les 400 ms suivantes | 16 / 1 018 | 16 / 1 017 |
+| … hors Notes | 2 / 898 | 3 / 897 |
+| p95 entre images, toutes pages sauf Notes | 16,8 ms | 16,8 ms |
+| Images abandonnées (trace CDP), navigation par lien | 59 / 316 | 58 / 708 |
+| Images abandonnées, navigation par la roue au clavier | 23 / 750 | 21 / 838 |
+| Tâche la plus longue (Notes, les deux côtés) | 70,0-71,8 ms | 70,7-73,6 ms |
+| Peinture, 42 navigations | 482 ms | 578 ms |
+| Retour Tâches → Notes → Tâches (poussée, historique, roue) | 0 | 1 567 à la 1re image, 9 sur 9 |
+| Retour Notes → Tâches → Notes | 0 | 2 000 à la 1re image, 9 sur 9 |
+| Retour Réglages → Projets → Réglages | 0 | 1 500 à la 1re image, 9 sur 9 |
+
+Plus d'images dans la trace, c'est l'animation qui en demande ; le nombre
+d'images **abandonnées** ne bouge pas. Les images perdues des Notes
+viennent de leur tâche de ~70 ms à ×4, présente avant comme après.
+
+Les deux autres façons de faire, prototypées au banc sur le même bundle
+(trois passes chacune) :
+
+| | Colonne (retenue) | Racine de la page | Page quittée estompée en plus |
+|---|---|---|---|
+| Peinture médiane des Notes | 46 ms | 97 ms | 53 ms |
+| Peinture, 42 navigations | 578 ms | 999 ms | 975 ms |
+| Images abandonnées | 58 / 708 | 49 / 700 | 84 / 765 |
+| … du Planificateur | 2 / 85 | 6 / 95 | 26 / 117 |
+
+Ce qui a aussi été vérifié :
+
+- Aucune des 17 pages de la roue n'a d'élément `position:fixed` dans la
+  colonne à l'arrivée, à 90 ms ni à 400 ms : le transform de 180 ms ne
+  déplace aucun volet. Après 400 ms, aucune animation ne reste.
+- 15 des 17 pages ont un défileur racine ; la Discussion et les Journaux
+  n'en ont pas, et rien n'y est retenu.
+- La page Tâches du banc ne descend pas plus bas que 1 567 px : la
+  vérification « 2 000 px » s'est faite sur les Notes.
+- Aux Réglages, la position est rendue à 1 500 dès la 1re image, puis la
+  page glisse de 24 px (1 476) à la 2e ou 3e image : la section « Source
+  d'inférence » recharge ses données et change de hauteur (repères suivis
+  image par image). C'est la page qui bouge, pas la reprise.
+- Préférence « mouvement réduit » émulée : aucune animation de la colonne,
+  les neuf retours à leur position.
+- Bureau 1280 px (Tâches, Discussion, Réglages) et mini-panneau 340 px
+  (Discussion, Tâches) contre `e95a5546` : 0 rectangle différent sur
+  1 854 éléments ; 8 pixels différents d'un niveau, sur le bord d'une
+  pastille ronde des Réglages.
+- Roue ouverte : les mêmes 21 boutons exposés qu'au parent.
+- Huit mutations du code (animer au bureau, animer la racine, laisser le
+  transform, écoute non passive, ignorer « mouvement réduit », décoller la
+  Discussion, poser une position à moitié, ne pas viser la colonne) : les
+  huit font échouer un test.
+
+**Pas vu** : l'émulateur Android et le téléphone. Le GPU du banc n'est pas
+ralenti.
+
+**Carlito vérifie** :
+
+1. Passer des Tâches aux Notes par la roue : les Notes montent de quelques
+   pixels en apparaissant, sans que les Tâches bougent en partant.
+2. Descendre loin dans les Tâches, aller aux Notes, revenir par le retour
+   d'Android : les Tâches sont là où on les a laissées, sans passer par le
+   haut.
+3. Même chose en revenant par la roue.
+4. Revenir sur une page et la toucher tout de suite : rien ne saute sous
+   le doigt.
+5. « Supprimer les animations » : les pages apparaissent d'un coup, la
+   position est toujours rendue. Non vérifié sur le téléphone.
