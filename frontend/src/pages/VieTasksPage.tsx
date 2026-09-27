@@ -930,7 +930,7 @@ export function VieTasksPage() {
     // 2026) : ≤ 96 px à 340 px, ≤ 150 px à 1384 × 868. Compté par la
     // structure, bordures de verre (1 px) comprises — base : 12 (padding)
     // + 32 (titre et boutons) + 8 + 34 (modes : 4 + 24 + 4 + 2) + 8 = 94 ;
-    // sm+ : 24 + 52 (surtitre 20 + titre 32) + 12 + 46 (filtres : 8 + 28 +
+    // sm+ : 24 + 52 (voyants 20 + titre 32) + 12 + 46 (filtres : 8 + 28 +
     // 8 + 2) + 12 = 146. Le sous-titre et la ligne de synchro — ~300 px de
     // chrome en tout — sont partis.
     <div data-verre-defilement className="flex-1 overflow-y-auto px-4 py-3 sm:px-5 sm:py-6 md:px-8">
@@ -943,7 +943,6 @@ export function VieTasksPage() {
           <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-2">
             <div className="shrink-0">
               <div className="hidden sm:flex items-center gap-2 mb-1 h-4">
-                <span className="text-xs font-medium tracking-[0.16em] uppercase leading-4" style={{ color: 'var(--color-accent)' }}>Diapason</span>
                 {iconeSynchro}
                 {voyantActivite}
               </div>

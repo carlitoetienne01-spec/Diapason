@@ -1194,13 +1194,27 @@ fn add_cargo_bin_to_path(cmd: &mut tokio::process::Command) {
     }
 }
 
+/// Les arguments de `uv run` pour `root` : `--no-sync` hors racine gérée,
+/// parce que `uv run` synchronise aussi (sans élaguer, mais en installant et
+/// en pouvant réécrire uv.lock) — et un checkout de développement ne se
+/// touche pas.
+pub(crate) fn args_uv_run(racine_geree: bool) -> Vec<&'static str> {
+    if racine_geree {
+        vec!["run"]
+    } else {
+        vec!["run", "--no-sync"]
+    }
+}
+
 async fn verify_diapason_rust_extension(
     root: &std::path::Path,
     uv_bin: &str,
+    racine_geree: bool,
 ) -> Result<(), String> {
     let mut cmd = tokio::process::Command::new(uv_bin);
     sans_fenetre_async(&mut cmd);
-    cmd.args(["run", "python", "-c", "import diapason_rust"])
+    cmd.args(args_uv_run(racine_geree))
+        .args(["python", "-c", "import diapason_rust"])
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .current_dir(root);
@@ -1211,7 +1225,11 @@ async fn verify_diapason_rust_extension(
         Ok(out) if out.status.success() => Ok(()),
         Ok(out) => {
             let stderr = String::from_utf8_lossy(&out.stderr);
-            Err(format_extension_import_failure(root, &stderr))
+            if racine_geree {
+                Err(format_extension_import_failure(root, &stderr))
+            } else {
+                Err(format_checkout_dev_pas_pret(root, &stderr))
+            }
         }
         Err(e) => Err(format!(
             "Could not verify `diapason_rust`: {}. Verify uv is installed at `{}`.",
@@ -1226,10 +1244,7 @@ async fn verify_diapason_rust_extension(
 /// `--inexact` empêche `uv sync` de retirer cette wheel au démarrage suivant :
 /// sans lui, uv élague tout paquet absent du verrou, et l'extension
 /// disparaissait après chaque relance.
-pub(crate) fn args_uv_sync(racine_geree: bool) -> Vec<&'static str> {
-    if !racine_geree {
-        return DESKTOP_UV_SYNC_ARGS.to_vec();
-    }
+pub(crate) fn args_uv_sync() -> Vec<&'static str> {
     let mut args: Vec<&'static str> = Vec::new();
     let mut i = 0;
     while i < DESKTOP_UV_SYNC_ARGS.len() {
@@ -1415,6 +1430,117 @@ fn check_jarvis_port_available() -> Result<(), String> {
         None => Ok(()),
         Some(raison) => Err(format_port_unavailable(DIAPASON_PORT, &raison)),
     }
+}
+
+// ---------------------------------------------------------------------------
+// L'agent launchd, quand il existe, EST le serveur (macOS)
+// ---------------------------------------------------------------------------
+//
+// Jusqu'au 20 septembre 2026, l'app et l'agent `com.diapason.serve`
+// (RunAtLoad, KeepAlive) étaient deux lanceurs pour le même port 8000. Au
+// login, l'app — élément d'ouverture de session — sondait /health pendant
+// que le serveur launchd chargeait encore, ne trouvait rien, et lançait le
+// sien. Le premier à lier gagnait ; si c'était l'app, launchd relançait le
+// sien toutes les dix secondes tant qu'elle vivait : 837 cycles dans
+// serve.err.log, et pendant chacun le socket du maillage (8001, que seul
+// l'agent ouvre) n'existait pas. Quand launchd gagnait, l'enfant de l'app
+// sortait code 3 et l'app affichait une erreur devant un serveur sain.
+
+/// Le libellé de src/diapason/desktop/launch_agent.py (SERVE_LABEL), posé dans
+/// ~/Library/LaunchAgents par `diapason serve-service install`.
+#[cfg(target_os = "macos")]
+const LAUNCHD_SERVE_LABEL: &str = "com.diapason.serve";
+
+/// `gui/<uid>/com.diapason.serve` si l'agent est CHARGÉ dans launchd, sinon
+/// `None`. `launchctl print` réussit pour un service chargé — qu'il tourne ou
+/// non — et échoue pour un service absent ou déchargé (`bootout`).
+#[cfg(target_os = "macos")]
+async fn launchd_serve_charge() -> Option<String> {
+    // L'uid par `id -u` : un binaire lancé par LaunchServices n'a pas
+    // toujours UID dans son environnement.
+    let uid = tokio::process::Command::new("/usr/bin/id")
+        .arg("-u")
+        .output()
+        .await
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .filter(|u| !u.is_empty())?;
+    let cible = format!("gui/{uid}/{LAUNCHD_SERVE_LABEL}");
+    let charge = tokio::process::Command::new("/bin/launchctl")
+        .args(["print", &cible])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .await
+        .map(|s| s.success())
+        .unwrap_or(false);
+    charge.then_some(cible)
+}
+
+#[cfg(not(target_os = "macos"))]
+async fn launchd_serve_charge() -> Option<String> {
+    None
+}
+
+/// Démarre l'agent s'il ne tourne pas — `kickstart` SANS `-k`, qui ne touche
+/// pas à un serveur en marche, fût-il encore en train de charger.
+#[cfg(target_os = "macos")]
+async fn launchd_serve_demarrer(cible: &str) -> Result<(), String> {
+    let out = tokio::process::Command::new("/bin/launchctl")
+        .args(["kickstart", cible])
+        .output()
+        .await
+        .map_err(|e| format!("launchctl kickstart {cible} : {e}"))?;
+    if out.status.success() {
+        return Ok(());
+    }
+    Err(format!(
+        "launchctl kickstart {cible} a échoué ({}) : {}",
+        out.status,
+        String::from_utf8_lossy(&out.stderr).trim()
+    ))
+}
+
+#[cfg(not(target_os = "macos"))]
+async fn launchd_serve_demarrer(_cible: &str) -> Result<(), String> {
+    Ok(())
+}
+
+/// L'agent est chargé et démarré, mais /health ne répond pas dans le délai.
+fn format_launchd_serve_muet(cible: &str, port: u16, attente: Duration) -> String {
+    format!(
+        "L'agent launchd {cible} est chargé et démarré, mais son serveur ne \
+         répond pas sur le port {port} après {} s.\n\n\
+         Ce qu'il fait : ~/.diapason/logs/serve.err.log\n\
+         Son état :     launchctl print {cible}\n\
+         Si un autre processus tient le port, le serveur l'attend au lieu \
+         de mourir — pour l'identifier :\n  {}",
+        attente.as_secs(),
+        port_owner_hint(),
+    )
+}
+
+/// Un checkout de développement dont le venv n'importe pas l'extension.
+///
+/// L'app n'y synchronise plus rien : jusqu'au 20 septembre 2026, elle y
+/// lançait `uv sync --locked --extra …` — EXACT, sans `dev` ni
+/// `speech-wake` — et élaguait pytest et sherpa-onnx du venv de la personne
+/// qui développe, à chaque démarrage sans serveur en face. Le remède est le
+/// sien, pas le nôtre.
+fn format_checkout_dev_pas_pret(root: &std::path::Path, stderr: &str) -> String {
+    let tail = uv_sync_stderr_tail(stderr, 4000);
+    format!(
+        "{} est un checkout de développement : l'application n'y touche pas \
+         au venv, et `diapason_rust` n'y est pas importable. Dernière sortie :\n\n{}\n\n\
+         Depuis ce dossier :\n\n  make setup\n\n\
+         puis relance l'application.",
+        root.display(),
+        if tail.is_empty() {
+            "(rien sur stderr)"
+        } else {
+            &tail
+        },
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -1794,6 +1920,50 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
         }
     }
 
+    // Rien n'écoute. Sur macOS, si l'agent launchd est chargé, c'est LUI le
+    // serveur : on le démarre (s'il ne tourne pas déjà) et on l'attend, on
+    // ne lui dispute pas le port. Voir le commentaire de launchd_serve_charge.
+    if let Some(cible) = launchd_serve_charge().await {
+        {
+            let mut s = status.lock().await;
+            s.detail = format!("Démarrage du serveur géré par launchd ({cible})…");
+        }
+        if let Err(err) = launchd_serve_demarrer(&cible).await {
+            let mut s = status.lock().await;
+            s.error = Some(err);
+            return;
+        }
+        let health_url = format!("http://127.0.0.1:{}/health", DIAPASON_PORT);
+        let attente = Duration::from_secs(600);
+        // Aucun enfant à nous : le résultat ne peut pas être EarlyExit.
+        match wait_for_diapason_health(&health_url, attente, &backend).await {
+            DiapasonStartResult::Ready => {
+                let mut s = status.lock().await;
+                s.phase = "ready".into();
+                s.detail = format!(
+                    "Connecté au serveur géré par launchd ({cible}) sur le port {}.",
+                    DIAPASON_PORT
+                );
+                s.server_ready = true;
+                s.model_ready = true;
+                s.ollama_ready = true;
+            }
+            DiapasonStartResult::ServiceUnavailable(body) => {
+                let mut s = status.lock().await;
+                s.error = Some(format!(
+                    "Le serveur géré par launchd ({cible}) répond, mais son moteur \
+                     d'inférence n'est pas prêt (HTTP 503).\n\nRéponse :\n{}",
+                    body.trim()
+                ));
+            }
+            DiapasonStartResult::Timeout | DiapasonStartResult::EarlyExit { .. } => {
+                let mut s = status.lock().await;
+                s.error = Some(format_launchd_serve_muet(&cible, DIAPASON_PORT, attente));
+            }
+        }
+        return;
+    }
+
     if let Err(err) = check_jarvis_port_available() {
         let mut s = status.lock().await;
         s.error = Some(err);
@@ -1832,44 +2002,57 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
     // to the user BEFORE the long server-start wait. The status detail
     // message also indicates this can take a couple of minutes on first
     // boot so users don't restart the app thinking it's stuck.
-    {
+    // Seule la racine GÉRÉE par l'amorçage est synchronisée : c'est notre
+    // venv. Un checkout de développement appartient à qui développe ; `uv
+    // sync` y est exact et l'élaguait (voir format_checkout_dev_pas_pret).
+    if racine_geree {
+        {
+            let mut s = status.lock().await;
+            s.detail =
+                "Installing dependencies (uv sync — may take 1-2 min on first boot)...".into();
+        }
+        let mut sync_cmd = tokio::process::Command::new(&uv_bin);
+        sans_fenetre_async(&mut sync_cmd);
+        // Le 28 août 2026, le diagnostic annonçait `dictation` tandis que
+        // cette liste l'omettait. Une commande affichée qui ne reproduit pas
+        // le chemin réel transforme chaque incident de démarrage en fausse
+        // piste.
+        sync_cmd
+            .args(args_uv_sync())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
+            .current_dir(root);
+        // Avoid LD_LIBRARY_PATH leak when running inside an AppImage (#455).
+        prepare_subprocess_for_appimage(&mut sync_cmd);
+        add_cargo_bin_to_path(&mut sync_cmd);
+        let sync_output = sync_cmd.output().await;
+        match sync_output {
+            Ok(out) if !out.status.success() => {
+                let stderr = String::from_utf8_lossy(&out.stderr);
+                let mut s = status.lock().await;
+                s.error = Some(format_uv_sync_failure(root, out.status.code(), &stderr));
+                return;
+            }
+            Err(e) => {
+                let mut s = status.lock().await;
+                s.error = Some(format_uv_sync_spawn_error(root, &uv_bin, &e.to_string()));
+                return;
+            }
+            Ok(_) => {} // success — fall through
+        }
+    } else {
         let mut s = status.lock().await;
-        s.detail = "Installing dependencies (uv sync — may take 1-2 min on first boot)...".into();
-    }
-    let mut sync_cmd = tokio::process::Command::new(&uv_bin);
-    sans_fenetre_async(&mut sync_cmd);
-    // Le 28 août 2026, le diagnostic annonçait `dictation` tandis que cette
-    // liste l'omettait. Une commande affichée qui ne reproduit pas le chemin
-    // réel transforme chaque incident de démarrage en fausse piste.
-    sync_cmd
-        .args(args_uv_sync(racine_geree))
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::piped())
-        .current_dir(root);
-    // Avoid LD_LIBRARY_PATH leak when running inside an AppImage (#455).
-    prepare_subprocess_for_appimage(&mut sync_cmd);
-    add_cargo_bin_to_path(&mut sync_cmd);
-    let sync_output = sync_cmd.output().await;
-    match sync_output {
-        Ok(out) if !out.status.success() => {
-            let stderr = String::from_utf8_lossy(&out.stderr);
-            let mut s = status.lock().await;
-            s.error = Some(format_uv_sync_failure(root, out.status.code(), &stderr));
-            return;
-        }
-        Err(e) => {
-            let mut s = status.lock().await;
-            s.error = Some(format_uv_sync_spawn_error(root, &uv_bin, &e.to_string()));
-            return;
-        }
-        Ok(_) => {} // success — fall through
+        s.detail = format!(
+            "Checkout de développement ({}) : venv laissé tel quel.",
+            root.display()
+        );
     }
 
     {
         let mut s = status.lock().await;
         s.detail = "Verifying Rust extension (diapason_rust)...".into();
     }
-    if let Err(err) = verify_diapason_rust_extension(root, &uv_bin).await {
+    if let Err(err) = verify_diapason_rust_extension(root, &uv_bin, racine_geree).await {
         // Sur une racine gérée, l'import échoue tant que la wheel n'est pas
         // posée dans le venv que `uv sync` vient de créer : on l'installe,
         // puis on revérifie. Sans wheel, l'erreur d'origine reste la bonne.
@@ -1888,7 +2071,7 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
             s.error = Some(e);
             return;
         }
-        if let Err(err) = verify_diapason_rust_extension(root, &uv_bin).await {
+        if let Err(err) = verify_diapason_rust_extension(root, &uv_bin, racine_geree).await {
             let mut s = status.lock().await;
             s.error = Some(err);
             return;
@@ -1907,13 +2090,16 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
     // serveur Python survivait, orphelin, en tenant le port.
     #[cfg(unix)]
     cmd.process_group(0);
-    let mut serve_argv: Vec<String> = vec![
-        "run".into(),
-        "diapason".into(),
-        "serve".into(),
-        "--port".into(),
+    let mut serve_argv: Vec<String> = args_uv_run(racine_geree)
+        .into_iter()
+        .map(String::from)
+        .collect();
+    serve_argv.extend([
+        "diapason".to_string(),
+        "serve".to_string(),
+        "--port".to_string(),
         DIAPASON_PORT.to_string(),
-    ];
+    ]);
     serve_argv.extend(plan.serve_args.iter().cloned());
     // If the Ollama pull fell back to a different tag than planned, serve the
     // tag that is actually present. boot_plan always emits `--model` followed
@@ -2027,7 +2213,11 @@ async fn boot_backend(backend: SharedBackend, status: SharedStatus) {
                 DIAPASON_PORT,
                 // Show the args actually passed (after `serve --port <port>`),
                 // including any post-fallback `--model` override.
-                match serve_argv.get(5..) {
+                match serve_argv
+                    .iter()
+                    .position(|a| a == "--port")
+                    .and_then(|i| serve_argv.get(i + 2..))
+                {
                     Some(rest) if !rest.is_empty() => format!(" {}", rest.join(" ")),
                     _ => String::new(),
                 },
@@ -5971,15 +6161,54 @@ mod tests {
 
     #[test]
     fn la_racine_geree_ne_compile_pas_l_extension_et_garde_la_wheel() {
-        // Sans racine gérée : la commande historique, mot pour mot.
-        assert_eq!(args_uv_sync(false), super::DESKTOP_UV_SYNC_ARGS.to_vec());
-        // Avec : plus de `--group desktop-native` (sinon cargo est exigé),
-        // et `--inexact` (sinon uv élague la wheel au démarrage suivant).
-        let args = args_uv_sync(true);
+        // Plus de `--group desktop-native` (sinon cargo est exigé), et
+        // `--inexact` (sinon uv élague la wheel au démarrage suivant).
+        let args = args_uv_sync();
         assert!(!args.contains(&"--group"), "{args:?}");
         assert!(!args.contains(&"desktop-native"), "{args:?}");
         assert_eq!(args.last(), Some(&"--inexact"));
         assert!(args.contains(&"--locked") && args.contains(&"dictation"), "{args:?}");
+    }
+
+    /// Un checkout de développement ne se synchronise pas — même par `uv run`.
+    ///
+    /// Jusqu'au 20 septembre 2026, l'app y lançait `uv sync` exact (pytest et
+    /// sherpa-onnx élagués) puis `uv run diapason serve`, qui synchronise aussi.
+    #[test]
+    fn un_checkout_de_developpement_n_est_jamais_synchronise() {
+        assert_eq!(super::args_uv_run(false), vec!["run", "--no-sync"]);
+        assert_eq!(super::args_uv_run(true), vec!["run"]);
+    }
+
+    #[test]
+    fn le_checkout_dev_pas_pret_renvoie_a_make_setup_sans_uv_sync() {
+        let msg = super::format_checkout_dev_pas_pret(
+            std::path::Path::new("/Users/x/Projets/Diapason"),
+            "ModuleNotFoundError: No module named 'diapason_rust'",
+        );
+        assert!(msg.contains("make setup"), "{msg}");
+        assert!(msg.contains("/Users/x/Projets/Diapason"), "{msg}");
+        assert!(msg.contains("diapason_rust"), "{msg}");
+        assert!(
+            !msg.contains("uv sync"),
+            "ne jamais conseiller d'élaguer : {msg}"
+        );
+    }
+
+    #[test]
+    fn l_agent_launchd_muet_est_nomme_avec_son_journal_et_le_port() {
+        let msg = super::format_launchd_serve_muet(
+            "gui/501/com.diapason.serve",
+            8000,
+            std::time::Duration::from_secs(600),
+        );
+        assert!(msg.contains("gui/501/com.diapason.serve"), "{msg}");
+        assert!(msg.contains("serve.err.log"), "{msg}");
+        assert!(msg.contains("8000") && msg.contains("600 s"), "{msg}");
+        assert!(
+            msg.contains("launchctl print gui/501/com.diapason.serve"),
+            "{msg}"
+        );
     }
 
     /// Un port libre doit être annoncé libre.

@@ -96,13 +96,9 @@ export function VieYearReviewPage() {
       <main className="max-w-5xl mx-auto w-full">
         <header className="flex flex-col gap-3 sm:gap-5 md:flex-row md:items-end md:justify-between mb-5 sm:mb-7">
           <div>
-            <span className="text-xs font-medium tracking-[0.16em] uppercase" style={{ color: 'var(--color-accent)' }}>Diapason</span>
-            <button type="button" onClick={() => setMonth(undefined)} className="block mt-2 text-left cursor-pointer" aria-label="Revenir au bilan annuel">
+            <button type="button" onClick={() => setMonth(undefined)} className="block text-left cursor-pointer" aria-label="Revenir au bilan annuel">
               <h1 className="text-2xl font-semibold" style={{ color: 'var(--color-text)' }}>Bilan annuel</h1>
             </button>
-            <p className="hidden sm:block text-sm mt-2" style={{ color: 'var(--color-text-secondary)' }}>
-              Prenez du recul sur vos actions, habitudes et projets.
-            </p>
           </div>
           {/* Empilé sous md, le bouton s'étirait sur toute la largeur du
               panneau (align-items: stretch) : une barre « Export JSON » de

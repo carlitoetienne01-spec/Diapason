@@ -1285,12 +1285,9 @@ export function VieProjectsPage() {
               />
             </div>
             <div className="order-1 sm:order-none">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-xs font-medium tracking-[0.16em] uppercase" style={{ color: 'var(--color-accent)' }}>Diapason</span>
-                {saving && <Loader2 size={13} className="animate-spin" style={{ color: 'var(--color-accent)' }} />}
-              </div>
               <div className="flex flex-wrap items-start gap-3">
                 <h1 className="text-2xl font-semibold flex-1 min-w-0" style={{ color: 'var(--color-text)' }}>{selected.name}</h1>
+                {saving && <Loader2 size={13} className="animate-spin" style={{ color: 'var(--color-accent)' }} />}
                 <div className="flex gap-1">
                   <button type="button" onClick={() => edit(selected)} className="rounded-lg p-2 cursor-pointer" style={{ color: 'var(--color-text-tertiary)', background: 'var(--color-bg-secondary)' }} aria-label="Modifier">
                     <Pencil size={14} />
@@ -1816,12 +1813,10 @@ export function VieProjectsPage() {
       <main className="max-w-5xl mx-auto w-full">
         <header className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between mb-7">
           <div>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-xs font-medium tracking-[0.16em] uppercase" style={{ color: 'var(--color-accent)' }}>Diapason</span>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-semibold" style={{ color: 'var(--color-text)' }}>Projets</h1>
               {saving && <Loader2 size={13} className="animate-spin" style={{ color: 'var(--color-accent)' }} />}
             </div>
-            <h1 className="text-2xl font-semibold" style={{ color: 'var(--color-text)' }}>Projets</h1>
-            <p className="text-sm mt-2 max-w-xl" style={{ color: 'var(--color-text-secondary)' }}>Transformez vos objectifs en ensembles d’actions clairs, suivis localement.</p>
           </div>
           <button type="button" onClick={() => { if (showForm) void closeForm(); else setShowForm(true); }} className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium cursor-pointer" style={{ background: 'var(--color-accent)', color: '#fff' }}>
             <CirclePlus size={16} /> Nouveau projet

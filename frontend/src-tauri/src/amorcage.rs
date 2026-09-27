@@ -654,7 +654,7 @@ mod tests {
         assert_eq!(b.roue, a.roue, "la wheel déjà téléchargée doit être réutilisée");
 
         eprintln!("  uv sync…");
-        let args = crate::args_uv_sync(true);
+        let args = crate::args_uv_sync();
         let sortie = std::process::Command::new(&uv)
             .args(&args)
             .current_dir(&racine)

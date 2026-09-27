@@ -412,18 +412,12 @@ export function ViePlannerPage() {
     <div data-verre-defilement className="flex-1 overflow-y-auto px-4 py-4 sm:px-5 sm:py-8 md:px-8 md:py-10">
       <main className="max-w-6xl mx-auto w-full">
         <header className="mb-4 sm:mb-7">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-xs font-medium tracking-[0.16em] uppercase" style={{ color: 'var(--color-accent)' }}>
-              Diapason
-            </span>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-semibold" style={{ color: 'var(--color-text)' }}>
+              Planificateur
+            </h1>
             {saving && <Loader2 size={13} className="animate-spin" style={{ color: 'var(--color-accent)' }} />}
           </div>
-          <h1 className="text-2xl font-semibold" style={{ color: 'var(--color-text)' }}>
-            Planificateur
-          </h1>
-          <p className="hidden sm:block text-sm mt-2" style={{ color: 'var(--color-text-secondary)' }}>
-            Une vue calme de votre journée, privée et disponible hors ligne.
-          </p>
         </header>
 
         <div className="grid gap-4 lg:gap-5 lg:grid-cols-[300px_minmax(0,1fr)]">
