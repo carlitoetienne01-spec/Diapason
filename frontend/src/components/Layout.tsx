@@ -13,6 +13,7 @@ import { titreDiscussion } from '../lib/discussions';
 import { useTranslation } from '../i18n/useTranslation';
 import { useSondeVisible } from '../lib/useSondeVisible';
 import { BandeauCompte } from '../features/compte/BandeauCompte';
+import { useTransitionDesPages } from '../lib/useTransitionDesPages';
 
 export function Layout() {
   const { t } = useTranslation();
@@ -51,6 +52,11 @@ export function Layout() {
   // Le sélecteur rend une chaîne : Layout ne se re-rend que quand le titre
   // change, pas à chaque message ajouté.
   const { pathname } = useLocation();
+  // Au téléphone, la page qui arrive glisse et se révèle, et celle qu'on
+  // retrouve reprend sa position (lib/useTransitionDesPages.ts, 27/09/2026).
+  // Ailleurs, le crochet ne fait rien.
+  const colonneRef = useRef<HTMLDivElement>(null);
+  useTransitionDesPages(colonneRef, pathname);
   const titreFil = useAppStore((s) => titreDiscussion(s.conversations, s.activeId, t));
   useEffect(() => {
     if (!estCompact) return;
@@ -155,6 +161,7 @@ export function Layout() {
               propre en-tête ; les autres pages reçoivent une bande au-dessus
               d'elles (index.css, `--bande-barre-fermee`). */}
           <div
+            ref={colonneRef}
             data-colonne-page=""
             className="flex-1 flex flex-col min-w-0 min-h-0 relative z-[2]"
             style={{

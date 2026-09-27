@@ -70,6 +70,46 @@ describe('Layout.tsx', () => {
   });
 });
 
+describe('useTransitionDesPages.ts', () => {
+  const crochet = sansCommentaires(lire('lib/useTransitionDesPages.ts'));
+  const layout = sansCommentaires(lire('components/Layout.tsx'));
+
+  it('n’anime les pages et ne retient leur position qu’au téléphone', () => {
+    // 27/09/2026, lot 2 « soyeux » : le crochet est appelé partout (règle
+    // des crochets), mais chacun de ses deux effets sort d'abord hors du
+    // téléphone — le bureau et le mini-panneau n'ont ni écouteur, ni
+    // animation, ni position reprise.
+    expect(layout, 'Layout branche le crochet sur la colonne').toContain('useTransitionDesPages(colonneRef, pathname);');
+    expect(layout.match(/ref=\{colonneRef\}/g)?.length, 'une seule colonne visée, celle du téléphone et du bureau').toBe(1);
+    const compact = layout.slice(layout.indexOf('if (estCompact) {\n    return ('), layout.indexOf('  return (\n    <div className="h-full w-full overflow-hidden relative">'));
+    expect(compact, 'le mini-panneau n’a pas de colonne visée').not.toContain('colonneRef');
+    const effets = crochet.match(/use(?:Layout)?Effect\(\(\) => \{\s*[^\n]*\n\s*[^\n]*/g) ?? [];
+    expect(effets.length, 'deux effets').toBe(2);
+    expect(effets[0], 'retenir : sort hors du téléphone').toMatch(/if \(!estMobile \|\| !colonne\) return undefined;/);
+    expect(effets[1], 'animer et reprendre : sort hors du téléphone').toMatch(/useLayoutEffect\(\(\) => \{\s*if \(!estMobile\) return undefined;/);
+  });
+
+  it('anime la colonne, jamais la racine de la page qui est son défileur', () => {
+    // 27/09/2026, trace CDP à ×4 : animer la racine (le défileur des Notes)
+    // fait repeindre tout son contenu, 39 → 97 ms de peinture médiane ; la
+    // colonne, stable, la laisse à 46.
+    expect(crochet).toContain('entree.current = colonne.animate(IMAGES_ENTREE, OPTIONS_ENTREE);');
+    expect(crochet, 'aucune animation posée sur la page elle-même').not.toMatch(/firstElementChild[\s\S]*\.animate\(/);
+  });
+
+  it('écoute le défilement sans jamais retenir le doigt', () => {
+    expect(crochet, 'l’écoute du défilement est passive').toContain("colonne.addEventListener('scroll', surDefilement, { capture: true, passive: true });");
+    expect(crochet, 'les reprises de main aussi').toContain('colonne.addEventListener(type, arreter, { capture: true, passive: true });');
+    expect(crochet, 'aucun preventDefault sur le chemin du doigt').not.toContain('preventDefault');
+  });
+
+  it('vise le même défileur qu’index.css', () => {
+    const decisions = lire('lib/transitionPage.ts');
+    expect(decisions).toContain("export const SELECTEUR_DEFILEUR_PAGE = ':scope > .overflow-y-auto';");
+    expect(lire('index.css'), 'la bande de la roue vit dans ce même défileur').toContain('[data-colonne-page] > .overflow-y-auto {');
+  });
+});
+
 describe('App.tsx', () => {
   const app = sansCommentaires(lire('App.tsx'));
 
