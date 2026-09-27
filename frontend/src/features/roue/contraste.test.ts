@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-import { contrasteEstompe, lireCouleur, lireHex, opaciteMinimale, rapportDeContraste } from './contraste';
-import { OPACITE_LISIBLE_PAR_DEFAUT } from './geometrieRoue';
+import { contrasteEstompe, lireCouleur, lireHex, luminance, opaciteMinimale, rapportDeContraste } from './contraste';
+import { ECART_ALLUME, estompeSelonEcart, OPACITE_LISIBLE_PAR_DEFAUT, PORTEE_LISIBLE } from './geometrieRoue';
 
 // Lu sur le disque : sous vitest, un import `?raw` de CSS rend une chaîne vide.
 const feuille = readFileSync(join(process.cwd(), 'src/index.css'), 'utf-8');
@@ -78,14 +78,100 @@ describe('Les noms estompés qui se touchent gardent 4,5:1 dans les sept apparen
 
   it('l’opacité minimale de chaque apparence tient 4,5:1, et pas un centième de moins', () => {
     for (const [nom, t] of Object.entries(APPARENCES)) {
-      const alpha = opaciteMinimale(t['--color-text'], t['--color-bg']);
-      expect(contrasteEstompe(t['--color-text'], t['--color-bg'], alpha), `${nom} à ${alpha}`).toBeGreaterThanOrEqual(4.5);
-      expect(contrasteEstompe(t['--color-text'], t['--color-bg'], alpha - 0.02), `${nom} : au plus juste`).toBeLessThan(4.5);
+      // Sur la capsule (--color-surface) depuis la surimpression du 27/09/2026 :
+      // l'écran « Aller à » et son --color-bg ont disparu.
+      const alpha = opaciteMinimale(t['--color-text'], t['--color-surface']);
+      expect(contrasteEstompe(t['--color-text'], t['--color-surface'], alpha), `${nom} à ${alpha}`).toBeGreaterThanOrEqual(4.5);
+      expect(contrasteEstompe(t['--color-text'], t['--color-surface'], alpha - 0.02), `${nom} : au plus juste`).toBeLessThan(4.5);
       expect(alpha, `${nom} : le repli par défaut doit couvrir cette apparence`).toBeLessThanOrEqual(OPACITE_LISIBLE_PAR_DEFAUT);
     }
   });
 
   it('un texte qui ne passe pas même opaque n’est jamais estompé', () => {
     expect(opaciteMinimale('#777777', '#888888')).toBe(1);
+  });
+});
+
+/** L'accent de la capsule allumée tel que roue.css le résout : la teinte
+ *  appuyée en clair, l'accent partout ailleurs. */
+function accentAllume(nom: string, t: Record<string, string>): string {
+  return nom === 'clair' ? t['--color-accent-hover'] : t['--color-accent'];
+}
+
+describe('En surimpression, chaque nom touchable se lit sur sa capsule opaque, quelle que soit la page', () => {
+  // 27/09/2026, la roue en surimpression : les noms ne se posent plus sur
+  // l'écran « Aller à » mais sur la page vivante — blanc d'une carte, texte
+  // d'une tâche, tout est possible dessous. La capsule de chaque nom est
+  // opaque tant qu'il se touche (geometrieRoue.ts, `presenceSelonEcart`) :
+  // le contraste ne dépend plus que du nom et de SA capsule.
+  it('texte sur capsule de surface : 4,5:1 opaque dans les sept apparences, et les actions sur leur fond plein', () => {
+    for (const [nom, t] of Object.entries(APPARENCES)) {
+      expect(t['--color-surface'], `${nom} : surface lue`).toBeTruthy();
+      expect(rapportDeContraste(t['--color-text'], t['--color-surface']), `${nom} : texte sur sa capsule`).toBeGreaterThanOrEqual(4.5);
+      expect(
+        rapportDeContraste(t['--color-text'], t['--color-bg-secondary']),
+        `${nom} : les actions (Liste, Parler) sur leur fond plein`,
+      ).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it('le nom estompé au bout de la portée garde 4,5:1 sur sa capsule, et le repli couvre les sept', () => {
+    for (const [nom, t] of Object.entries(APPARENCES)) {
+      const lisible = opaciteMinimale(t['--color-text'], t['--color-surface']);
+      const auBout = estompeSelonEcart(PORTEE_LISIBLE, lisible);
+      expect(contrasteEstompe(t['--color-text'], t['--color-surface'], auBout), `${nom} à ${auBout}`).toBeGreaterThanOrEqual(4.5);
+      expect(lisible, `${nom} : le repli par défaut doit couvrir cette apparence`).toBeLessThanOrEqual(OPACITE_LISIBLE_PAR_DEFAUT);
+    }
+    expect(opaciteMinimale(APPARENCES.sauge['--color-text'], APPARENCES.sauge['--color-surface']), 'Sauge fixe le repli').toBe(
+      OPACITE_LISIBLE_PAR_DEFAUT,
+    );
+  });
+
+  it('la capsule accent tient parce que son nom ne s’estompe jamais : en Oxblood, un centième de moins la perdait', () => {
+    // L'élément [data-allume] glisse jusqu'à ECART_ALLUME pendant la
+    // rotation ; là, estompeSelonEcart le garde plein. La contre-preuve
+    // d'Oxblood : à 0,99, l'encre sur l'accent tombe à 4,49:1.
+    for (const [nom, t] of Object.entries(APPARENCES)) {
+      expect(estompeSelonEcart(ECART_ALLUME, 0.5), `${nom} : plein au demi-écart`).toBe(1);
+      expect(rapportDeContraste(t['--color-on-accent'], accentAllume(nom, t)), `${nom} : encre sur accent`).toBeGreaterThanOrEqual(4.5);
+    }
+    expect(
+      contrasteEstompe(APPARENCES.oxblood['--color-on-accent'], APPARENCES.oxblood['--color-accent'], 0.99),
+      'Oxblood estompé d’un centième : la preuve que le plateau n’est pas du luxe',
+    ).toBeLessThan(4.5);
+  });
+});
+
+describe('Le voile de la surimpression : mesuré, pas choisi au pif', () => {
+  const VOILE = 0.2;
+  const CANDIDATS = [0.15, 0.2, 0.25, 0.3];
+  const sousVoile = (hex: string) => lireCouleur(hex).map((v) => v * (1 - VOILE)) as [number, number, number];
+  const ratio = (a: [number, number, number], b: [number, number, number]) => {
+    const [clair, sombre] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+    return (clair + 0.05) / (sombre + 0.05);
+  };
+
+  it('roue.css porte la valeur mesurée', () => {
+    expect(roue).toContain('--roue-voile: rgba(0, 0, 0, 0.2);');
+  });
+
+  it('0,20 est le plus léger des candidats qui sépare la capsule du pire cas — page blanche, thème clair', () => {
+    // La capsule (surface #ffffff) posée sur une carte blanche de la page :
+    // sans voile, aucune frontière. 1,5:1 est la séparation visible retenue.
+    const surface = lireCouleur(APPARENCES.clair['--color-surface']);
+    const separation = (v: number) => ratio(surface, surface.map((c) => c * (1 - v)) as [number, number, number]);
+    expect(separation(VOILE), 'la séparation du pire cas').toBeGreaterThanOrEqual(1.5);
+    for (const v of CANDIDATS.filter((c) => c < VOILE)) {
+      expect(separation(v), `un voile de ${v} ne sépare plus`).toBeLessThan(1.5);
+    }
+  });
+
+  it('la page reste bien visible : son texte garde 4,5:1 sous le voile dans les sept apparences', () => {
+    for (const [nom, t] of Object.entries(APPARENCES)) {
+      expect(
+        ratio(sousVoile(t['--color-text']), sousVoile(t['--color-bg'])),
+        `${nom} : texte de la page sous le voile`,
+      ).toBeGreaterThanOrEqual(4.5);
+    }
   });
 });

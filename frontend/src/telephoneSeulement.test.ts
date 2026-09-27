@@ -18,7 +18,7 @@ const sansCommentaires = (code: string) =>
 
 describe('Layout.tsx', () => {
   const layout = sansCommentaires(lire('components/Layout.tsx'));
-  const compact = layout.slice(layout.indexOf('if (estCompact) {\n    return ('), layout.indexOf('  return (\n    <div className="flex flex-col h-full w-full overflow-hidden relative" style'));
+  const compact = layout.slice(layout.indexOf('if (estCompact) {\n    return ('), layout.indexOf('  return (\n    <div className="h-full w-full overflow-hidden relative">'));
 
   it('ne monte la roue qu’au téléphone, une seule fois, hors du mini-panneau', () => {
     expect(layout.match(/<RoueNavigation\b/g)?.length, 'une seule roue').toBe(1);
@@ -31,6 +31,29 @@ describe('Layout.tsx', () => {
     expect(layout).toMatch(/\{!estMobile && <Sidebar \/>\}/);
     expect(layout).toMatch(/\{!estMobile && sidebarOpen && \(/);
     expect(layout.match(/<Sidebar\b/g)?.length, 'une seule barre latérale').toBe(1);
+  });
+
+  it('ne fait reculer la page qu’au téléphone, roue ouverte, et la roue reste hors du bloc qui recule', () => {
+    // 26/09/2026, surimpression : le recul (scale 0.95) vit dans roue.css et
+    // ne s'applique que sous [data-diapason-mobile] ET [data-roue-ouverte],
+    // que seule la roue écrit — le bureau et le mini-panneau ne bougent pas.
+    expect(layout.match(/data-recul-page/g)?.length, 'un seul bloc qui recule').toBe(1);
+    expect(compact, 'le mini-panneau n’a pas de bloc qui recule').not.toContain('data-recul-page');
+    const apresRecul = layout.slice(layout.indexOf('data-recul-page'));
+    expect(apresRecul, 'la roue est montée APRÈS le bloc qui recule, pas dedans').toMatch(
+      /\{estMobile && <RoueNavigation \/>\}/,
+    );
+    const css = sansCommentaires(lire('features/roue/roue.css'));
+    expect(css, 'le recul exige le mode téléphone ET la roue ouverte').toMatch(
+      /html\[data-diapason-mobile='1'\]\[data-roue-ouverte\] \[data-recul-page\] \{\s*transform: scale\(0\.95\);/,
+    );
+    expect(css, 'le bloc contenant des position:fixed est permanent au téléphone').toMatch(
+      /html\[data-diapason-mobile='1'\] \[data-recul-page\] \{\s*will-change: transform;\s*transition: transform 180ms ease-out;/,
+    );
+    const roueTsx = sansCommentaires(lire('features/roue/RoueNavigation.tsx'));
+    expect(roueTsx, 'seule la roue écrit data-roue-ouverte').toContain("racine.setAttribute('data-roue-ouverte', '')");
+    const partout = ['components/Layout.tsx', 'App.tsx', 'main.tsx'].map((f) => sansCommentaires(lire(f))).join('\n');
+    expect(partout, 'personne d’autre ne l’écrit').not.toContain('data-roue-ouverte');
   });
 
   it('ne réserve la bande de la roue qu’au téléphone, autour de la seule Discussion', () => {
@@ -74,6 +97,24 @@ describe('RoueNavigation.tsx', () => {
   it('branche le retour d’Android et l’inertie sur leurs fonctions pures', () => {
     expect(roue).toContain('pontNatif.surRetour(() => reponseAuRetour(ouverteRef.current, fermerEtRendreLeFocus))');
     expect(roue).toContain('return rendreInertes(freresARendreInertes(moi));');
+  });
+
+  it('le voile ferme par sa fonction pure, et le nom du dialogue reste aux lecteurs d’écran', () => {
+    // 26/09/2026, surimpression : le titre visible a disparu (la page derrière
+    // situe déjà), mais le dialogue doit toujours s'annoncer « Aller à ».
+    expect(roue).toContain("if (toucherDuVoile(surUnBouton, clicAIgnorer()) === 'fermer') fermerEtRendreLeFocus();");
+    expect(roue).toMatch(/<h2 id="roue-titre" className="sr-only">/);
+    expect(roue, 'l’opacité lisible se mesure sur la capsule du nom').toContain(
+      'opaciteMinimale(capsule.color, capsule.backgroundColor)',
+    );
+    // 27/09/2026 : la capsule entière s'estompait avec son nom, et la page
+    // passait à travers. La place porte la PRÉSENCE (opaque tant qu'elle se
+    // touche) ; le nom et la pastille portent l'estompage.
+    expect(roue).toContain('place.style.opacity = String(p.presence);');
+    expect(roue).toContain('nom.style.opacity = String(p.estompe);');
+    const css = sansCommentaires(lire('features/roue/roue.css'));
+    expect(css, 'la capsule a un fond plein, sans flou').toMatch(/\.roue-element \{[^}]*background: var\(--color-surface\);/);
+    expect(css, 'aucun flou dans la roue').not.toMatch(/backdrop-filter|filter:\s*blur/);
   });
 });
 

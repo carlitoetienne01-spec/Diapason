@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { freresARendreInertes, rendreInertes, reponseAuRetour } from './fermetureRoue';
+import { freresARendreInertes, rendreInertes, reponseAuRetour, toucherDuVoile } from './fermetureRoue';
 
 /**
  * La roue et le bouton retour d'Android, et la page sous l'écran « Aller à »
@@ -17,6 +17,24 @@ describe('reponseAuRetour', () => {
     const fermer = vi.fn();
     expect(reponseAuRetour(false, fermer), 'la coquille garde son retour').toBe(false);
     expect(fermer).not.toHaveBeenCalled();
+  });
+});
+
+describe('toucherDuVoile', () => {
+  // 26/09/2026, surimpression : Échap, le retour d'Android ET le voile
+  // ferment (§82 : jamais un seul chemin). Sans le garde du clic fantôme,
+  // chaque rotation relâchée sur le voile refermait la roue.
+  it('un toucher du voile ferme', () => {
+    expect(toucherDuVoile(false, false)).toBe('fermer');
+  });
+
+  it('un toucher qui atteint un bouton ne ferme pas : le bouton sait quoi faire', () => {
+    expect(toucherDuVoile(true, false)).toBe('rien');
+  });
+
+  it('le clic fantôme qui suit un glissé ne ferme pas la roue que le pouce vient d’ouvrir', () => {
+    expect(toucherDuVoile(false, true)).toBe('rien');
+    expect(toucherDuVoile(true, true)).toBe('rien');
   });
 });
 

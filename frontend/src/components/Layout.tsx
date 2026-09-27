@@ -96,7 +96,16 @@ export function Layout() {
   }
 
   return (
-    <div className="flex flex-col h-full w-full overflow-hidden relative" style={{ paddingTop: '3px' }}>
+    <div className="h-full w-full overflow-hidden relative">
+      {/* Tout ce que Layout rend de « la page » — décor, voyant du haut,
+          cloche, bandeau, la colonne — vit dans [data-recul-page] : roue
+          ouverte, au téléphone, ce bloc recule à 95 % sous la roue (roue.css,
+          transform pur ; 27/09/2026 — l'écran plein « Aller à » cachait la
+          page). Il épouse la fenêtre au pixel près : ses position:fixed ne
+          bougent pas roue fermée (mêmes rectangles qu'avant, mesurés au
+          banc) et reculent avec elle roue ouverte. Le bouton de la roue et
+          son voile sont dehors et ne reculent pas. */}
+      <div data-recul-page="" className="flex flex-col h-full w-full relative" style={{ paddingTop: '3px' }}>
       <div className="hud-backdrop" aria-hidden="true" />
       <SystemPulse apiReachable={apiReachable} />
 
@@ -164,6 +173,7 @@ export function Layout() {
             <Outlet />
           </div>
         </main>
+      </div>
       </div>
       {estMobile && <RoueNavigation />}
     </div>

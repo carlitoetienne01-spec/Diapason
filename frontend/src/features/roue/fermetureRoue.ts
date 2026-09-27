@@ -19,6 +19,17 @@ export function reponseAuRetour(ouverte: boolean, fermer: () => void): boolean {
 }
 
 /**
+ * Ce que fait un toucher du voile — la page visible derrière la roue en
+ * surimpression (26/09/2026). Il ferme, SAUF s'il a atteint un bouton (la
+ * roue, une action, le X : chacun sait quoi faire) ou s'il est le clic
+ * fantôme qui suit un glissé — sans quoi chaque rotation relâchée sur le
+ * voile refermait la roue que le pouce venait d'ouvrir.
+ */
+export function toucherDuVoile(surUnBouton: boolean, clicApresGlisse: boolean): 'fermer' | 'rien' {
+  return surUnBouton || clicApresGlisse ? 'rien' : 'fermer';
+}
+
+/**
  * Les éléments à rendre inertes sous l'écran « Aller à » : les frères de
  * `moi` (la cloche, la colonne de la page…), sauf ceux déjà inertes — que
  * la roue ne doit pas réveiller en se refermant.

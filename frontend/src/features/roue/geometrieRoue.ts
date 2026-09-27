@@ -82,23 +82,53 @@ export const DUREE_MAX_MS = 250;
 
 /**
  * Jusqu'où les voisins restent lisibles ET touchables : trois de chaque côté
- * de l'allumé. Leur opacité descend de 1 à `opaciteLisible` (la plus basse
- * qui garde 4,5:1 dans l'apparence, contraste.ts) ; au-delà, elle tombe à 0
- * sur un demi-élément et l'élément ne se touche plus. 26/09/2026,
- * contre-épreuve : l'ancien estompage (−0,17 par élément, touchable dès 0,05)
- * laissait toucher des noms à 1,09:1 en Sauge — illisibles.
+ * de l'allumé. Jusque-là, leur capsule reste OPAQUE et seul leur nom
+ * s'estompe, de 1 à `opaciteLisible` (la plus basse qui garde 4,5:1 sur la
+ * capsule, contraste.ts) ; au-delà, la capsule entière s'efface sur un
+ * demi-élément et l'élément ne se touche plus. 26/09/2026, contre-épreuve :
+ * l'ancien estompage (−0,17 par élément, touchable dès 0,05) laissait
+ * toucher des noms à 1,09:1 en Sauge — illisibles.
  */
 export const PORTEE_LISIBLE = 3;
 
-/** L'opacité lisible quand l'apparence n'a pas pu être lue : la plus
- *  exigeante des sept (Sauge, 0,74 au 26/09/2026). */
-export const OPACITE_LISIBLE_PAR_DEFAUT = 0.75;
+/** L'écart sous lequel un élément est l'allumé (capsule accent). */
+export const ECART_ALLUME = 0.5;
 
-/** L'opacité d'un élément à `ecart` éléments de l'allumé. */
-export function opaciteSelonEcart(ecart: number, opaciteLisible: number): number {
-  if (ecart <= PORTEE_LISIBLE) return 1 - ((1 - opaciteLisible) * ecart) / PORTEE_LISIBLE;
+/** L'opacité lisible quand l'apparence n'a pas pu être lue : la plus
+ *  exigeante des sept pour un nom sur sa capsule (Sauge, 0,76 au
+ *  27/09/2026 ; contraste.test.ts tient les sept sous ce repli). */
+export const OPACITE_LISIBLE_PAR_DEFAUT = 0.76;
+
+/**
+ * L'estompage du NOM (et de sa pastille) sur sa capsule opaque, à `ecart`
+ * éléments de l'allumé. Plein jusqu'au demi-écart : tant qu'un élément porte
+ * la capsule accent, il ne s'estompe pas d'un centième — en Oxblood, l'encre
+ * sur l'accent tombe à 4,49:1 dès 0,99 d'opacité, et l'allumé glisse
+ * jusqu'au demi-écart pendant la rotation (27/09/2026).
+ */
+export function estompeSelonEcart(ecart: number, opaciteLisible: number): number {
+  if (ecart <= ECART_ALLUME) return 1;
+  if (ecart >= PORTEE_LISIBLE) return opaciteLisible;
+  return 1 - ((1 - opaciteLisible) * (ecart - ECART_ALLUME)) / (PORTEE_LISIBLE - ECART_ALLUME);
+}
+
+/**
+ * La présence de la CAPSULE : opaque dans la portée, effacée sur le
+ * demi-élément suivant. 27/09/2026, surimpression : une capsule estompée
+ * avec son nom laissait passer la page vivante à travers elle — au banc,
+ * « Portfolio · 3 » se lisait sous « Discussion » et « Permis de conduire »
+ * sous « Tableau de bord » (capsules à 0,77). La consigne était « opacité
+ * fixe » : opaque, ou pas touchable.
+ */
+export function presenceSelonEcart(ecart: number): number {
+  if (ecart <= PORTEE_LISIBLE) return 1;
   if (ecart >= PORTEE_LISIBLE + 0.5) return 0;
-  return opaciteLisible * (1 - (ecart - PORTEE_LISIBLE) / 0.5);
+  return 1 - (ecart - PORTEE_LISIBLE) / 0.5;
+}
+
+/** L'opacité effective du nom : estompé sur sa capsule, capsule présente. */
+export function opaciteSelonEcart(ecart: number, opaciteLisible: number): number {
+  return presenceSelonEcart(ecart) * estompeSelonEcart(ecart, opaciteLisible);
 }
 
 /** La pastille allumée grandit de 30 %. */
@@ -110,7 +140,7 @@ export const RESSORT_MAX = 0.35;
 export type Geometrie = {
   largeur: number;
   hauteur: number;
-  /** Le haut de la zone de la roue (sous le titre « Aller à »). */
+  /** Le haut de la zone de la roue (sous les actions Liste, Parler…). */
   haut: number;
   /** Le bas de la zone de la roue. */
   bas: number;
@@ -168,6 +198,11 @@ export type Placement = {
   y: number;
   /** Écart à l'élément allumé, en éléments (signé). */
   distance: number;
+  /** Opacité de la capsule entière (la place) : 1 tant qu'elle se touche. */
+  presence: number;
+  /** Opacité du nom et de la pastille SUR la capsule. */
+  estompe: number;
+  /** Opacité effective du nom : presence × estompe. */
   opacite: number;
   /** Échelle de la pastille. */
   echelle: number;
@@ -178,7 +213,7 @@ export type Placement = {
 };
 
 /** 1 au cœur de la zone, 0 à ses bords, sur 40 px : un nom ne passe pas
- *  sous le titre « Aller à » en restant lisible par-dessus. */
+ *  sous les actions de l’en-tête en restant lisible par-dessus. */
 function attenuationAuxBords(y: number, haut: number, bas: number): number {
   const fondu = 40;
   return borner(Math.min(y - haut, bas - y) / fondu, 0, 1);
@@ -193,17 +228,21 @@ export function placerElement(index: number, rotation: number, g: Geometrie): Pl
   const x = g.cote === 'droite' ? xDroite : g.largeur - xDroite;
   const y = g.centreY + g.rayon * Math.sin(angle);
   const ecart = Math.abs(distance);
-  const opacite = surLArc ? opaciteSelonEcart(ecart, g.opaciteLisible) * attenuationAuxBords(y, g.haut, g.bas) : 0;
+  const presence = surLArc ? presenceSelonEcart(ecart) * attenuationAuxBords(y, g.haut, g.bas) : 0;
+  const estompe = estompeSelonEcart(ecart, g.opaciteLisible);
   return {
     x,
     y,
     distance,
-    opacite,
+    presence,
+    estompe,
+    opacite: presence * estompe,
     echelle: 1 + GROSSISSEMENT * Math.max(0, 1 - ecart),
-    allume: ecart < 0.5,
-    // Touchable seulement s'il reste lisible (4,5:1) : un nom qu'on ne lit
-    // pas ne doit pas ouvrir une page.
-    visible: opacite >= g.opaciteLisible - 1e-9,
+    allume: ecart < ECART_ALLUME,
+    // Touchable seulement sur une capsule OPAQUE, où le nom garde 4,5:1
+    // (estompe ≥ opaciteLisible) : une capsule à demi effacée laisse passer
+    // la page vivante, et un nom qu'on ne lit pas ne doit pas ouvrir une page.
+    visible: presence >= 1 - 1e-9,
   };
 }
 
