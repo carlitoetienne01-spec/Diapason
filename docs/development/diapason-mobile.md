@@ -1361,6 +1361,8 @@ place de la marge intérieure ne suffit pas non plus.
   téléphone prend celle d'Android, qui s'efface. La page y gagne 6 px de
   large (les Notes : 10 578 → 9 221 px de haut sur l'émulateur).
 - `html`, `body`, `#root`, le cadre de `Layout` et `<main>` ne coupent plus.
+  *Corrigé par la contre-épreuve (plus bas) : `<html>` garde son `hidden`,
+  sans quoi le document redevenait défilable au doigt.*
 - Sur les 15 pages dont le défileur est un enfant direct de la colonne, le
   voyant (3 px) et la bande de la cloche (48 px) passent DANS le défileur,
   avant le contenu : le défileur touche le haut de la fenêtre, le contenu se
@@ -1377,8 +1379,10 @@ place de la marge intérieure ne suffit pas non plus.
   suivant, s'il est voulu. La Discussion profite déjà de la première
   correction (plus de repeint).
 
-**Mesures.** Émulateur : Android 15, WebView 124, rendu logiciel
-(SwiftShader), hôte WebView de banc monté comme `coquille_screen.dart`
+**Mesures.** Émulateur : Android 15, WebView 124, lancé avec
+`-gpu host` ; son journal dit `vulkan_mode_selected:lavapipe` (Vulkan
+logiciel) et `gles_mode_selected:host` (et non « SwiftShader », comme
+écrit d'abord — voir la contre-épreuve), hôte WebView de banc monté comme `coquille_screen.dart`
 (voir plus bas pourquoi pas la coquille elle-même), serveur de banc relayé
 par `adb reverse`, bundles construits et précomprimés. Avant = `bd6bb265`
 (lot 2), après = les deux commits du lot 3. Charge de la machine entre 1,3
@@ -1394,10 +1398,12 @@ et 3,1.
 | … p95 | 26-53 ms | 28-48 ms |
 | … images en retard | 2,7-10,7 % | 3,8-11,4 % |
 | Défileur des 15 pages (haut / hauteur) | 51 / 789 | 0 / 840 |
-| Document défilable (17 pages) | non | non (412 × 840) |
+| Document défilable (17 pages) | non | non (412 × 840, clair seulement : faux en Phosphore aux Réglages, voir la contre-épreuve) |
 
-gfxinfo ne bouge pas au-delà du bruit : l'émulateur rend en logiciel, et
-ses images coûtent autant avant qu'après. Les Tâches et les Projets rendent
+gfxinfo ne bouge pas au-delà du bruit : ces chiffres ne valent que pour ce
+lancement de l'émulateur (Vulkan logiciel), et ses images coûtent autant
+avant qu'après. Les pourcentages d'images en retard ne se comparent pas
+quand le nombre d'images change (contre-épreuve, constat 3). Les Tâches et les Projets rendent
 plus d'images (206-466 → 672-806) : ce sont celles de l'étirement, aux
 bouts de listes courtes.
 
