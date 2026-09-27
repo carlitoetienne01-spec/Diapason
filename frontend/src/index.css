@@ -649,7 +649,7 @@ html[data-diapason-mobile='1'][data-clavier-ouvert] {
     color: var(--color-text-inverse);
   }
 
-  .terminal ::-webkit-scrollbar-thumb {
+  .terminal:not([data-diapason-mobile='1']) ::-webkit-scrollbar-thumb {
     background-color: color-mix(in srgb, var(--color-accent) 28%, transparent);
     border-radius: 0;
   }
@@ -822,21 +822,26 @@ html[data-diapason-mobile='1'][data-clavier-ouvert] {
     color: white;
   }
 
-  ::-webkit-scrollbar {
+  /* La barre dessinée est celle du BUREAU et du mini-panneau (une souris).
+     Au téléphone (27/09/2026, chantier « soyeux », lot 3), le fil principal
+     la repeignait à chaque image d'un défilement : trace CDP à ×4, six
+     glissés, 170 à 211 Paint avec elle, 0 à 11 sans elle. Android y met la
+     sienne, qui s'efface. */
+  html:not([data-diapason-mobile='1']) ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
   }
 
-  ::-webkit-scrollbar-track {
+  html:not([data-diapason-mobile='1']) ::-webkit-scrollbar-track {
     background: transparent;
   }
 
-  ::-webkit-scrollbar-thumb {
+  html:not([data-diapason-mobile='1']) ::-webkit-scrollbar-thumb {
     background: var(--color-border);
     border-radius: 3px;
   }
 
-  ::-webkit-scrollbar-thumb:hover {
+  html:not([data-diapason-mobile='1']) ::-webkit-scrollbar-thumb:hover {
     background: var(--color-text-tertiary);
   }
 }

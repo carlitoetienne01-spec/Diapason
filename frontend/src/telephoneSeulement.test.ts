@@ -110,6 +110,24 @@ describe('useTransitionDesPages.ts', () => {
   });
 });
 
+describe('index.css — la barre de défilement (lot 3 « soyeux »)', () => {
+  // 27/09/2026. La barre dessinée (::-webkit-scrollbar) est peinte par le fil
+  // principal : au téléphone, chaque image d'un défilement repeignait la page
+  // (trace CDP à ×4, six glissés : 170 à 211 Paint avec elle, 0 à 11 sans).
+  const css = sansCommentaires(lire('index.css'));
+
+  it('ne dessine la barre de défilement qu’au bureau et au mini-panneau', () => {
+    const selecteurs = [...css.matchAll(/([^{}]*::-webkit-scrollbar[^{}]*)\{/g)].map((m) => m[1].trim());
+    expect(selecteurs.length, 'les règles de la barre sont trouvées').toBeGreaterThanOrEqual(4);
+    for (const s of selecteurs) {
+      expect(s, `« ${s} » doit exclure le téléphone`).toContain(":not([data-diapason-mobile='1'])");
+    }
+    expect(css, 'la barre du bureau garde ses 6 px').toMatch(
+      /html:not\(\[data-diapason-mobile='1'\]\) ::-webkit-scrollbar \{\s*width: 6px;\s*height: 6px;/,
+    );
+  });
+});
+
 describe('App.tsx', () => {
   const app = sansCommentaires(lire('App.tsx'));
 
