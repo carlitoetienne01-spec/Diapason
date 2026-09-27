@@ -168,19 +168,6 @@ html[data-diapason-mobile='1'] [data-colonne-page] > .overflow-y-auto::before {
   display: block;
   height: calc(3px + var(--bande-barre-fermee, 0px));
 }
-/* Le défileur de la page est le bloc contenant de ses descendants absolus.
- * 27/09/2026, contre-épreuve : aux Réglages, le libellé `sr-only` de
- * l'interrupteur « Roue à gauche » avait la COLONNE pour bloc contenant ; il
- * échappait au défileur, se posait à y = 928 et agrandissait le DOCUMENT,
- * que plus rien ne coupe au téléphone : 117 px défilables à 375 × 812 en
- * Phosphore, Ardéchine, Oxblood et Sauge, 246 en police grande. Le glissé
- * qui atteignait le bas de la page chaînait au document, qui descendait de
- * 117 px — la cloche et le voyant avec lui, puisqu'ils vivent sous le
- * transform de [data-recul-page]. Posé ici, et non sur ce seul libellé : la
- * page suivante qui aura un absolu sans ancêtre positionné est tenue aussi. */
-html[data-diapason-mobile='1'] [data-colonne-page] > .overflow-y-auto {
-  position: relative;
-}
 /* Le voile d'une fenêtre modale part sous la bande de la cloche (plus bas,
  * `.voile-modal`). Tant que la bande était vide, cela ne se voyait pas ; dès
  * que la page y défile, le contenu y restait en clair au-dessus du voile

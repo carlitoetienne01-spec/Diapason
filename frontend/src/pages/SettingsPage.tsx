@@ -687,7 +687,15 @@ export function SettingsPage() {
                 lot 3). Le bureau et le mini-panneau n'ont pas de roue. */}
             {estMobile && (
               <SettingRow label={t('settings.roue.gauche')} description={t('settings.roue.gaucheAide')}>
-                <label className="inline-flex items-center gap-2 cursor-pointer">
+                {/* `relative` : le libellé sr-only (absolu) se pose dans ce
+                    label. 27/09/2026, contre-épreuve : sans ancêtre
+                    positionné plus proche que la colonne, il s'échappait du
+                    défileur à y = 928 et rendait le document défilable de
+                    117 px en Phosphore. Poser `relative` sur tout le défileur
+                    de page réglait aussi le cas, mais faisait repeindre les
+                    Notes à chaque image d'un défilement (124 Paint pour six
+                    glissés, contre 2). */}
+                <label className="relative inline-flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={settings.roueAGauche}

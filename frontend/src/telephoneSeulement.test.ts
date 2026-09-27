@@ -261,13 +261,21 @@ describe('index.css — l’élan du défilement (lot 3 « soyeux »)', () => {
     expect(bande?.[1], 'la bande du voyant a la même hauteur dans le défileur que dans Layout').toBe(voyant?.[1]);
   });
 
-  it('au téléphone, le défileur de la page est le bloc contenant de ses absolus', () => {
-    // 27/09/2026, contre-épreuve : le libellé sr-only de « Roue à gauche »
-    // (Réglages) avait la colonne pour bloc contenant, échappait au défileur
-    // et rendait le DOCUMENT défilable de 117 px — la cloche et le voyant
-    // partaient avec lui. Le banc mesure le document sur les 17 pages et les
-    // 7 apparences ; ce test tient la règle qui l'empêche.
-    expect(css).toContain(`${MOBILE} [data-colonne-page] > .overflow-y-auto {\n  position: relative;\n}`);
+  it('le libellé de « Roue à gauche » reste dans le défileur des Réglages, sans positionner le défileur', () => {
+    // 27/09/2026, contre-épreuve : ce libellé sr-only avait la colonne pour
+    // bloc contenant, échappait au défileur et rendait le DOCUMENT défilable
+    // de 117 px (Phosphore). Le premier remède — `position: relative` sur
+    // tout défileur de page — faisait repeindre les Notes à chaque image d'un
+    // défilement (trace CDP, six glissés : 124 Paint contre 2). Le banc
+    // mesure le document sur les 17 pages et les 7 apparences ; ce test tient
+    // le remède ciblé et interdit le premier.
+    const reglages = sansCommentaires(lire('pages/SettingsPage.tsx'));
+    const roue = reglages.slice(reglages.indexOf("t('settings.roue.gauche')} description"));
+    expect(roue.slice(0, 400), 'le label de l’interrupteur est positionné').toContain('<label className="relative inline-flex');
+    const surDefileur = regles(css).filter((r) => r.selecteurs.some((x) => /\[data-colonne-page\] > \.overflow-y-auto$/.test(x)));
+    for (const r of surDefileur) {
+      expect(declarations(r.corps).map(([p]) => p), 'le défileur de page n’est jamais positionné : il repeindrait à chaque image').not.toContain('position');
+    }
   });
 
   it('au téléphone, le voile modal assombrit aussi la bande où la page défile', () => {
