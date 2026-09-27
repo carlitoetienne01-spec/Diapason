@@ -757,7 +757,7 @@ Le contrat que la coquille doit tenir, tel que le bundle l'attend (26/09/2026) :
 - **Canal.** Un `JavaScriptChannel` nommé `DiapasonNatif`, injecté avant le chargement. Sa présence — et elle seule — fait `estMobile` : ni la largeur, ni l'agent utilisateur.
 - **Du bundle vers la coquille.** `DiapasonNatif.postMessage(JSON)` avec `{type: "demande", id, verbe, donnees}` ; `id` vaut `<préfixe>-1`, `<préfixe>-2`…, le préfixe étant tiré au chargement de la page (26/09/2026 : `b1` à chaque chargement, une réponse en route à travers un rechargement aurait résolu la nouvelle `b1`). La coquille répond par `window.diapasonNatifRecevoir(JSON)` avec `{type: "reponse", id, ok, donnees?, erreur?}`. Une réponse peut arriver avant que l'attente soit posée ; un `id` inconnu est ignoré ; une réponse arrivée après le délai ne résout rien, mais un `enregistrer` réussi en retard s'annonce encore (« Le téléphone a finalement enregistré le fichier »).
 - **Liens.** Le bundle intercepte tout clic sur un `<a href>` http(s) d'une autre origine que celle du Mac et l'envoie par `ouvrirExterne` (26/09/2026 : les sources de recherche, les citations, les liens des réponses et ceux des pages d'administration étaient des `<a target="_blank">` bruts, morts dans la WebView). La coquille, elle, ne charge JAMAIS une navigation refusée vers http(s) : `onNavigationRequest` rend `prevent` et l'ouvre par `url_launcher` — un filet pour un lien que le bundle n'aurait pas vu.
-- **Verbes sortants et délais.** `theme` (10 s) : `{theme, skin, fond, encre, clair}`. `ouvrirExterne` (10 s) : `{url}`, http(s) seulement, filtré avant l'envoi. `bordRoue` (10 s) : `{cote}`, `droite` ou `gauche`, envoyé au montage de la roue et à chaque changement de « Roue à gauche » ; la coquille retire les 200 dp du bas de ce bord aux gestes d'Android (`MainActivity.reserverBord`, Android 10 et plus) et ne répond que `ok` — sans quoi, en navigation par gestes, le glissé qui ouvre la roue était un « retour » du système. Une coquille plus ancienne répond `verbeInconnu`, ignoré : le bouton « Aller à… » reste. `menuApp` (10 s, lot 4 de la fluidité) : `{ouvrir}`, un booléen et rien d'autre. Au montage de la roue, `ouvrir: false` ANNONCE que la page porte le bouton « Menu de l'app » : la coquille retire alors sa barre native de 40 px (qui ne portait que « ⋮ ») et répond `ok` ; le bouton n'apparaît dans l'écran « Aller à » qu'après ce `ok`, et envoie `ouvrir: true` — la coquille ouvre son menu (Recharger, Life OS, l'Entité, Appareils, Importer) en feuille du bas. La poignée de main est mutuelle, pour que le menu reste atteignable dans les quatre combinaisons (§82) : une coquille ancienne répond `verbeInconnu` et garde sa barre, le bouton n'apparaît pas ; un bundle ancien n'annonce rien, et la coquille garde ou rend sa barre (8 s après la fin de page sans annonce). `enregistrer` (120 s, parce qu'il attend une personne dans le sélecteur d'Android) : `{nom, mime, base64}` ; `ok` avec `donnees.nom` = le nom écrit (affiché tel quel) ; `ok: false, erreur: "annule"` = la personne a renoncé, rien n'est annoncé ; toute autre `erreur` est une phrase affichée.
+- **Verbes sortants et délais.** `theme` (10 s) : `{theme, skin, fond, encre, clair}`. `ouvrirExterne` (10 s) : `{url}`, http(s) seulement, filtré avant l'envoi. `bordRoue` (10 s) : `{cote}`, `droite` ou `gauche`, envoyé au montage de la roue et à chaque changement de « Roue à gauche » ; la coquille retire les 200 dp du bas de ce bord aux gestes d'Android (`MainActivity.reserverBord`, Android 10 et plus) et ne répond que `ok` — sans quoi, en navigation par gestes, le glissé qui ouvre la roue était un « retour » du système. Une coquille plus ancienne répond `verbeInconnu`, ignoré : le bouton « Aller à… » reste. `menuApp` (10 s, lot 4 de la fluidité) : `{ouvrir}`, un booléen et rien d'autre. Au montage de la roue, `ouvrir: false` ANNONCE que la page porte le bouton « Menu de l'app » : la coquille retire alors sa barre native de 40 px (qui ne portait que « ⋮ ») et répond `ok` ; le bouton n'apparaît dans l'en-tête de la roue qu'après ce `ok`, et envoie `ouvrir: true` — la coquille ouvre son menu (Recharger, Life OS, l'Entité, Appareils, Importer) en feuille du bas. La poignée de main est mutuelle, pour que le menu reste atteignable dans les quatre combinaisons (§82) : une coquille ancienne répond `verbeInconnu` et garde sa barre, le bouton n'apparaît pas ; un bundle ancien n'annonce rien, et la coquille garde ou rend sa barre (8 s après la fin de page sans annonce). `enregistrer` (120 s, parce qu'il attend une personne dans le sélecteur d'Android) : `{nom, mime, base64}` ; `ok` avec `donnees.nom` = le nom écrit (affiché tel quel) ; `ok: false, erreur: "annule"` = la personne a renoncé, rien n'est annoncé ; toute autre `erreur` est une phrase affichée.
 - **Verbes entrants.** La coquille envoie `{type: "demande", id, verbe: "retour"}` ; le bundle répond `ok: true, donnees: {traite}`. `traite: false` n'est pas un échec : la coquille fait alors `goBack()`, puis passe en arrière-plan. Depuis l'étape 5 (`5e87751`), la barre latérale s'y inscrit : un tiroir ouvert se ferme et le bundle répond `traite: true` ; sinon `false`. Un verbe entrant inconnu reçoit `ok: false, erreur: "verbeInconnu"`. **`naviguer`** (ajouté le 26/09/2026, étape 9 — la liste fermée s'élargit, décision prise dans ce chantier) : `{path, selection?}` → le bundle refuse tout chemin hors de `PATHS` (`readShellNavigation`), navigue, et ne répond `ok: true, donnees: {path, selection}` qu'une fois la page MONTÉE (8 s au plus, sinon `ok: false` avec sa phrase) ; `erreur: "pasPret"` si rien n'est inscrit. Délai côté coquille : 10 s. **`approbations`** (26/09/2026, phase 5 — une notification d'approbation touchée) : sans données → le bundle RELIT `GET /v1/approvals/pending`, pose la liste dans la cloche, l'ouvre, et ne répond `ok: true, donnees: {nombre}` qu'ensuite ; une relecture en échec n'ouvre rien et rend sa phrase (`lib/ouvrirLaCloche.ts`). Le verbe ne décide JAMAIS : Approuver et Refuser restent sous le doigt. Délai côté coquille : 10 s. Un bundle d'avant ce jour répond `verbeInconnu`, que la coquille dit. **`partager`** (26/09/2026, phase 5 — « Partager vers Diapason » depuis une autre app) : `{texte?, fichiers?: [{nom, mime, base64}]}`, 20 000 signes, 9 fichiers et 10 Mo par fichier au plus (les bornes du compositeur ; au-delà, refus avec sa phrase, rien de tronqué) → le bundle dépose le partage dans une boîte que le compositeur vide à sa montée (avant, pendant ou après la navigation vers la Discussion), le texte à la suite du brouillon, les fichiers par le `joindre` du trombone (ses refus dits un par un), et ne répond `ok: true, donnees: {texte, fichiers}` qu'une fois le compositeur servi (8 s au plus ; sinon `ok: false` avec sa phrase, et le partage est RETIRÉ de la boîte pour ne pas surgir plus tard). Un second partage arrivé avant que le premier soit pris le remplace, et le premier est dit non déposé. RIEN n'est envoyé : la personne relit et envoie (`lib/partageEntrant.ts`). Délai côté coquille : 15 s.
 - **Aucun verbe ne rend un secret.** La liste est fermée par un test (`natif.test.ts`) : l'élargir est une décision.
 
@@ -1175,3 +1175,54 @@ l'installation de l'APK de la coquille :
 7. Menu de l'app → Appareils → « Quitter cette flotte », puis réappairer :
    les pages vides se remplissent depuis le Mac, rien de l'ancien cache ne
    s'affiche avant.
+
+### La roue en surimpression (27/09/2026, chantier « soyeux », lot 1)
+
+Retour de Carlito sur l'APK d6052bde : « je ne veux pas la page sombre
+Aller à : je veux que la page actuelle se trouve en arrière-plan ». La roue
+se pose désormais **par-dessus** la page :
+
+- **Le recul** : la page (`[data-recul-page]`, Layout) passe à 95 % en
+  180 ms, `transform` seul, sous un voile `rgba(0, 0, 0, 0.2)`. Au
+  téléphone seulement : la règle exige `data-diapason-mobile` et
+  `data-roue-ouverte`, que seule la roue écrit.
+- **Les noms** : chaque nom touchable a sa capsule **opaque**
+  (`--color-surface`, sans flou) ; seuls le nom et la pastille
+  s'estompent dessus. Une capsule estompée avec son nom laissait lire le
+  texte d'une tâche à travers elle.
+- **Le titre** « Aller à » ne s'affiche plus (il reste pour les lecteurs
+  d'écran), la ligne d'aide disparaît. La vue Liste garde un fond plein.
+- **Fermer** : Échap, le retour d'Android, et un toucher du voile.
+
+Mesures au banc (Brave sans tête, 375 × 812, DPR 3, ×4) :
+
+| Mesure | Avant (`c9161159`) | Après |
+|---|---|---|
+| Tuiles rastérisées, 6 ouvertures-fermetures | 134 | 131 (201 sans `will-change`) |
+| Tâche du fil principal la plus longue | 14,0-20,8 ms | 13,6-15,8 ms |
+| Rotation, lancers, ouvertures : images/s | 60 | 60, 0 image au-delà de 20 ms |
+| Pire nom touchable, 7 apparences | — | 4,52:1 (Oxblood) à 4,63:1 |
+| Boutons exposés roue ouverte | 21 | 21 |
+| Bureau 1280 px et mini-panneau 340 px | — | 0 rectangle différent sur 1 850 |
+
+**Pour le lot 2 (défilement)** : les `position:fixed` de la page vivent
+sous ce transform. Si le document devient le défileur, le bloc qui recule
+sera plus haut que la fenêtre et ses fixes défileront avec lui : il faudra
+déplacer le recul sur un conteneur de la taille de la fenêtre, ou sortir
+les fixes.
+
+**Carlito vérifie** :
+
+1. Ouvrir la roue sur les Tâches : la page reste visible derrière, un peu
+   plus petite et un peu plus sombre ; aucun texte de la page ne se lit à
+   travers un nom.
+2. Toucher la page à gauche de la roue : la roue se ferme, rien ne
+   s'ouvre dessous.
+3. Tourner la roue du pouce, puis l'ouvrir par un glissé depuis le bord
+   droit et tourner sans lever le pouce : la page derrière ne défile pas.
+4. Dans Sauge, Oxblood et Ardéchine, chaque nom qu'on peut toucher se lit.
+5. Réglages d'accessibilité d'Android → « Supprimer les animations » : si
+   la WebView transmet la préférence (`prefers-reduced-motion`), la roue et
+   le recul apparaissent sans mouvement. Au banc, préférence émulée :
+   aucune animation en cours après le toucher. Non vérifié sur le
+   téléphone.
