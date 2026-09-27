@@ -132,7 +132,8 @@ html[data-diapason-mobile='1'][data-clavier-ouvert] {
  * suffisait à tout bloquer (vérifié une par une, docs/development/
  * diapason-mobile.md). Au téléphone seulement :
  * 1. rien ne coupe entre le défileur de la page et la fenêtre — ici pour
- *    html, body et #root ; Layout.tsx pour son cadre et <main> ;
+ *    body et #root ; Layout.tsx pour son cadre et <main>. <html>, lui, GARDE
+ *    son overflow hidden (ci-dessous) ;
  * 2. le défileur descend jusqu'en haut de la fenêtre : la bande du voyant
  *    (3 px, Layout.tsx) et celle de la cloche (--bande-barre-fermee) passent
  *    DEDANS, avant le contenu, comme la bande du bas ; le contenu se pose au
@@ -141,11 +142,23 @@ html[data-diapason-mobile='1'][data-clavier-ouvert] {
  *    visent que le bureau) : celle d'Android, qui s'efface, la remplace.
  * La Discussion et les Journaux, dont le défileur n'est pas un enfant
  * direct de la colonne, gardent leurs bandes et leur défilement d'avant. */
-html[data-diapason-mobile='1'],
 html[data-diapason-mobile='1'] body,
 html[data-diapason-mobile='1'] #root {
   overflow: visible;
 }
+/* <html> garde `overflow: hidden` au téléphone (la règle de base, plus bas) :
+ * la fenêtre elle-même ne se fait jamais défiler au doigt. 27/09/2026,
+ * contre-épreuve du chantier : html rendu `visible` au lot 3, tout ce qui
+ * débordait de la colonne rendait le DOCUMENT défilable — 12 px pendant
+ * chaque entrée de page (le glissement de 12 px de la colonne, ~150 ms), 117
+ * aux Réglages en Phosphore (un libellé sr-only échappé, plus haut) — et le
+ * glissé qui atteignait le bout de la page chaînait au document : sur
+ * l'émulateur, avec 180 px de débord, le document descendait de 180 px,
+ * cloche et voyant avec lui, et y restait (167 px) après le lâcher. <html> en
+ * hidden, même débord : le document reste à 0, et l'étirement de fin de liste
+ * joue toujours (le défileur de la page reste promu à la racine : ce qui
+ * l'éteint, c'est un ANCÊTRE qui coupe — #root, <main>, le cadre —, pas la
+ * fenêtre). Mesuré sur l'émulateur, Android 15, WebView 124, GPU hôte. */
 html[data-diapason-mobile='1'] [data-recul-page]:has([data-colonne-page] > .overflow-y-auto),
 html[data-diapason-mobile='1'] [data-colonne-page]:has(> .overflow-y-auto) {
   padding-top: 0 !important;
@@ -154,6 +167,19 @@ html[data-diapason-mobile='1'] [data-colonne-page] > .overflow-y-auto::before {
   content: '';
   display: block;
   height: calc(3px + var(--bande-barre-fermee, 0px));
+}
+/* Le défileur de la page est le bloc contenant de ses descendants absolus.
+ * 27/09/2026, contre-épreuve : aux Réglages, le libellé `sr-only` de
+ * l'interrupteur « Roue à gauche » avait la COLONNE pour bloc contenant ; il
+ * échappait au défileur, se posait à y = 928 et agrandissait le DOCUMENT,
+ * que plus rien ne coupe au téléphone : 117 px défilables à 375 × 812 en
+ * Phosphore, Ardéchine, Oxblood et Sauge, 246 en police grande. Le glissé
+ * qui atteignait le bas de la page chaînait au document, qui descendait de
+ * 117 px — la cloche et le voyant avec lui, puisqu'ils vivent sous le
+ * transform de [data-recul-page]. Posé ici, et non sur ce seul libellé : la
+ * page suivante qui aura un absolu sans ancêtre positionné est tenue aussi. */
+html[data-diapason-mobile='1'] [data-colonne-page] > .overflow-y-auto {
+  position: relative;
 }
 /* Le voile d'une fenêtre modale part sous la bande de la cloche (plus bas,
  * `.voile-modal`). Tant que la bande était vide, cela ne se voyait pas ; dès

@@ -18,6 +18,46 @@ const lire = (chemin: string) => readFileSync(join(__dirname, chemin), 'utf8');
 const sansCommentaires = (code: string) =>
   code.replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 
+type Regle = { selecteurs: string[]; corps: string; media: string | null };
+
+/** Les règles d'une feuille (sans commentaires), @media déplié, @layer traversé. */
+function regles(css: string, media: string | null = null): Regle[] {
+  const sortie: Regle[] = [];
+  let i = 0;
+  while (i < css.length) {
+    const ouvre = css.indexOf('{', i);
+    if (ouvre < 0) break;
+    const tete = css.slice(i, ouvre).trim();
+    let profondeur = 1;
+    let j = ouvre + 1;
+    while (j < css.length && profondeur > 0) {
+      if (css[j] === '{') profondeur += 1;
+      else if (css[j] === '}') profondeur -= 1;
+      j += 1;
+    }
+    const corps = css.slice(ouvre + 1, j - 1);
+    const enTete = tete.slice(tete.lastIndexOf(';') + 1).trim();
+    if (enTete.startsWith('@media') || enTete.startsWith('@supports')) sortie.push(...regles(corps, enTete));
+    else if (enTete.startsWith('@layer')) sortie.push(...regles(corps, media));
+    else if (!enTete.startsWith('@')) {
+      sortie.push({ selecteurs: enTete.split(',').map((x) => x.trim()).filter(Boolean), corps, media });
+    }
+    i = j;
+  }
+  return sortie;
+}
+
+/** Les déclarations `propriété: valeur` d'un corps de règle. */
+function declarations(corps: string): [string, string][] {
+  return corps
+    .split(';')
+    .map((d) => d.trim())
+    .filter((d) => d.includes(':') && !d.includes('{'))
+    .map((d) => [d.slice(0, d.indexOf(':')).trim(), d.slice(d.indexOf(':') + 1).trim()] as [string, string]);
+}
+
+const MOBILE = "html[data-diapason-mobile='1']";
+
 describe('Layout.tsx', () => {
   const layout = sansCommentaires(lire('components/Layout.tsx'));
   const compact = layout.slice(layout.indexOf('if (estCompact) {\n    return ('), layout.indexOf(RETOUR_TELEPHONE_ET_BUREAU));
@@ -139,12 +179,23 @@ describe('index.css — l’élan du défilement (lot 3 « soyeux »)', () => {
   // précédent).
   const css = sansCommentaires(lire('index.css'));
   const layout = sansCommentaires(lire('components/Layout.tsx'));
-  const MOBILE = "html[data-diapason-mobile='1']";
 
   it('au téléphone, rien ne coupe entre le défileur de la page et la fenêtre', () => {
-    expect(css, 'html, body et #root ne coupent plus au téléphone').toContain(
-      `${MOBILE},\n${MOBILE} body,\n${MOBILE} #root {\n  overflow: visible;\n}`,
+    expect(css, 'body et #root ne coupent plus au téléphone').toContain(
+      `${MOBILE} body,\n${MOBILE} #root {\n  overflow: visible;\n}`,
     );
+    // 27/09/2026, contre-épreuve : <html> rendu visible, tout débord de la
+    // colonne rendait le DOCUMENT défilable au doigt (12 px à chaque entrée
+    // de page, 117 aux Réglages en Phosphore) — la cloche et le voyant
+    // descendaient avec lui. <html> garde son hidden : la fenêtre ne défile
+    // jamais au doigt, et l'étirement joue toujours (émulateur).
+    const surHtml = regles(css).filter((r) =>
+      r.selecteurs.some((x) => /^html(\[[^\]]*\])*$/.test(x) && x.includes('data-diapason-mobile')),
+    );
+    for (const r of surHtml) {
+      const o = declarations(r.corps).find(([p]) => /^overflow(-y)?$/.test(p));
+      expect(o?.[1] ?? 'hidden', `« ${r.selecteurs.join(', ')} » rendrait la fenêtre défilable au doigt`).toMatch(/hidden|clip/);
+    }
     expect(css, 'au bureau, ils coupent toujours').toMatch(/html, body, #root \{\s*height: 100%;\s*width: 100%;\s*overflow: hidden;/);
     expect(layout, 'le cadre de Layout ne coupe pas au téléphone').toContain(RETOUR_TELEPHONE_ET_BUREAU);
     expect(layout, '<main> non plus').toMatch(/<main className="[^"]*\boverflow-hidden mobile:overflow-visible\b/);
@@ -159,6 +210,15 @@ describe('index.css — l’élan du défilement (lot 3 « soyeux »)', () => {
     const voyant = layout.match(/data-recul-page="" className="[^"]*" style=\{\{ paddingTop: '(\d+)px' \}\}/);
     expect(voyant, 'Layout réserve la bande du voyant').not.toBeNull();
     expect(bande?.[1], 'la bande du voyant a la même hauteur dans le défileur que dans Layout').toBe(voyant?.[1]);
+  });
+
+  it('au téléphone, le défileur de la page est le bloc contenant de ses absolus', () => {
+    // 27/09/2026, contre-épreuve : le libellé sr-only de « Roue à gauche »
+    // (Réglages) avait la colonne pour bloc contenant, échappait au défileur
+    // et rendait le DOCUMENT défilable de 117 px — la cloche et le voyant
+    // partaient avec lui. Le banc mesure le document sur les 17 pages et les
+    // 7 apparences ; ce test tient la règle qui l'empêche.
+    expect(css).toContain(`${MOBILE} [data-colonne-page] > .overflow-y-auto {\n  position: relative;\n}`);
   });
 
   it('au téléphone, le voile modal assombrit aussi la bande où la page défile', () => {
