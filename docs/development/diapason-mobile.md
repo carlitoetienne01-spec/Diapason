@@ -1012,3 +1012,166 @@ Toute écriture faite après la migration (tâche, note, photo) est perdue par c
 32. **L'appareil photo et l'icône (constat 14).** Projets → une pile → « Ajouter des photos » → Appareil photo ; SANS déclencher, appuyer sur Accueil, puis rouvrir Diapason par son ICÔNE. Noter : l'appareil photo est-il encore là ? Recommencer en revenant par les apps récentes (attendu : il y est), puis par une notification d'approbation. S'il a disparu par l'icône, c'est le défaut du `singleTask` : le dire, la correction est à trancher (phase 5).
 
 **À dire à Carlito (constat 19 de la seconde contre-épreuve)** : ouvert SANS la coquille (un navigateur sur l'adresse https, après un cookie posé), le bundle envoie une fois au premier chargement `POST /v1/context/view` et `GET /v1/voice/live/health` (celle-ci rouverte en phase 4, 26/09/2026 : elle rend désormais 200), que la passerelle refuse en 403 — avant d'avoir vu l'en-tête `X-Diapason-Passerelle`. Ensuite, plus rien. Au téléphone, le pont existe avant tout module : 0 réponse 403 sur 24 routes au banc. La coquille est le seul client prévu ; ce n'est pas corrigé.
+
+---
+
+## 5. La fluidité au téléphone (26/09/2026)
+
+Carlito trouvait la navigation au téléphone « tellement lente ». Le chantier
+`chantier/fluidite` (worktree `.claude/worktrees/fluidite`) l'a mesurée puis
+traitée en quatre lots (réseau, perception, rendu et roue, coquille), puis
+une contre-épreuve de 19 constats. **Rien n'est déployé** : le téléphone ne
+verra ces changements qu'après la fusion dans `main`, `npm run build` et le
+redémarrage du serveur de launchd (et l'APK pour la coquille).
+
+### Méthode
+
+- **Banc** (scratchpad, `final/banc/`) : le vrai `diapason serve` du commit
+  mesuré, avec un moteur factice. Foyer de test : 726 tâches, 60 notes,
+  20 projets, 8 habitudes et 300 transactions. La vraie passerelle du
+  tailnet est enveloppée d'un faux canal `DiapasonNatif`.
+- **4G simulée** : un mandataire asyncio ajoute 55 ms par sens (110 ms
+  d'aller-retour) et plafonne le débit à 10 Mbit/s.
+- **Navigateur** : Chromium 152 (Brave) sans tête, 375 × 812, DPR 3, agent
+  Android, tactile, processeur ralenti ×4. Profil neuf à chaque essai.
+- **Chiffres** : Performance API. « Contenu » est la première image où le
+  titre de la page est là sans « Chargement ». « Stable » est le dernier
+  changement du DOM avant 800 ms de calme du réseau et du DOM.
+- **Série finale** : alternée avant (`1b36a9d6`) / après (HEAD de la
+  branche), trois essais chacun. On relève la charge de la machine
+  (`vm.loadavg`, sur 1 min) : un essai ne démarre que sous 4, et sa charge
+  est notée (constat 4 : des sessions parallèles faussaient 2 essais sur 3).
+- **Deux écarts ce soir-là** :
+  - le Mac était sur batterie (20 % puis moins). Chromium y plafonne les
+    images à 30 par seconde. Les deux états ont donc été mesurés avec
+    `--disable-frame-rate-limit` : les images/s du défilement ne sont plus
+    calées sur 60, et on compte les images au-delà de 20 ms ;
+  - un premier essai de série a été jeté : un serveur de banc resté vivant
+    gardait les ports, et « avant » mesurait en silence le bundle
+    « après ». `demarrer.sh` refuse désormais des ports occupés.
+
+### Avant / après (médianes, fourchette des trois essais)
+
+| Mesure | Avant (`1b36a9d6`) | Après (HEAD) |
+|---|---|---|
+| Première ouverture, Discussion affichée | 4275 ms (3957-4459) | 1235 ms (1199-1459) |
+| Première ouverture, FCP | 4296 ms (3980-4480) | 1252 ms (1212-1476) |
+| Première ouverture, transféré | 2480 Ko (2480-2485) | 897 Ko (897-899) |
+| Réouverture, Discussion affichée | 2362 ms (2358-2364) | 375 ms (370-384) |
+| Réouverture, transféré | 2480 Ko (2480-2480) | 8 Ko (8-8) |
+| Tâches, 1re visite, contenu | 1041 ms (1033-1056) | 35 ms (20-37) |
+| Tâches, 1re visite, transféré | 502 Ko (502-502) | 33 Ko (33-33) |
+| Tâches, 2e visite, contenu | 26 ms (17-29) | 22 ms (17-34) |
+| Tâches, 2e visite, stable | 668 ms (575-713) | 220 ms (205-236) |
+| Tâches, 2e visite, transféré | 365 Ko (365-365) | 33 Ko (33-33) |
+| Planificateur, 1re visite, contenu | 163 ms (156-163) | 13 ms (12-16) |
+| Planificateur, 2e visite, stable | 171 ms (147-1144) | 10 ms (10-11) |
+| Notes, 1re visite, contenu | 461 ms (457-462) | 54 ms (53-54) |
+| Notes, 2e visite, stable | 427 ms (408-438) | 242 ms (199-314) |
+| Projets, 1re visite, contenu | 337 ms (328-344) | 30 ms (16-35) |
+| Finances, 1re visite, stable | 2485 ms (2461-2504) | 203 ms (198-208) |
+| Finances, 2e visite, stable | 2307 ms (2304-2320) | 196 ms (191-199) |
+| Habitudes, 1re visite, contenu | 400 ms (385-404) | 17 ms (17-18) |
+| Réglages, 1re visite, contenu | 181 ms (177-190) | 15 ms (14-17) |
+| Requêtes /v1 en 30 s au repos | 8 req (8-8) | 3 req (3-3) |
+| Toucher rapide : Tâches, contenu | 1119 ms (1116-1185) | 732 ms (617-748) |
+| Toucher rapide : Tâches, stable | 1199 ms (1199-1273) | 764 ms (746-777) |
+| Défilement Tâches (Semaine), images au-delà de 20 ms | 1 images (0-1) | 0 images (0-0) |
+| Défilement Notes, images au-delà de 20 ms | 90 images (88-102) | 0 images (0-0) |
+
+Série du 26/09/2026, de 19 h 47 à 20 h 46. Charge de la machine :
+- avant : essais partis à 3,97, 3,27 et 2,94 ; charge relevée en fin
+  d'essai 4,46 et 4,35, et au plus 4,28 pendant le troisième ;
+- après : essais partis à 2,51, 3,99 et 2,65 ; charge relevée en fin
+  d'essai 3,27, et au plus 3,67 et 2,83 pendant les deux autres.
+
+Trois essais ont été écartés, dans le dossier `rejetes/` :
+- une autre session a porté la charge à 80, et la Discussion est sortie
+  à 6,4 s ;
+- un essai « avant » a échoué ;
+- un essai est parti à 6,5.
+
+Les « 1re visite » sont mesurées après les 30 s de repos du scénario : le
+préchargement a fini. Au toucher immédiat, voir la ligne « Toucher
+rapide ». Les images au-delà de 20 ms sont comptées sans plafond de
+cadence (voir Méthode).
+
+### Ce qui a changé, en bref
+
+- **Réseau** :
+  - fichiers à empreinte immuables, index en `no-store` (un retour arrière
+    ne rouvre plus un ancien bundle) ;
+  - variantes brotli et gzip posées au build ;
+  - JSON de l'API comprimé, jamais un flux ;
+  - `no-store` sur toute réponse de l'API à la passerelle ;
+  - recharts sorti du chemin critique (−103 Ko), refusé au build par
+    `scripts/verifierGraphe.mjs`.
+- **Perception** :
+  - pages préchargées pendant les creux, en pause à chaque navigation ;
+  - Planificateur en un aller-retour ;
+  - cloche relevée toutes les 30 s au repos ;
+  - vitres sans mise en page forcée.
+- **Rendu** :
+  - aspect plat (ni flou, ni grande ombre, pop-ups compris) ;
+  - recharts sans animation ;
+  - dossiers des Notes et des Projets à plat (`dossierRelief.ts`).
+- **Navigation** :
+  - la roue (`features/roue/`) : glissé depuis le bord sans élément posé
+    sur la page, noms lisibles à 4,5:1 ou non touchables, nom long sur deux
+    lignes ;
+  - bande du bouton dans le défileur de la page ;
+  - bouton retiré clavier ouvert.
+- **Coquille** :
+  - page rouverte au démarrage à froid ;
+  - barre native retirée ;
+  - écran de démarrage à la couleur de l'apparence ;
+  - « Quitter l'appairage » vide aussi le cache HTTP et le stockage web.
+
+### Ce qui reste
+
+- **« Page déjà visitée < 100 ms » était déjà tenu avant les lots**, grâce
+  à cacheVie : au banc, à `1b36a9d6`, le contenu d'une page déjà visitée
+  s'affichait entre 6 ms (Planificateur) et 55 ms (Notes) ; la série finale
+  donne 26 → 22 ms pour les Tâches. Le gain des lots porte sur la **fraîcheur** des données (la
+  page stable), pas sur l'affichage.
+- **La piste 4 n'est pas faite** : chaque visite des Tâches relit toute la
+  liste. C'est 33 Ko comprimés au banc, environ 825 Ko bruts chez Carlito.
+  Une relecture conditionnelle (numéro d'écriture → 304) économiserait les
+  octets, pas l'aller-retour de 110 ms. Pour passer sous 100 ms, il faudrait
+  ne pas relire du tout, c'est-à-dire pousser les changements.
+- **Le premier toucher des Tâches, juste après une ouverture à froid, reste
+  à ~0,75 s** : ses morceaux JS doivent arriver. Le préchargement ne gagne
+  qu'après ~4 s.
+- **Rien n'a été vu sur le vrai Nothing Phone.** Le GPU du banc (M5) n'est
+  pas ralenti, et le banc parle HTTP/1.1 en clair, pas h2 par
+  `tailscale serve`.
+- **Les routes `async def` des finances appellent SQLite sur la boucle**
+  (§5 de CLAUDE.md). Relevé au lot 2, non corrigé.
+
+### Ce que Carlito vérifie sur son téléphone
+
+Après la fusion de `chantier/fluidite` dans `main`, `cd frontend && npm run
+build`, `launchctl kickstart -k gui/$(id -u)/com.diapason.serve`, puis
+l'installation de l'APK de la coquille :
+
+1. Ouvrir l'app en données mobiles et parcourir Tâches, Planificateur,
+   Notes, Projets, Finances et Réglages. Revenir deux fois sur chacune,
+   puis ouvrir **Réglages → Mesures de fluidité** : la section donne, pour
+   ce téléphone, l'ouverture et chaque visite (1re, déjà visitée, après
+   réouverture). Noter les chiffres. Au banc : ouverture ~1,24 s,
+   Tâches ~0,2 s à la 1re visite quelques secondes après l'ouverture
+   (~0,7 s au toucher immédiat), page déjà visitée < 60 ms.
+2. Dans une page longue (Tâches, Réglages), faire défiler au pouce en
+   partant tout près du bord droit, en bas : la page doit défiler. Glisser
+   depuis ce même bord vers l'intérieur : la roue s'ouvre.
+3. Taper dans la Discussion : clavier ouvert, le bouton rond disparaît et
+   le compositeur touche le clavier ; clavier refermé, le bouton revient.
+4. Ouvrir la roue dans chaque apparence (surtout Sauge, Ardéchine,
+   Oxblood). Chaque nom qu'on peut toucher se lit ; « Vue d'ensemble du
+   système » s'affiche entier, sur deux lignes.
+5. Projets → un projet en arbre → une tâche : le volet et son bouton
+   « Supprimer » restent au-dessus du bouton rond.
+6. En navigation par gestes : le retour d'Android ferme d'abord la roue.
+7. Menu de l'app → Appareils → « Quitter cette flotte », puis réappairer :
+   les pages vides se remplissent depuis le Mac, rien de l'ancien cache ne
+   s'affiche avant.
