@@ -1326,3 +1326,133 @@ ralenti.
    le doigt.
 5. « Supprimer les animations » : les pages apparaissent d'un coup, la
    position est toujours rendue. Non vérifié sur le téléphone.
+
+### L'élan du défilement (27/09/2026, chantier « soyeux », lot 3)
+
+Retour de Carlito sur l'APK d6052bde : « les scrolls aussi […] le geste
+manque d'inertie ou s'arrête sec ». Diagnostic d'abord, sur l'émulateur et
+au banc, puis deux corrections, au téléphone seulement (`index.css`,
+`Layout.tsx`).
+
+**Ce que le diagnostic a trouvé**
+
+| Piste | Mesure | Verdict |
+|---|---|---|
+| L'élan d'un lancer, défileur intérieur contre racine | page nue, 3 lancers identiques : 674 à 1 830 px des deux côtés | pas de différence au-delà du bruit d'adb |
+| Le rebond d'Android 12 en fin de liste | tirer au bout des Tâches, Notes, Réglages, Projets : rien ne bouge ; lancées vers leur fin, les Notes s'arrêtent net (0 image étirée) | **défaut** : c'est le « s'arrête sec » |
+| Repeint pendant le défilement | trace CDP ×4, six glissés : 170 à 211 `Paint` du document et de la colonne, un par image | **défaut** : la barre dessinée (`::-webkit-scrollbar`) |
+| Écouteurs tactiles non passifs | CDP `getEventListeners` sur tout le DOM : `touchstart`, `touchmove` et `wheel` tous passifs (React, la roue) | rien à faire |
+| Rafraîchissement des données au retour, pendant un geste | retour d'historique puis glissé 60 ms après, ×4, 4G : Tâches, aucune tâche de plus de 50 ms, 0 saut de contenu ; Notes, une tâche de 103 à 118 ms au MONTAGE (avant les données), identique avant et après | rien à faire ici : le coût des Notes est leur montage (déjà noté au lot 2), pas le rafraîchissement |
+| Réglages de la WebView dans la coquille | l'étirement apparaît avec les réglages par défaut de `webview_flutter`, dès que la page le permet | la coquille ne change pas |
+
+**Pourquoi le rebond ne jouait pas.** Android n'étire que le défileur
+RACINE. Chromium y promeut le défileur d'une page (« implicit root
+scroller ») à trois conditions : il remplit toute la fenêtre, aucun ancêtre
+ne le coupe (`overflow: hidden` ou `clip`, même sur `#root`), il n'a pas de
+barre dessinée. Vérifié une condition à la fois : sur l'app, deux sur trois
+ne suffisent jamais ; sur une page nue, un seul `#root` en `hidden` ou
+`clip`, une barre `::-webkit-scrollbar` de 6 px, ou 48 px de marge au-dessus
+du défileur suffisent à éteindre l'étirement. Une bordure transparente à la
+place de la marge intérieure ne suffit pas non plus.
+
+**Ce qui change, au téléphone seulement**
+
+- La barre dessinée ne vise plus que le bureau et le mini-panneau ; le
+  téléphone prend celle d'Android, qui s'efface. La page y gagne 6 px de
+  large (les Notes : 10 578 → 9 221 px de haut sur l'émulateur).
+- `html`, `body`, `#root`, le cadre de `Layout` et `<main>` ne coupent plus.
+- Sur les 15 pages dont le défileur est un enfant direct de la colonne, le
+  voyant (3 px) et la bande de la cloche (48 px) passent DANS le défileur,
+  avant le contenu : le défileur touche le haut de la fenêtre, le contenu se
+  pose au même pixel qu'avant, et passe sous la cloche en défilant, comme il
+  passe déjà sous le bouton de la roue.
+- Le voile d'une fenêtre modale couvre aussi cette bande (elle devient sa
+  bordure transparente) : sinon, la page défilée y restait en clair au-dessus
+  du voile.
+- **La Discussion et les Journaux ne changent pas.** Le défileur de la
+  Discussion est pris entre son en-tête et le compositeur (et la pluie
+  derrière eux) : le faire remplir la fenêtre, c'est poser l'en-tête et le
+  compositeur PAR-DESSUS le fil, avec une marge qui suit la hauteur du
+  compositeur, sans casser le suivi du flux ni le clavier. C'est le lot
+  suivant, s'il est voulu. La Discussion profite déjà de la première
+  correction (plus de repeint).
+
+**Mesures.** Émulateur : Android 15, WebView 124, rendu logiciel
+(SwiftShader), hôte WebView de banc monté comme `coquille_screen.dart`
+(voir plus bas pourquoi pas la coquille elle-même), serveur de banc relayé
+par `adb reverse`, bundles construits et précomprimés. Avant = `bd6bb265`
+(lot 2), après = les deux commits du lot 3. Charge de la machine entre 1,3
+et 3,1.
+
+| Émulateur | Avant | Après |
+|---|---|---|
+| Tirer en fin de liste (Tâches, Notes, Réglages, Projets) | aucun étirement | toute la WebView s'étire, 4 pages sur 4 |
+| Tirer en haut des Notes | aucun étirement | toute la WebView s'étire |
+| Lancer vers la fin des Notes, filmé (3 lancers) : images / étirées | 13-16 / 0 | 42-48 / 4-6 |
+| … des Projets | 12-51 / 0 | 27-42 / 4-5 |
+| gfxinfo, 8 lancers par page, 2 passes : p50 | 10-14 ms | 10-12 ms |
+| … p95 | 26-53 ms | 28-48 ms |
+| … images en retard | 2,7-10,7 % | 3,8-11,4 % |
+| Défileur des 15 pages (haut / hauteur) | 51 / 789 | 0 / 840 |
+| Document défilable (17 pages) | non | non (412 × 840) |
+
+gfxinfo ne bouge pas au-delà du bruit : l'émulateur rend en logiciel, et
+ses images coûtent autant avant qu'après. Les Tâches et les Projets rendent
+plus d'images (206-466 → 672-806) : ce sont celles de l'étirement, aux
+bouts de listes courtes.
+
+| Banc (×4, 375 × 812, trois passes) | Avant | Après |
+|---|---|---|
+| `Paint` pendant six glissés : Tâches | 170-174 | 0 |
+| … Notes | 194-198 | 2 |
+| … Réglages | 190-198 | 2 |
+| … Projets | 198-202 | 2 |
+| … Discussion (deux passes) | 201-211 | 11 |
+| Peinture, Notes | 49-67 ms | 7-9 ms |
+| Tuiles rastérisées, Tâches / Notes | 134-138 / 117-127 | 9 / 21 |
+| Images abandonnées pendant les glissés | 0 à 2 | 0 |
+
+Retirer la seule barre dessinée du bundle d'avant, par injection, donne
+déjà 0 `Paint` sur les Tâches et 2 sur les Notes : le repeint, c'est elle.
+
+Ce qui a aussi été vérifié :
+
+- La position rendue du lot 2 : 9 retours sur 9 à la 1re image (Tâches
+  1 567, Notes 2 000, Réglages 1 500 puis 1 476, comme avant).
+- `roue.py` : 22 étapes sur 22, glissé depuis la bande du bord compris ;
+  60 images/s, 0 image au-delà de 20 ms.
+- `position:fixed`, roue fermée et roue ouverte, sur 5 pages : rectangles
+  identiques à l'avant.
+- Roue ouverte : les mêmes boutons exposés, aucune zone de saisie.
+- Clavier ouvert sur la recherche des Notes (émulateur) : le champ reste au
+  même endroit (144 à 184 px), la bande du bouton se retire comme avant.
+- La Discussion suit un flux : 0 à 1 px du bas, 40 relevés sur 8 s, avant
+  comme après.
+- Bureau 1280 px et mini-panneau 340 px : 0 rectangle différent sur 1 892
+  éléments, 8 pixels d'un niveau (la pastille des Réglages, déjà là au
+  lot 2).
+- Six mutations, six tests qui échouent (`telephoneSeulement.test.ts`).
+
+**Pourquoi un hôte de banc et pas la coquille.** La coquille se verrouille
+et exige un code ou une empreinte sur le téléphone ; l'émulateur `-read-only`
+n'en a pas, et je n'ai ni posé de code sur l'émulateur, ni construit de
+coquille sans verrou. L'hôte de banc (dans le scratchpad, jamais dans le
+dépôt) monte une `WebViewWidget` comme `coquille_screen.dart` — Scaffold,
+SafeArea, Stack, paramètres Android par défaut — et charge le banc, qui
+injecte le faux pont. Ce qui dépend du pont réel (appairage, verbes de la
+coquille) n'y est pas ; le défilement, la WebView et l'étirement, si.
+
+**Carlito vérifie** :
+
+1. Descendre jusqu'au bout des Notes d'un seul lancer : la liste s'étire un
+   instant puis revient, au lieu de s'arrêter net.
+2. Au bout d'une liste, tirer encore : toute la page s'étire, et revient au
+   lâcher. Même chose en haut.
+3. Descendre les Tâches : la liste passe sous la cloche en haut, comme sous
+   le bouton de la roue en bas, et la cloche reste touchable.
+4. Ouvrir un jour dans les Tâches, liste descendue : tout l'écran est
+   assombri, bande du haut comprise.
+5. La barre de défilement : fine, grise, elle apparaît en défilant et
+   s'efface. Au Mac, rien ne change.
+6. La Discussion : comme avant, sans étirement en bout de fil (voir plus
+   haut) ; elle doit rester fluide et suivre la réponse qui s'écrit.
