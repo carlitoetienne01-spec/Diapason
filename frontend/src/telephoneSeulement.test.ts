@@ -275,6 +275,19 @@ describe('RoueNavigation.tsx', () => {
   });
 });
 
+describe('RoueNavigation.tsx — le câblage (contre-épreuve « soyeux », 27/09/2026)', () => {
+  // 27/09/2026, contre-épreuve : l'APPEL des fonctions pures de la roue
+  // n'était tenu par aucun test.
+  const roue = sansCommentaires(lire('features/roue/RoueNavigation.tsx'));
+
+  it('l’opacité lisible se mesure sur une capsule NON allumée, et la géométrie la borne (mutants J1, O4)', () => {
+    expect(roue).toContain('const temoin = elementsRef.current.find((el, i) => el && i !== allumeRef.current);');
+    expect(roue).toMatch(/geometrieRoue\(\{ largeur: r\.width, hauteur: r\.height, cote, haut: 0, bas: r\.height - 68, opaciteLisible \}\)/);
+    const geo = sansCommentaires(lire('features/roue/geometrieRoue.ts'));
+    expect(geo, 'la mesure passe par la borne').toContain('opaciteLisible: opaciteLisibleBornee(entree.opaciteLisible),');
+  });
+});
+
 describe('pageParesseuse.tsx', () => {
   it('rend au montage le module déjà arrivé', () => {
     const page = sansCommentaires(lire('lib/pageParesseuse.tsx'));

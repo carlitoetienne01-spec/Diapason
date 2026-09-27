@@ -16,6 +16,7 @@ import {
   largeurDuNom,
   nomTient,
   OPACITE_LISIBLE_PAR_DEFAUT,
+  opaciteLisibleBornee,
   ECART_ALLUME,
   estompeSelonEcart,
   opaciteSelonEcart,
@@ -148,6 +149,30 @@ describe('Un nom qu’on ne lit pas ne se touche pas', () => {
 
   it('sans apparence lue, le repli est l’exigence de Sauge', () => {
     expect(geometrieRoue({ largeur: 375, hauteur: 600, cote: 'droite' }).opaciteLisible).toBe(OPACITE_LISIBLE_PAR_DEFAUT);
+  });
+
+  it('une mesure faussée ne fait jamais toucher un nom illisible', () => {
+    // 27/09/2026, contre-épreuve « soyeux » (mutants J1 et O4) : un témoin
+    // pris sur la capsule allumée, ou une opacité forcée à 0,3 dans l'appel,
+    // laissaient des noms à 0,3 d'opacité touchables — sous 4,5:1 dans les
+    // sept apparences — et vitest restait vert.
+    for (const mesuree of [0, 0.3, 0.5, Number.NaN, -1]) {
+      const g = geometrieRoue({ largeur: 375, hauteur: 600, cote: 'droite', opaciteLisible: mesuree });
+      expect(g.opaciteLisible, `mesure ${mesuree} : jamais sous le repli de Sauge`).toBe(OPACITE_LISIBLE_PAR_DEFAUT);
+      for (let rotation = 0; rotation <= 16; rotation += 0.25) {
+        for (let i = 0; i < 17; i += 1) {
+          const p = placerElement(i, rotation, g);
+          if (p.visible) {
+            expect(p.estompe, `mesure ${mesuree}, élément ${i}, rotation ${rotation}`).toBeGreaterThanOrEqual(
+              OPACITE_LISIBLE_PAR_DEFAUT - 1e-9,
+            );
+          }
+        }
+      }
+    }
+    expect(opaciteLisibleBornee(0.9), 'une apparence plus exigeante garde sa mesure').toBe(0.9);
+    expect(opaciteLisibleBornee(1.4), 'jamais au-delà de 1').toBe(1);
+    expect(opaciteLisibleBornee(undefined)).toBe(OPACITE_LISIBLE_PAR_DEFAUT);
   });
 
   it('la capsule accent ne s’estompe jamais : plein jusqu’au demi-écart où l’allumé glisse', () => {

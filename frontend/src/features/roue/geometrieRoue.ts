@@ -100,6 +100,23 @@ export const ECART_ALLUME = 0.5;
 export const OPACITE_LISIBLE_PAR_DEFAUT = 0.76;
 
 /**
+ * L'opacité lisible retenue : jamais sous le repli de Sauge, jamais au-delà
+ * de 1. 27/09/2026, contre-épreuve du chantier « soyeux » : depuis la
+ * surimpression, `visible` ne dépend plus que de la présence de la capsule ;
+ * une mesure faussée (le témoin pris sur la capsule allumée, une opacité
+ * forcée à 0,3 dans l'appel) laissait donc des noms estompés jusqu'à 0,3 —
+ * bien sous 4,5:1 — rester touchables, sans qu'aucun test ne rougisse. Le
+ * repli est la plus exigeante des sept apparences : borné ainsi, un nom
+ * touchable garde 4,5:1 dans chacune d'elles quoi que rende la mesure
+ * (contraste.test.ts), et la mesure ne compte plus que pour une apparence
+ * future plus exigeante encore.
+ */
+export function opaciteLisibleBornee(mesuree: number | undefined): number {
+  if (mesuree === undefined || !Number.isFinite(mesuree)) return OPACITE_LISIBLE_PAR_DEFAUT;
+  return Math.min(1, Math.max(OPACITE_LISIBLE_PAR_DEFAUT, mesuree));
+}
+
+/**
  * L'estompage du NOM (et de sa pastille) sur sa capsule opaque, à `ecart`
  * éléments de l'allumé. Plein jusqu'au demi-écart : tant qu'un élément porte
  * la capsule accent, il ne s'estompe pas d'un centième — en Oxblood, l'encre
@@ -188,7 +205,7 @@ export function geometrieRoue(entree: {
     centreY: haut + utile / 2,
     pas: ECART_PX / rayon,
     xAllume: cote === 'droite' ? xDroite : largeur - xDroite,
-    opaciteLisible: entree.opaciteLisible ?? OPACITE_LISIBLE_PAR_DEFAUT,
+    opaciteLisible: opaciteLisibleBornee(entree.opaciteLisible),
   };
 }
 
