@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router';
 import { ApprovalBell } from './ApprovalBell';
 import { Sidebar } from './Sidebar/Sidebar';
+import { panneauVisible } from './Sidebar/navigation';
 import { SystemPulse } from './SystemPulse';
 import { useAppStore } from '../lib/store';
 import { checkHealth } from '../lib/api';
@@ -135,7 +136,7 @@ export function Layout() {
         {/* Au téléphone, la roue remplace la barre (26/09/2026, lot 3) : le
             tiroir de 260 px et son voile n'y sont plus montés du tout. */}
         {!estMobile && <Sidebar />}
-        {!estMobile && sidebarOpen && (
+        {!estMobile && panneauVisible(sidebarOpen, pathname) && (
           <div
             className="fixed inset-0 z-20 bg-black/40 md:hidden"
             onClick={() => useAppStore.getState().setSidebarOpen(false)}

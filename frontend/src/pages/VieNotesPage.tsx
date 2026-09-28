@@ -299,6 +299,13 @@ export function VieNotesPage() {
   };
 
   const openNote = async (cartable: CartableNote) => {
+    // 28/09/2026 : la navigation ouvre désormais un autre cartable sans
+    // quitter l'éditeur. Les 1,5 s d'autosauvegarde ne doivent pas permettre
+    // au nouveau contenu de remplacer le brouillon encore en attente.
+    if (dirty) {
+      if (autoSaveRef.current) window.clearTimeout(autoSaveRef.current);
+      if (!(await persist(true))) return;
+    }
     const actuelle = ouverture.commencer();
     setOuvertureId(cartable.id);
     try {

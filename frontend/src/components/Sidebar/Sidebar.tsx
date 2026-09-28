@@ -26,9 +26,17 @@ import {
   MonitorSmartphone,
   RefreshCw,
   ChevronLeft,
+  ChevronRight,
+  MessagesSquare,
+  HardDrive,
 } from 'lucide-react';
 import { ConversationList } from './ConversationList';
 import { GlassNav } from './GlassNav';
+import { PanneauEspaces } from './PanneauEspaces';
+import { PanneauContextuel } from './PanneauContextuel';
+import { rubriqueDuChemin, correspondALaRecherche, panneauDisponible, panneauVisible, type Rubrique } from './navigation';
+import { useHistoriqueNavigation } from './useHistoriqueNavigation';
+import './Navigation.css';
 import { TalkButton } from '../TalkButton';
 import { BandeauMiseAJour } from '../Desktop/BandeauMiseAJour';
 import { useAppStore, type ThemeMode, type TerminalSkin } from '../../lib/store';
@@ -57,9 +65,15 @@ export function Sidebar() {
   // ChatGPT-style: a magnifier in the header, the input appears on demand.
   const [searchOpen, setSearchOpen] = useState(false);
   const onSettingsRoute = estCheminDesReglages(location.pathname);
-  const [settingsOpen, setSettingsOpen] = useState(onSettingsRoute);
 
+  const rubrique = rubriqueDuChemin(location.pathname);
+  const historique = useHistoriqueNavigation();
+  const rechercheRef = useRef<HTMLInputElement>(null);
+  const boutonRechercheRef = useRef<HTMLButtonElement>(null);
   const sidebarOpen = useAppStore((s) => s.sidebarOpen);
+  const panneauOuvert = panneauVisible(sidebarOpen, location.pathname);
+  const aUnPanneau = panneauDisponible(location.pathname);
+  const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
   const nouvelleDiscussion = useAppStore((s) => s.nouvelleDiscussion);
   const selectedModel = useAppStore((s) => s.selectedModel);
@@ -73,21 +87,23 @@ export function Sidebar() {
   // (`--degagement-barre-fermee`) en dépend, et un effet ordinaire laissait
   // l'en-tête de la Discussion sauter de 60 px au premier affichage.
   useLayoutEffect(() => {
-    if (sidebarOpen) document.documentElement.dataset.barre = 'ouverte';
+    document.documentElement.dataset.navigationRail = '1';
+    if (panneauOuvert) document.documentElement.dataset.barre = 'ouverte';
     else delete document.documentElement.dataset.barre;
-  }, [sidebarOpen]);
+    return () => { delete document.documentElement.dataset.navigationRail; delete document.documentElement.dataset.barre; };
+  }, [panneauOuvert]);
 
-  // 26/09/2026 : en tiroir (sous `md`), la barre restait ouverte par-dessus
-  // la page qu'on venait d'y choisir. Chaque navigation — y compris vers la
-  // même adresse, une autre discussion ouverte depuis « / » — change la clé
-  // de l'emplacement ; `barreApresNavigation` dit alors si le tiroir se
-  // retire. Le montage n'est pas une navigation : la clé de départ est gardée.
+  // 28/09/2026 : un changement de rubrique rouvrait le panneau malgré
+  // le choix de Carlito. Seule la sélection d'un élément dans la même
+  // rubrique replie encore le tiroir étroit ; changer d'onglet garde le choix.
   const derniereNavigation = useRef({ cle: location.key, chemin: location.pathname });
   useEffect(() => {
     const precedente = derniereNavigation.current;
     if (precedente.cle === location.key) return;
     derniereNavigation.current = { cle: location.key, chemin: location.pathname };
-    appliquerNavigation(useAppStore.getState(), {
+    setSearchQuery('');
+    setSearchOpen(false);
+    if (precedente.chemin === location.pathname) appliquerNavigation(useAppStore.getState(), {
       superposee: lireSuperposee(),
       avant: precedente.chemin,
       apres: location.pathname,
@@ -154,32 +170,20 @@ export function Sidebar() {
     demanderLeFocusDuCompositeur();
   };
 
-  // The drawer follows the route, in both directions.
-  //
-  // Only the opening half used to be enforced, which was invisible as long as
-  // every way in and out went through openSettings/closeSettings. A remote
-  // command from another appareil navigates without touching either, and left
-  // the Réglages drawer standing over a Diapason page.
-  useEffect(() => {
-    setSettingsOpen(onSettingsRoute);
-  }, [onSettingsRoute]);
-
   // The page the drawer interrupted, so closing it can hand the view back.
   const routeBeforeSettings = useRef<string | null>(null);
 
   const openSettings = () => {
     setSearchOpen(false);
     setSearchQuery('');
-    setSettingsOpen(true);
     // Land on Général so the drawer never opens onto a blank pane.
     if (!onSettingsRoute) {
       routeBeforeSettings.current = location.pathname;
-      navigate('/settings');
     }
+    if (location.pathname !== '/settings') navigate('/settings');
   };
 
   const closeSettings = () => {
-    setSettingsOpen(false);
     const back = routeBeforeSettings.current;
     routeBeforeSettings.current = null;
     // Leaving the drawer has to move the content too: the sidebar was showing
@@ -189,19 +193,6 @@ export function Sidebar() {
       navigate(back && !estCheminDesReglages(back) ? back : '/');
     }
   };
-
-  // Discussion is not a nav tab: "Nouvelle discussion" and the conversation
-  // list already cover opening and switching chats.
-  const vieNavItems = [
-    { path: '/vie/dashboard', icon: LayoutDashboard, label: t('nav.vieDashboard') },
-    { path: '/vie/planner', icon: CalendarRange, label: t('nav.viePlanner') },
-    { path: '/vie/tasks', icon: ListTodo, label: t('nav.vieTasks') },
-    { path: '/vie/projects', icon: BriefcaseBusiness, label: t('nav.vieProjects') },
-    { path: '/vie/finances', icon: Wallet, label: t('nav.vieFinances') },
-    { path: '/vie/habits', icon: Repeat2, label: t('nav.vieHabits') },
-    { path: '/vie/notes', icon: NotebookPen, label: t('nav.vieNotes') },
-    { path: '/vie/year-review', icon: Trophy, label: t('nav.vieYearReview') },
-  ];
 
   // Réglages is administration, not a workspace: its tabs are grouped by what
   // they govern — the app itself, what feeds it, then what it leaves behind.
@@ -231,237 +222,120 @@ export function Sidebar() {
     },
   ];
 
+  const principaux = [
+    { id: 'discussion', path: '/', icon: MessagesSquare, label: t('nav.chat') },
+    { id: 'projets', path: '/vie/projects', icon: BriefcaseBusiness, label: t('nav.vieProjects') },
+    { id: 'notes', path: '/vie/notes', icon: NotebookPen, label: t('nav.vieNotes') },
+    { id: 'taches', path: '/vie/tasks', icon: ListTodo, label: t('nav.vieTasks') },
+    { id: 'agenda', path: '/vie/planner', icon: CalendarRange, label: t('nav.viePlanner') },
+    { id: 'tableau', path: '/vie/dashboard', icon: LayoutDashboard, label: t('nav.vieDashboard') },
+    { id: 'finances', path: '/vie/finances', icon: Wallet, label: t('nav.vieFinances') },
+    { id: 'habitudes', path: '/vie/habits', icon: Repeat2, label: t('nav.vieHabits') },
+    { id: 'bilan', path: '/vie/year-review', icon: Trophy, label: t('nav.vieYearReview') },
+  ] as const;
+  const titres: Record<Rubrique, string> = {
+    discussion: 'Diapason', projets: t('nav.vieProjects'),
+    notes: t('nav.vieNotes'), taches: t('nav.vieTasks'), agenda: t('nav.viePlanner'),
+    tableau: t('nav.vieDashboard'), finances: t('nav.vieFinances'),
+    habitudes: t('nav.vieHabits'), bilan: t('nav.vieYearReview'), reglages: t('nav.settings'),
+  };
+  const choisirRubrique = (chemin: string) => {
+    setSearchOpen(false);
+    setSearchQuery('');
+    if (chemin !== location.pathname) navigate(chemin);
+  };
+  const fermerRecherche = () => {
+    setSearchOpen(false);
+    setSearchQuery('');
+    boutonRechercheRef.current?.focus();
+  };
+  const basculerRecherche = () => {
+    if (searchOpen) fermerRecherche();
+    else { setSearchOpen(true); requestAnimationFrame(() => rechercheRef.current?.focus()); }
+  };
+  const choixDePage = (chemin: string) => {
+    navigate(chemin);
+    if (lireSuperposee()) setSidebarOpen(false);
+  };
+
   return (
-    <>
-      {/* Collapse button when sidebar is closed */}
-      {!sidebarOpen && (
-        <button
-          onClick={toggleSidebar}
-          className="fixed top-3 mobile:top-1 left-3 z-30 p-2 rounded-lg transition-colors cursor-pointer"
-          style={{ color: 'var(--color-text-secondary)', background: 'var(--color-bg-secondary)' }}
-          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
-          onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--color-bg-secondary)')}
-          title={t('sidebar.expand')}
-          aria-label={t('sidebar.expand')}
-        >
-          <PanelLeft size={18} />
+    <aside className="navigation-diapason" data-ouvert={panneauOuvert} aria-label="Navigation Diapason">
+      <nav className="navigation-rail" aria-label="Rubriques principales">
+        <button className="navigation-rail-bouton navigation-bascule" onClick={toggleSidebar} disabled={!aUnPanneau}
+          title={!aUnPanneau ? 'Aucun panneau complémentaire pour cette rubrique' : panneauOuvert ? t('sidebar.collapse') : t('sidebar.expand')}
+          aria-label={!aUnPanneau ? 'Aucun panneau complémentaire pour cette rubrique' : panneauOuvert ? t('sidebar.collapse') : t('sidebar.expand')}
+          aria-expanded={panneauOuvert} aria-controls="navigation-panneau">
+          {panneauOuvert ? <PanelLeftClose size={20} /> : <PanelLeft size={20} />}
         </button>
-      )}
-
-      <aside
-        className={`
-          flex flex-col h-full shrink-0 transition-all duration-200 ease-in-out overflow-hidden
-          fixed md:relative z-30
-          ${sidebarOpen ? 'w-[260px]' : 'w-0'}
-        `}
-        style={{
-          background: 'var(--color-sidebar)',
-          backdropFilter: 'blur(20px)',
-          WebkitBackdropFilter: 'blur(20px)',
-          borderRight: sidebarOpen ? '1px solid var(--color-border)' : 'none',
-        }}
-      >
-        <div className="flex flex-col h-full w-[260px]">
-          {/* Header — collapse and search side by side, theme on the right */}
-          <div className="flex items-center justify-between px-3 pt-3 pb-2">
-            <div className="flex items-center gap-1">
-              <button
-                onClick={toggleSidebar}
-                className="p-2 rounded-lg transition-colors cursor-pointer"
-                style={{ color: 'var(--color-text-secondary)' }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                title={t('sidebar.collapse')}
-                aria-label={t('sidebar.collapse')}
-              >
-                <PanelLeftClose size={18} />
-              </button>
-              {!settingsOpen && (
-                <button
-                  onClick={() => {
-                    setSearchOpen((open) => {
-                      if (open) setSearchQuery('');
-                      return !open;
-                    });
-                  }}
-                  className="p-2 rounded-lg transition-colors cursor-pointer"
-                  style={{
-                    color: searchOpen ? 'var(--color-accent)' : 'var(--color-text-secondary)',
-                    background: searchOpen ? 'var(--color-accent-subtle)' : 'transparent',
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!searchOpen) e.currentTarget.style.background = 'var(--color-bg-tertiary)';
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!searchOpen) e.currentTarget.style.background = 'transparent';
-                  }}
-                  title={t('sidebar.searchPlaceholder')}
-                  aria-label={t('sidebar.searchPlaceholder')}
-                  aria-expanded={searchOpen}
-                >
-                  <Search size={16} />
-                </button>
-              )}
-            </div>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() =>
-                  updateSettings(
-                    nextStop.skin
-                      ? { theme: nextStop.theme, terminalSkin: nextStop.skin }
-                      : { theme: nextStop.theme },
-                  )
-                }
-                className="p-2 rounded-lg transition-colors cursor-pointer"
-                style={{ color: 'var(--color-text-secondary)' }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                title={t('sidebar.themeTooltip', {
-                  current: themeName({ theme: settings.theme, skin: activeSkin }),
-                  next: themeName(nextStop),
-                })}
-              >
-                <ThemeIcon size={16} />
-              </button>
-            </div>
-          </div>
-
-          {/* Search input, on demand from the header magnifier */}
-          {searchOpen && !settingsOpen && (
-            <div className="px-3 mb-2">
-              <div
-                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm"
-                style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}
-              >
-                <Search size={14} style={{ color: 'var(--color-text-tertiary)' }} />
-                <input
-                  type="text"
-                  autoFocus
-                  placeholder={t('sidebar.searchPlaceholder')}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Escape') {
-                      setSearchQuery('');
-                      setSearchOpen(false);
-                    }
-                  }}
-                  className="flex-1 bg-transparent outline-none text-sm"
-                  style={{ color: 'var(--color-text)' }}
-                />
-              </div>
-            </div>
-          )}
-
-          {settingsOpen ? (
-            /* Réglages takes over the sidebar, grouped so the tabs read as a
-               short table of contents rather than a flat list */
-            <div id="settings-nav" className="flex-1 overflow-y-auto pt-1">
-              <button
-                onClick={closeSettings}
-                className="mx-3 mb-1 flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium cursor-pointer transition-colors"
-                style={{ color: 'var(--color-text)' }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                title={t('sidebar.settingsBack')}
-              >
-                <ChevronLeft size={16} style={{ color: 'var(--color-accent)' }} />
-                <span className="flex-1 text-left">{t('sidebar.settingsBack')}</span>
-              </button>
-              {settingsGroups.map((group) => (
-                <div key={group.label}>
-                  <div
-                    className="px-5 pt-2 pb-1 text-[11px] font-medium uppercase tracking-wider"
-                    style={{ color: 'var(--color-text-tertiary)' }}
-                  >
-                    {group.label}
-                  </div>
-                  <GlassNav items={group.items} groupLabel={group.label} />
-                </div>
-              ))}
-            </div>
-          ) : (
-            <>
-              {/* New conversation — a real, labeled button. The old tiny "+" was
-                  easy to miss and silently did nothing on an empty chat, which
-                  read as "I cannot create conversations". */}
-              <button
-                onClick={handleNewChat}
-                className="mx-3 mb-2 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-opacity cursor-pointer"
-                style={{ background: 'var(--color-accent)', color: '#fff' }}
-                onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.88')}
-                onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
-              >
-                <Plus size={16} />
-                {t('sidebar.newChat')}
-              </button>
-
-              {/* Les onglets du domaine « vie ». Nav and conversations scroll
-                  together so a long history does not squeeze the tabs.
-                  25/09/2026 : le groupe n'avait aucun titre, et `nav.succes`
-                  (« Succès ») n'était lu nulle part — une clé traduite en
-                  deux langues pour un texte que personne ne voyait. Le titre
-                  est dessiné comme ceux des groupes de Réglages, et nomme
-                  aussi la liste pour un lecteur d'écran. */}
-              <div className="flex-1 min-h-0 overflow-y-auto">
-                <div
-                  className="px-5 pt-2 pb-1 text-[11px] font-medium uppercase tracking-wider"
-                  style={{ color: 'var(--color-text-tertiary)' }}
-                >
-                  {t('nav.vie')}
-                </div>
-                <GlassNav items={vieNavItems} groupLabel={t('nav.vie')} />
-                {/* Conversation list — everything below the fold scrolls */}
-                <div
-                  className="px-2 pt-1"
-                  style={{ borderTop: '1px solid var(--color-border)' }}
-                >
-                  <ConversationList searchQuery={searchQuery} />
-                </div>
-              </div>
-            </>
-          )}
-
-          {/* Une nouvelle version se signale ici, juste au-dessus du pied de
-              page, dans les couleurs de la barre — et non plus en
-              surimpression en haut de la fenêtre. Rien à installer : rien. */}
-          <BandeauMiseAJour />
-
-          {/* Réglages left, Parler to its right — one quiet footer so neither
-              floats over the workspace. Talk stays reachable while the
-              settings drawer is open; Réglages yields to the back row. */}
-          <div
-            className="flex items-stretch shrink-0"
-            style={{ borderTop: '1px solid var(--color-border)' }}
-          >
-            {!settingsOpen && (
-              <>
-                <button
-                  onClick={openSettings}
-                  className="flex flex-1 items-center gap-2 px-4 py-3 text-sm transition-colors cursor-pointer min-w-0"
-                  style={{
-                    color: 'var(--color-text-secondary)',
-                    background: 'transparent',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                  aria-controls="settings-nav"
-                  title={t('nav.settings')}
-                >
-                  <Settings size={16} className="shrink-0" />
-                  <span className="flex-1 text-left truncate">{t('nav.settings')}</span>
-                </button>
-                <span
-                  aria-hidden="true"
-                  className="w-px self-stretch my-2 shrink-0"
-                  style={{ background: 'var(--color-border)' }}
-                />
-              </>
-            )}
-            <TalkButton />
-          </div>
+        <div className="navigation-rail-rubriques">
+          {principaux.map(({ id, path, icon: Icon, label }) => (
+            <button key={id} className="navigation-rail-bouton" aria-label={label} title={label}
+              aria-pressed={rubrique === id} onClick={() => choisirRubrique(path)}>
+              <Icon size={21} />
+            </button>
+          ))}
         </div>
-      </aside>
-    </>
+        <div className="navigation-rail-pied">
+          <button className="navigation-rail-bouton" onClick={() => {
+            openSettings();
+          }} aria-label={t('nav.settings')} title={t('nav.settings')} aria-pressed={rubrique === 'reglages'}>
+            <Settings size={21} />
+          </button>
+          <button className="navigation-rail-bouton" onClick={() => updateSettings(nextStop.skin
+            ? { theme: nextStop.theme, terminalSkin: nextStop.skin } : { theme: nextStop.theme })}
+            aria-label={t('sidebar.themeTooltip', { current: themeName({ theme: settings.theme, skin: activeSkin }), next: themeName(nextStop) })}
+            title={t('sidebar.themeTooltip', { current: themeName({ theme: settings.theme, skin: activeSkin }), next: themeName(nextStop) })}>
+            <ThemeIcon size={19} />
+          </button>
+        </div>
+      </nav>
+      {panneauOuvert && <section id="navigation-panneau" className="navigation-panneau" aria-label={titres[rubrique]}>
+        <div className="navigation-historique">
+          <button className="navigation-icone" onClick={() => historique.aller(-1)} disabled={!historique.precedent} aria-label="Précédent" title="Précédent"><ChevronLeft size={18} /></button>
+          <button className="navigation-icone" onClick={() => historique.aller(1)} disabled={!historique.suivant} aria-label="Suivant" title="Suivant"><ChevronRight size={18} /></button>
+          <span>Diapason</span>
+        </div>
+        <div className="navigation-entete">
+          <div className="navigation-titre">{titres[rubrique]}</div>
+          <button ref={boutonRechercheRef} className="navigation-icone" onClick={basculerRecherche}
+            aria-label="Rechercher dans cette rubrique" title="Rechercher dans cette rubrique"
+            aria-expanded={searchOpen} aria-controls="navigation-recherche"><Search size={18} /></button>
+        </div>
+        {searchOpen && <div className="navigation-recherche" id="navigation-recherche">
+          <Search size={15} aria-hidden="true" />
+          <input ref={rechercheRef} type="search" value={searchQuery} placeholder="Rechercher…" aria-label="Rechercher dans cette rubrique"
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); fermerRecherche(); } }} />
+        </div>}
+        {rubrique === 'discussion' && <button className="navigation-nouvelle" onClick={handleNewChat}>
+          <Plus size={18} />{t('sidebar.newChat')}
+        </button>}
+        <div className="navigation-contenu">
+          {rubrique === 'discussion' && <>
+            <ConversationList searchQuery={searchQuery} />
+          </>}
+          {(rubrique === 'projets' || rubrique === 'notes') && <>
+            <button className="navigation-ligne navigation-tout" onClick={() => choixDePage(rubrique === 'projets' ? '/vie/projects' : '/vie/notes')}>
+              {rubrique === 'projets' ? <BriefcaseBusiness size={17} /> : <NotebookPen size={17} />}
+              <span>{rubrique === 'projets' ? 'Tous les projets' : 'Toutes les notes'}</span>
+            </button>
+            <PanneauEspaces key={rubrique} mode={rubrique} recherche={searchQuery} />
+          </>}
+          {rubrique === 'reglages' && <div id="settings-nav">
+            <button onClick={closeSettings} className="navigation-ligne"><ChevronLeft size={16} /><span>{t('sidebar.settingsBack')}</span></button>
+            {settingsGroups.map((group) => {
+              const items = group.items.filter((item) => correspondALaRecherche(item.label, searchQuery));
+              return items.length ? <div key={group.label}><div className="navigation-section-entete">{group.label}</div><GlassNav items={items} groupLabel={group.label} /></div> : null;
+            })}
+          </div>}
+          {['agenda', 'taches', 'finances'].includes(rubrique) && <PanneauContextuel chemin={location.pathname} recherche={searchQuery} />}
+        </div>
+        <BandeauMiseAJour />
+        <footer className="navigation-pied">
+          <div><HardDrive size={13} /><span>Ton espace Diapason</span></div>
+          <TalkButton />
+        </footer>
+      </section>}
+    </aside>
   );
 }

@@ -195,7 +195,7 @@ export function ConversationList({ searchQuery }: Props) {
     return (
       <div
         key={conv.id}
-        className="group flex items-center rounded-lg cursor-pointer transition-colors"
+        className="navigation-conversation group flex items-center rounded-lg cursor-pointer transition-colors"
         style={{
           background: isActive ? 'var(--color-bg-tertiary)' : 'transparent',
         }}
@@ -249,6 +249,8 @@ export function ConversationList({ searchQuery }: Props) {
               const messageId = resultatDe.get(conv.id)?.messageId;
               if (messageId) demanderDeMontrerLeMessage(messageId);
             }}
+            aria-current={isActive ? 'page' : undefined}
+            title={displayTitle(conv)}
             className="flex-1 text-left px-3 py-2 min-w-0 cursor-pointer"
           >
             <div

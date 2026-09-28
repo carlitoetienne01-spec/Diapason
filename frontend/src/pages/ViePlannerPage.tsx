@@ -1,5 +1,6 @@
 import { useDerniereLecture } from '../features/vie/useDerniereLecture';
 import { CadreVitre } from '../components/Glass/CadreVitre';
+import { usePublierNavigation } from '../components/Sidebar/contexteNavigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CalendarCheck2,
@@ -396,6 +397,21 @@ export function ViePlannerPage() {
     setFilter('day');
     setCalendarMonth(date);
   };
+
+  usePublierNavigation({
+    chemin: '/vie/planner',
+    date: { valeur: selectedDate, choisir: selectDay },
+    groupes: [
+      { titre: 'Calendrier', choix: [{ id: 'today', libelle: 'Aujourd’hui', choisir: () => selectDay(today) }] },
+      { titre: 'Vues', choix: ([
+        { id: 'day', libelle: libelleDuJour(selectedDate, today) },
+        { id: 'week', libelle: 'Cette semaine' },
+        { id: 'done', libelle: 'Terminées' },
+        { id: 'high', libelle: 'Priorité haute' },
+        { id: 'late', libelle: 'En retard' },
+      ] as const).map((vue) => ({ ...vue, actif: filter === vue.id, choisir: () => setFilter(vue.id) })) },
+    ],
+  });
 
   const emptyCopy =
     filter === 'done'

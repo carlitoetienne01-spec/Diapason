@@ -1,4 +1,5 @@
 import { CadreVitre } from '../components/Glass/CadreVitre';
+import { usePublierNavigation } from '../components/Sidebar/contexteNavigation';
 import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   Check,
@@ -196,6 +197,19 @@ export function VieFinancesPage() {
   // Trois états de MODE, pas de largeur : le CSS décide seul ce qui se voit à
   // quelle taille (règle 2 de docs/development/mini-panneau-responsive.md).
   const [formOpen, setFormOpen] = useState(false);
+  usePublierNavigation({
+    chemin: '/vie/finances',
+    groupes: [
+      { titre: 'Finances', choix: SECTION_TABS.map((onglet) => ({
+        id: onglet.id, libelle: onglet.label, actif: section === onglet.id,
+        choisir: () => { setSection(onglet.id); setFormOpen(false); },
+      })) },
+      { titre: 'Période', choix: PERIODS.map((periode) => ({
+        id: periode.id, libelle: periode.label, actif: period === periode.id,
+        choisir: () => setPeriod(periode.id),
+      })) },
+    ],
+  });
   const [moreCharts, setMoreCharts] = useState(false);
   // « Ajuster » passait par window.prompt, qui rend `null` sans dialogue dans
   // la WKWebView du panneau : le bouton semblait mort. Saisie en place.

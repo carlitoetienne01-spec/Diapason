@@ -103,12 +103,10 @@ export function VieDashboardPage() {
   return (
     <div data-verre-defilement className="flex-1 overflow-y-auto px-3 py-4 sm:px-5 sm:py-8 md:px-8 md:py-10">
       <main className="max-w-5xl mx-auto w-full">
-        {/* En miniature, l'en-tête tient sur UNE rangée : la date reste à
-            droite du titre — empilés, ils coûtaient ~150 px du panneau avant
-            le premier chiffre (16 sept. 2026, audit du mini-panneau). Le
-            surtitre et la description sont partis le 27 septembre 2026 : deux
-            lignes qui nommaient l'application et paraphrasaient le titre. */}
-        <header className="flex flex-row items-end justify-between gap-3 mb-4 sm:mb-7">
+        {/* 28/09/2026 : avec la police Phosphore et le rail, la date comprimait
+            le titre jusqu'à une lettre par ligne. Le retour à la ligne garde
+            les deux contrôles lisibles quand leur largeur cumulée ne tient pas. */}
+        <header className="flex flex-wrap items-end justify-between gap-3 mb-4 sm:mb-7">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-semibold" style={{ color: 'var(--color-text)' }}>

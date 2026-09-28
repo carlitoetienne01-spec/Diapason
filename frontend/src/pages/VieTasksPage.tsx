@@ -1,5 +1,6 @@
 import { useDerniereLecture } from '../features/vie/useDerniereLecture';
 import { CadreVitre } from '../components/Glass/CadreVitre';
+import { usePublierNavigation } from '../components/Sidebar/contexteNavigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CheckCircle2, CirclePlus, HardDrive, Loader2, Repeat, Search, SlidersHorizontal } from 'lucide-react';
 import { Link } from 'react-router';
@@ -198,6 +199,30 @@ export function VieTasksPage() {
   useEffect(() => {
     saveTasksFilters({ includeDone, projectFilter });
   }, [includeDone, projectFilter]);
+
+  usePublierNavigation({
+    chemin: '/vie/tasks',
+    groupes: [
+      { titre: 'Listes et vues', choix: ([
+        { id: 'list', libelle: 'Liste' },
+        { id: 'week', libelle: 'Semaine' },
+        { id: 'month', libelle: 'Mois' },
+        { id: 'done', libelle: 'Terminées' },
+      ] as const).map((vue) => ({ ...vue, actif: viewMode === vue.id, choisir: () => {
+        setViewMode(vue.id);
+        saveTasksViewMode(vue.id);
+      } })) },
+      { titre: 'Filtrer par projet', choix: [
+        { id: '', libelle: 'Tous les projets' },
+        { id: '__none__', libelle: 'Sans projet' },
+        ...projects.map((projet) => ({ id: projet.id, libelle: projet.name })),
+      ].map((projet) => ({ ...projet, actif: projectFilter === projet.id, choisir: () => setProjectFilter(projet.id) })) },
+      ...((viewMode === 'week' || viewMode === 'month') ? [{ titre: 'Affichage', choix: [{
+        id: 'done-visible', libelle: 'Afficher les tâches terminées', actif: includeDone,
+        choisir: () => setIncludeDone((valeur) => !valeur),
+      }] }] : []),
+    ],
+  });
 
   const load = useCallback(async () => {
     const actuelle = lecture.commencer();
@@ -847,13 +872,12 @@ export function VieTasksPage() {
   const filtreActif = Boolean(search.trim() || projectFilter || (surTableau && !includeDone));
   const libelleRecurrences = nbRecurrences === null ? 'Récurrences' : `Récurrences (${nbRecurrences})`;
 
-  // Le sélecteur de mode vit sur la rangée du titre dès sm, sur la sienne
-  // en dessous : rendu deux fois, une seule copie est affichée à la fois.
-  // Quatre onglets à 340 px : `px-2` sous sm — avec `px-3`, « Terminées 36 »
-  // poussait le bouton des filtres à la ligne (17 sept. 2026).
+  // 28/09/2026 : avec le rail ouvert et la police terminal, les quatre
+  // modes ne tiennent pas toujours sur une ligne. Ils peuvent revenir à
+  // la ligne ; aucun libellé ne se comprime sur son voisin.
   const selecteurMode = (
     <CadreVitre compact
-      className="flex rounded-xl p-1"
+      className="flex flex-wrap max-w-full rounded-xl p-1"
       style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}
       role="tablist"
       aria-label="Mode d’affichage"
@@ -874,7 +898,7 @@ export function VieTasksPage() {
             setViewMode(option.id);
             saveTasksViewMode(option.id);
           }}
-          className="px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs font-medium cursor-pointer flex items-center gap-1"
+          className="shrink-0 whitespace-nowrap px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs font-medium cursor-pointer flex items-center gap-1"
           style={{
             background: viewMode === option.id ? 'var(--color-surface)' : 'transparent',
             color: viewMode === option.id ? 'var(--color-text)' : 'var(--color-text-secondary)',
@@ -954,14 +978,14 @@ export function VieTasksPage() {
                 </span>
               </div>
             </div>
-            <div className="flex flex-wrap items-center justify-end gap-2 ml-auto">
-              <span className="hidden sm:block">{selecteurMode}</span>
+            <div className="flex flex-wrap min-w-0 max-w-full items-center justify-end gap-2 ml-auto">
+              <div className="hidden sm:block min-w-0 max-w-full">{selecteurMode}</div>
               {/* Les récurrences en section à part, ouverte par ce bouton et
                   fermée par lui ; N dit qu'il y a quelque chose derrière. */}
               <button
                 type="button"
                 onClick={basculerRecurrences}
-                className="flex items-center gap-1.5 h-8 sm:h-9 px-2 sm:px-3 rounded-xl text-sm cursor-pointer"
+                className="flex shrink-0 whitespace-nowrap items-center gap-1.5 h-8 sm:h-9 px-2 sm:px-3 rounded-xl text-sm cursor-pointer"
                 style={{
                   color: recurrencesOuvertes ? 'var(--color-accent)' : 'var(--color-text-secondary)',
                   border: `1px solid ${recurrencesOuvertes ? 'var(--color-accent)' : 'var(--color-border)'}`,
@@ -981,7 +1005,7 @@ export function VieTasksPage() {
               <button
                 type="button"
                 onClick={() => void (showCreate ? cancelCreate() : ouvrirCreation())}
-                className="flex items-center gap-2 h-8 sm:h-9 px-2 sm:px-3 rounded-xl text-sm font-medium cursor-pointer"
+                className="flex shrink-0 whitespace-nowrap items-center gap-2 h-8 sm:h-9 px-2 sm:px-3 rounded-xl text-sm font-medium cursor-pointer"
                 style={{ background: 'var(--color-accent)', color: '#fff' }}
                 aria-label="Nouvelle tâche"
                 aria-expanded={showCreate}
@@ -995,11 +1019,11 @@ export function VieTasksPage() {
               Le bouton se teinte quand un filtre agit sur la liste, pour ne
               pas cacher ce qui la réduit (§5). */}
           <div className="mt-2 flex items-center justify-between gap-2 sm:hidden">
-            {selecteurMode}
+            <div className="flex-1 min-w-0">{selecteurMode}</div>
             <button
               type="button"
               onClick={() => setFiltresOuverts((value) => !value)}
-              className="flex items-center justify-center size-8 rounded-xl cursor-pointer"
+              className="flex shrink-0 items-center justify-center size-8 rounded-xl cursor-pointer"
               style={{
                 color: filtreActif || filtresOuverts ? 'var(--color-accent)' : 'var(--color-text-secondary)',
                 border: `1px solid ${filtresOuverts ? 'var(--color-accent)' : 'var(--color-border)'}`,
