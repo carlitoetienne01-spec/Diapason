@@ -43,8 +43,8 @@ class TestCeQuiEstLeger:
     @pytest.mark.parametrize(
         "question",
         [
-            "Qui est le président actuel d’Haïti ?",
-            'Que veut dire "Self Aware" en français ?',
+            "Qui est le président actuel de l’Autriche ?",
+            'Que veut dire "Well Done" en français ?',
             "Traduis « good morning » en français",
             "Quelle heure est-il ?",
             "Merci !",
@@ -147,7 +147,7 @@ class TestCeQuiEstLeger:
 class TestLeChoixDuModele:
     def test_le_27b_choisi_cede_une_traduction_au_9b(self):
         routage = choisir_le_modele(
-            "qwen3.8:27b-mlx", fil('Que veut dire "Self Aware" ?'), config()
+            "qwen3.8:27b-mlx", fil('Que veut dire "Well Done" ?'), config()
         )
         assert routage == Routage(
             "qwen3.5:9b", origine="qwen3.8:27b-mlx", motif="tour léger"
@@ -243,7 +243,7 @@ class TestLeFluxDitQuiARepondu:
                 text="\n".join(
                     json.dumps(c)
                     for c in [
-                        {"message": {"content": "Conscient de soi."}},
+                        {"message": {"content": "Bien joué."}},
                         {"done": True, "done_reason": "stop", "eval_count": 3},
                     ]
                 ),
@@ -265,7 +265,7 @@ class TestLeFluxDitQuiARepondu:
                         "model": "lourd",
                         "stream": True,
                         "messages": [
-                            {"role": "user", "content": 'Que veut dire "Self Aware" ?'}
+                            {"role": "user", "content": 'Que veut dire "Well Done" ?'}
                         ],
                     },
                 )

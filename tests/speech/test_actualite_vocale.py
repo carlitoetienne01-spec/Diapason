@@ -298,9 +298,9 @@ class TestLaGardeVocale:
         await session._respond_to_text("qu'est-ce que j'ai comme tâches aujourd'hui ?")
         assert journal["rounds"][0][-1]["role"] == "user", "aucune consigne"
         assert journal["spoken"] == ["Trois tâches aujourd'hui."], "aucun aveu"
-        session, journal = harnais(["Conscient de soi."])
-        await session._respond_to_text("que veut dire self aware ?")
-        assert journal["spoken"] == ["Conscient de soi."]
+        session, journal = harnais(["Bien joué."])
+        await session._respond_to_text("que veut dire well done ?")
+        assert journal["spoken"] == ["Bien joué."]
 
     @pytest.mark.asyncio
     async def test_la_lecture_automatique_est_annoncee_au_panneau(self):
@@ -637,9 +637,7 @@ class TestLaSpeculationVoitLaConsigne:
             messages[-1]["role"] == "system" and "web_search" in messages[-1]["content"]
         )
         assert messages[-2] == {"role": "user", "content": PREMIER_MINISTRE}
-        assert (
-            session._turn_messages("que veut dire self aware ?")[-1]["role"] == "user"
-        )
+        assert session._turn_messages("que veut dire well done ?")[-1]["role"] == "user"
 
     def test_sans_outils_aucune_consigne(self):
         session, _journal = harnais(["x"])
@@ -919,21 +917,25 @@ class TestLEpilogueJugeLaDernierePasse:
 class TestLaSuiteHeriteDuSujetALaVoix:
     @pytest.mark.asyncio
     async def test_ce_pays_recoit_le_rappel_de_l_echange_precedent(self):
-        """21/09 (23 h) : « Raconte-moi l'histoire de ce pays » après Haïti
-        recevait « de quel pays tu parles ? » au chat ; la voix assemble le
-        même rappel (server/suite.py), dans la spéculation comme à l'adoption."""
+        """21/09 : raconter l'histoire « de ce pays », juste après une question
+        sur un pays, recevait « de quel pays tu parles ? » au chat ; la voix
+        assemble le même rappel (server/suite.py), dans la spéculation comme à
+        l'adoption. Questions et réponses inventées, pas celles du fil réel."""
         session, journal = harnais(
-            ["Haïti est devenue indépendante en 1804."],
+            ["L'Autriche est une république depuis 1918."],
             historique=[
-                {"role": "user", "content": "Qui est le président actuel d'Haïti ?"},
+                {
+                    "role": "user",
+                    "content": "Qui est le président actuel de l'Autriche ?",
+                },
                 {
                     "role": "assistant",
-                    "content": "Il n'y a pas de président élu ; Alix Didier Fils-Aimé "
-                    "dirige le gouvernement intérimaire.",
+                    "content": "Alexander Van der Bellen, réélu en 2022 pour un "
+                    "second mandat.",
                 },
             ],
         )
-        await session._respond_to_text("Raconte-moi l'histoire de ce pays")
+        await session._respond_to_text("Résume-moi l'histoire de ce pays")
         premier = journal["rounds"][0]
         rappels = [
             m
@@ -942,7 +944,7 @@ class TestLaSuiteHeriteDuSujetALaVoix:
             and "La demande renvoie à ce qui précède" in m["content"]
         ]
         assert len(rappels) == 1
-        assert "Fils-Aimé" in rappels[0]["content"]
+        assert "Van der Bellen" in rappels[0]["content"]
         assert premier.index(rappels[0]) > premier.index(
-            {"role": "user", "content": "Raconte-moi l'histoire de ce pays"}
+            {"role": "user", "content": "Résume-moi l'histoire de ce pays"}
         ), "après la demande"

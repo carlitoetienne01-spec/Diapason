@@ -123,7 +123,7 @@ class TestLaTrousseStable:
         [
             "Quelles sont mes tâches aujourd’hui ?",
             "Quelle est la capitale du Pérou ?",
-            'Que veut dire "Self Aware" en français ?',
+            'Que veut dire "Well Done" en français ?',
             "Prepare moi un programme pour la programmation",
         ],
     )
@@ -347,9 +347,10 @@ class TestCatalogue:
 
 
 def apres_youtube(question):
-    """Le vrai fil du 20 septembre 2026, avec un web_search plus haut."""
+    """Un fil de la forme de celui du 20 septembre 2026, avec un web_search
+    plus haut. Questions inventées, pas celles du fil réel."""
     return [
-        Message(role=Role.USER, content="Qui est le président actuel d’Haïti ?"),
+        Message(role=Role.USER, content="Qui est le président actuel de l’Autriche ?"),
         Message(
             role=Role.ASSISTANT,
             content="",
@@ -358,7 +359,7 @@ def apres_youtube(question):
         Message(role=Role.TOOL, content="…", tool_call_id="recherche"),
         Message(role=Role.ASSISTANT, content="Un conseil de transition."),
         Message(
-            role=Role.USER, content="Ouvre moi Youtube et joue la musique Self Away"
+            role=Role.USER, content="Ouvre moi Youtube et joue la musique Soleil Bleu"
         ),
         Message(role=Role.ASSISTANT, content="Ouvert."),
         Message(role=Role.USER, content=question),
@@ -389,7 +390,7 @@ class TestLaRelectureNeViseQueLesDonnees:
     """
 
     def test_une_traduction_apres_youtube_n_est_pas_relue(self):
-        fil = apres_youtube('Que veut dire "Self Aware" en français ?')
+        fil = apres_youtube('Que veut dire "Well Done" en français ?')
         trousse = TrousseChat(outils_du_bureau(), fil, adaptative=True)
         assert noms(trousse.specs) == [CHARGER_OUTILS], (
             "une traduction est une réponse autonome : le catalogue seul"
@@ -399,9 +400,9 @@ class TestLaRelectureNeViseQueLesDonnees:
         )
 
     def test_une_question_de_culture_generale_garde_tous_les_schemas(self):
-        # « Qui est le président actuel d'Haïti ? » n'est ni reconnue ni
-        # autonome (« actuel ») : tous les schémas, et un seul passage.
-        fil = apres_youtube("Qui est le premier ministre actuel d'Haïti ?")
+        # Une question sur le chef d'État actuel d'un pays n'est ni reconnue
+        # ni autonome (« actuel ») : tous les schémas, et un seul passage.
+        fil = apres_youtube("Qui est le chancelier actuel de l'Autriche ?")
         trousse = TrousseChat(outils_du_bureau(), fil, adaptative=True)
         assert noms(trousse.specs) == [o.nom for o in outils_du_bureau()]
         assert not trousse.verifier_lecture(fil)
@@ -410,7 +411,7 @@ class TestLaRelectureNeViseQueLesDonnees:
         "question",
         [
             "Montre mes tâches de demain",
-            "Cherche sur le web le président d’Haïti",
+            "Cherche sur le web le président de l’Autriche",
             "Quels onglets sont ouverts ?",
         ],
     )
@@ -491,7 +492,7 @@ class TestLaRelectureNeViseQueLesDonnees:
     @pytest.mark.parametrize(
         "question",
         [
-            "Est-ce que Carlito m'a répondu ?",
+            "Est-ce que Camille m'a répondu ?",
             "Qu'est-ce que j'ai de prévu ce soir ?",
         ],
     )
@@ -503,7 +504,7 @@ class TestLaRelectureNeViseQueLesDonnees:
         # « non, personne ne t'a répondu » partait sans lecture.
         liste = [*outils_du_bureau(), Outil("imessage_conversation")]
         fil = [
-            Message(role=Role.USER, content="Mets la musique Self Aware sur Spotify"),
+            Message(role=Role.USER, content="Mets la musique Soleil Bleu sur Spotify"),
             Message(
                 role=Role.ASSISTANT,
                 content="",
@@ -519,7 +520,7 @@ class TestLaRelectureNeViseQueLesDonnees:
 
     def test_un_suivi_court_apres_une_action_n_est_pas_relu(self):
         fil = [
-            Message(role=Role.USER, content="Joue Self Away sur Spotify"),
+            Message(role=Role.USER, content="Joue Soleil Bleu sur Spotify"),
             Message(
                 role=Role.ASSISTANT,
                 content="",
@@ -535,14 +536,12 @@ class TestLaRelectureNeViseQueLesDonnees:
 
     @pytest.mark.asyncio
     async def test_la_traduction_s_affiche_au_premier_passage(self):
-        moteur = Moteur(
-            [[StreamChunk(content="« Conscient de soi ».", finish_reason="stop")]]
-        )
-        fil = apres_youtube('Que veut dire "Self Aware" en français ?')
+        moteur = Moteur([[StreamChunk(content="« Bien joué ».", finish_reason="stop")]])
+        fil = apres_youtube('Que veut dire "Well Done" en français ?')
         evts = await collecter(moteur, outils_du_bureau(), messages=fil)
         assert len(moteur.appels) == 1, "un seul passage, pas de relecture"
         texte = "".join(e.data for e in evts if e.kind == "token")
-        assert texte == "« Conscient de soi »."
+        assert texte == "« Bien joué »."
 
 
 class TestDialogueAvecDecouverte:

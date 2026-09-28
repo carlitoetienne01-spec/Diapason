@@ -692,7 +692,7 @@ async def chat_completions(request_body: ChatCompletionRequest, request: Request
                 exc_info=True,
             )
 
-    # 20/09/2026 : « Que veut dire "Self Aware" ? » payait le 27b choisi dans
+    # 20/09/2026 : une traduction d'une ligne payait le 27b choisi dans
     # le sélecteur (89 s). Un tour léger part sur le modèle léger configuré ;
     # le modèle demandé reste pour tout le reste. Voir server/tour_leger.py.
     routage = await asyncio.to_thread(

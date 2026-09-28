@@ -430,9 +430,10 @@ async def stream_with_tools(
         # 19/09/2026 : sur le 9b, le seul système initial donnait des listes
         # en prose. Le rappel au tour courant a produit le véritable appel.
         travail.append(Message(role=Role.SYSTEM, content=RAPPEL))
-    # 21/09/2026, 23 h : « Raconte-moi l'histoire de ce pays » après Haïti
-    # → « de quel pays tu parles ? ». Le rappel du sujet (server/suite.py)
-    # reste près de la demande ; les règles fixes rejoignent l'identité.
+    # 21/09/2026 : raconter l'histoire « de ce pays », juste après une
+    # question sur un pays → « de quel pays tu parles ? ». Le rappel du sujet
+    # (server/suite.py) reste près de la demande ; les règles fixes
+    # rejoignent l'identité.
     travail = avec_rappel(travail)
     # 20/09/2026 : « Qui est le président actuel du Canada ? » → « Justin
     # Trudeau, depuis 2015 », de mémoire, sans appel, en 5,1 s. Une question

@@ -1571,9 +1571,9 @@ class LocalVoiceSession(RealtimeVoiceSession):
         self, hist: List[dict], extra: List[dict], text: str
     ) -> List[dict]:
         messages = hist + extra + [{"role": "user", "content": text}]
-        # 21/09/2026, 23 h : « Raconte-moi l'histoire de ce pays » après
-        # Haïti recevait « de quel pays tu parles ? » au chat ; la voix
-        # reçoit le même rappel du sujet (server/suite.py).
+        # 21/09/2026 : raconter l'histoire « de ce pays », juste après une
+        # question sur un pays, recevait « de quel pays tu parles ? » au
+        # chat ; la voix reçoit le même rappel du sujet (server/suite.py).
         rappel = rappel_pour_la_voix(hist, text)
         if rappel is not None:
             messages.append(rappel)

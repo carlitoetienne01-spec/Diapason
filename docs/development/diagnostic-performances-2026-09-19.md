@@ -10,13 +10,14 @@ pas enregistré de nouveaux messages dans les discussions.
 
 ## Suite du 20 septembre 2026 — ce que les lots n'avaient pas vu
 
-Deux tours réels du matin, télémétrie des messages et journal d'Ollama :
+Deux tours réels du matin (les phrases ne sont pas reproduites ici), télémétrie des
+messages et journal d'Ollama :
 
 | Tour | Modèle | Total | Premier texte | Passages Ollama |
 |---|---|---:|---:|---|
-| « Qui est le président actuel d'Haïti ? » | qwen3.8:27b-mlx | 56,6 s | 47,5 s | 37,4 s (décide `web_search`) + 18,0 s |
-| « Que veut dire "Self Aware" en français ? » | qwen3.8:27b-mlx | 89,4 s | **88,3 s** | 53,2 s + 36,2 s |
-| « Ouvre moi Youtube et joue la musique Self Away » | voie éclair, sans modèle | 1,2 s | 1,1 s | aucun |
+| Question d'actualité sur un chef d'État | qwen3.8:27b-mlx | 56,6 s | 47,5 s | 37,4 s (décide `web_search`) + 18,0 s |
+| Traduction d'une expression anglaise | qwen3.8:27b-mlx | 89,4 s | **88,3 s** | 53,2 s + 36,2 s |
+| Commande YouTube avec un titre de musique | voie éclair, sans modèle | 1,2 s | 1,1 s | aucun |
 
 Trois causes, trois réponses, dans l'ordre des commits :
 
@@ -35,7 +36,7 @@ Trois causes, trois réponses, dans l'ordre des commits :
    « onglets » amorcent le même outil) ; un suivi court n'hérite du sujet que
    s'il interroge ou enchaîne et que le tour précédent a réellement lu.
 2. **Le 27b ne tient pas sur ce Mac.** 18 à 26 Go résidents pour 32 Go, 10,5
-   libres au chargement (journal d'Ollama 10:54:14) ; la première passe après
+   libres au chargement (journal d'Ollama) ; la première passe après
    chargement a duré 1 min 38 s. Le classificateur marquait ces questions
    « trivial » (0,06) mais ne changeait que le budget de jetons — ses motifs
    sont anglais, en français presque tout est trivial. `server/tour_leger.py`
