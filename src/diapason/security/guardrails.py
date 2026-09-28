@@ -22,17 +22,32 @@ class SecurityBlockError(Exception):
 
 
 # 2026-09-27: after fixing prefill, the 128-character tail still withheld
-# 3 seconds of ordinary prose. 48 covers FIXED patterns (at most 36
-# characters); unbounded keys, addresses and assignments retain the whole
-# open token/value below. No scanner or BLOCK guarantee is removed.
+# 3 seconds of ordinary prose. 48 covers FIXED patterns (31 characters at
+# most, private_key; 39 when the lookaheads of the Python fallback's
+# ipv4_public are counted in full); unbounded keys, addresses and assignments
+# retain the whole open token/value below. No scanner or BLOCK guarantee is
+# removed.
+# 2026-09-28: that margin was asserted ("at most 36"), never derived. A new
+# entry in PATTERNS or in scanner.rs (what the extension really applies)
+# could outgrow it and release the start of a secret before its end arrived.
+# tests/security/test_guardrails_reserve.py now computes every pattern's
+# maximal width, Python and Rust, and refuses one it cannot classify.
 _STREAM_HOLDBACK = 48
 _STREAM_RELEASE_STEP = 16  # check the next few words, not an entire paragraph
+
+# Only whitespace shared by Python and Rust: str.isspace() additionally
+# accepts U+001C..U+001F, which Rust's database-URI pattern can consume.
+_STREAM_BOUNDARY = " \t\r\n\f\v"
 
 # An assignment may contain arbitrarily much whitespace and a multiline
 # quoted value. Retain its beginning until the closing quote makes it
 # scannable, even when that beginning lies outside the fixed holdback.
+# 2026-09-28: the scanners now read a quoted key ('{"password": "…"}', a
+# JSON object or a Python dict), whose closing quote sits between the
+# keyword and the separator; ['"]* retains it too.
+# test_guardrails_reserve.py proves it from both patterns' grammar.
 _OPEN_ASSIGNMENT = re.compile(
-    r"""(?:password|passwd|pwd|api_key|secret_key|auth_token)\s*"""
+    r"""(?:password|passwd|pwd|api_key|secret_key|auth_token)['"]*\s*"""
     r"""(?:[=:]\s*(?:['"][^'"]*)?)?\Z""",
     re.IGNORECASE,
 )
@@ -51,9 +66,7 @@ def _safe_prefix(text: str) -> int:
     assignment = _OPEN_ASSIGNMENT.search(text)
     if assignment is not None:
         end = min(end, assignment.start())
-    # Only whitespace shared by Python and Rust: str.isspace() additionally
-    # accepts U+001C..U+001F, which Rust's database-URI pattern can consume.
-    while end and text[end - 1] not in " \t\r\n\f\v":
+    while end and text[end - 1] not in _STREAM_BOUNDARY:
         end -= 1
     return end
 

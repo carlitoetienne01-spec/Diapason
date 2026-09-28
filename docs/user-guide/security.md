@@ -181,10 +181,18 @@ explicitement de confiance, qui accepte ce risque.
 | `github_token` | CRITICAL | `ghp_`, `gho_`, `ghs_`, `ghr_`, `github_pat_` suivis d'au moins 36 caractères |
 | `stripe_key` | CRITICAL | `sk_live_`, `sk_test_`, `pk_live_`, `pk_test_` suivis d'au moins 20 caractères |
 | `private_key` | CRITICAL | L'en-tête de clé privée PEM `-----BEGIN PRIVATE KEY-----` |
-| `password_assignment` | HIGH | `password = "..."`, `passwd: "..."`, etc. |
+| `password_assignment` | HIGH | `password = "..."`, `passwd: "..."`, la clé JSON `"password": "..."`, etc. |
 | `db_connection_string` | HIGH | Les URL `postgres://`, `mysql://`, `mongodb://`, `redis://` |
 | `slack_token` | HIGH | `xoxb-`, `xoxp-`, `xoxo-`, `xoxr-`, `xoxs-` suivis du jeton |
-| `generic_api_key` | HIGH | `api_key = "..."`, `secret_key = "..."`, `auth_token = "..."` |
+| `generic_api_key` | HIGH | `api_key = "..."`, `secret_key = "..."`, `auth_token = "..."`, et entre guillemets (`{'api_key': "..."}`) |
+
+La casse est décidée motif par motif (28/09/2026). Un mot-clé qu'on tape
+(`password`, `api_key`, `postgres://`…) se lit dans toutes les casses :
+`Password: "…"` et `PASSWORD = '…'` sont masqués. Un jeton garde la casse
+de son format, plus la seule majuscule initiale d'un début de phrase
+(`Sk-…`, `Ghp_…`), qui laisse la clé utilisable ; `SK-…` en capitales n'est
+plus une clé et n'est pas masqué. L'extension Rust et le repli Python
+portent les mêmes chaînes.
 
 ### L'usage direct
 
