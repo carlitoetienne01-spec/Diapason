@@ -88,6 +88,11 @@
   transition: border-color 180ms ease, box-shadow 180ms ease;
 }
 
+/* 28/09/2026 : le confinement de largeur posé sur toute vitre réduisait
+   les onglets des Tâches à leur bordure ; leurs textes chevauchaient les
+   boutons voisins. Seul le compositeur mesure sa propre largeur. */
+.composer-saisie { container: compositeur / inline-size; }
+
 /* La tranche est un anneau de 7 px, pas un deuxième cadre blanc. Son masque
    laisse le centre limpide et reste sous le texte comme le reflet mobile. */
 .composer-glass::before {
@@ -136,7 +141,8 @@
 }
 
 .composer-glass-input {
-  padding: 5px 2px;
+  min-height: 56px;
+  padding: 6px 4px;
 }
 
 .composer-glass-input::placeholder {
@@ -146,11 +152,10 @@
 
 .composer-glass-toolbar {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 10px 16px;
-  margin-top: 12px;
+  gap: 8px;
+  margin-top: 10px;
 }
 
 .composer-glass-tools,
@@ -162,7 +167,7 @@
   max-width: 100%;
 }
 
-.composer-glass-models { margin-left: auto; }
+.composer-glass-models { margin-left: auto; justify-content: flex-end; }
 
 .composer-glass-chip {
   min-height: 30px;
@@ -265,4 +270,48 @@
   .composer-glass-menu button { color: ButtonText; }
   .composer-glass button:focus-visible,
   .composer-glass-menu button:focus-visible { outline-color: Highlight; }
+}
+
+/* 27/09/2026 : deux actions concurrentes élargissaient le compositeur.
+   La voix et l'envoi occupent maintenant exactement la même place. */
+.composer-action-unique { width: 44px; height: 44px; border-radius: 50% !important; }
+.composer-plus { width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0; }
+.composer-glass-tools { flex: 0 1 auto; }
+.composer-glass-models { flex: 0 1 auto; }
+.composer-glass-models > button { min-width: 0; }
+/* 27/09/2026 : les actions occupaient la ligne de texte et le modèle une
+   troisième zone. Une seule ligne inférieure garde la saisie dégagée ; le
+   nom du modèle cède en premier dans le mini-panneau de 340 px. */
+.composer-glass-actions { flex-shrink: 0; }
+.composer-model-selector {
+  max-width: 220px;
+  min-height: 36px;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  font-size: 13px;
+}
+.composer-plus:not([data-active='true']) {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+.composer-recherche-active { max-width: 140px; }
+@container compositeur (max-width: 420px) {
+  .composer-recherche-active { display: none; }
+  .composer-glass-models { flex: 1; }
+  .composer-model-selector { padding-inline: 6px; }
+  .composer-model-icon:not(.animate-spin) { display: none; }
+}
+.barre-vocale { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--color-border); color: var(--color-text-secondary); }
+.barre-vocale-ligne { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.barre-vocale-commandes { display: flex; gap: 2px; flex-shrink: 0; }
+.barre-vocale-commandes button { display: grid; place-items: center; width: 32px; height: 36px; border-radius: 50%; cursor: pointer; }
+.barre-vocale-commandes button:hover, .barre-vocale-commandes button[aria-pressed='true'] { background: var(--color-accent-subtle); color: var(--color-accent); }
+.onde-vocale { width: 64px; height: 24px; color: var(--color-accent); flex-shrink: 0; }
+.brouillon-vocal { color: var(--color-text-secondary); border: 1px dashed var(--color-border); border-radius: var(--radius-lg); overflow-wrap: anywhere; }
+@media (max-width: 480px) { .onde-vocale { width: 30px; } .barre-vocale-ligne { gap: 6px; } }
+@media (prefers-reduced-motion: no-preference) {
+  .barre-vocale { animation: voix-entre 180ms ease-out; }
+  @keyframes voix-entre { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 }

@@ -39,7 +39,11 @@ export class LectureVocale {
       if (!this.sources.delete(source) || this.contexte !== contexte) return;
       if (!this.sources.size) this.publier(this.sortie, false);
     };
-    const debut = Math.max(contexte.currentTime, this.prochaine);
+    // 27/09/2026 : lancer au temps courant ne laissait aucune marge au
+    // moteur audio de WebKit. 60 ms couvrent plusieurs quanta de rendu ;
+    // les paquets suivants restent collés, sans rajouter ce délai chacun.
+    const debut = this.prochaine > contexte.currentTime
+      ? this.prochaine : contexte.currentTime + 0.06;
     source.start(debut);
     this.prochaine = debut + tampon.duration;
     this.publier(this.sortie, true);

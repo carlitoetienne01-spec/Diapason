@@ -9,6 +9,8 @@ export interface VoiceLiveProviderHealth {
 }
 
 export interface VoiceLiveHealth {
+  defaultVoice?: string;
+  voices?: string[];
   available: boolean;
   enabled: boolean;
   default_provider: string;

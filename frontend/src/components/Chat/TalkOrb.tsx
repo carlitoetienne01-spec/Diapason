@@ -1,13 +1,14 @@
+import { ERREURS_VOCALES as ERREURS } from '../../lib/erreursVocales';
 import { Suspense, lazy, useEffect, useId, useRef, useState } from 'react';
 import { AudioLines, Check, Copy, Info, Mic, Monitor, Square, X } from 'lucide-react';
 import '@fontsource-variable/geist';
 import { useTranslation } from '../../i18n/useTranslation';
-import { useLiveDictation } from '../../hooks/useLiveDictation';
 import type { VoiceLiveProvider, VoiceLiveState, TranscriptLine, ToolEventLine } from '../../hooks/useVoiceLive';
 import { useAppStore } from '../../lib/store';
 import { useSurfaceVitree } from './useSurfaceVitree';
 import { badgeDeVerification, type Verification } from './notesDeVerification';
 import { resumeDeRecherche } from './etatExecution';
+import { cleEtatVocal } from '../../lib/etatVocal';
 import './ComposerGlass.css';
 import '../Glass/CarteVitree.css';
 import './TalkOrb.css';
@@ -22,6 +23,7 @@ interface TalkOrbProps {
   open: boolean;
   state: VoiceLiveState;
   statusLabel: string;
+  conversationSeule?: boolean;
   error: string | null;
   serviceReady: boolean;
   checkingService: boolean;
@@ -38,25 +40,13 @@ interface TalkOrbProps {
   micSource?: AudioNode | null;
   onProviderChange: (p: VoiceLiveProvider) => void;
   onStart: () => void;
+  onStartConversation?: () => void;
   onStop: () => void;
   onInterrupt: () => void;
   onClose: () => void;
 }
 
-const ERREURS = {
-  'missing-key-gemini': 'talk.missingKeyGemini',
-  'missing-key-openai': 'talk.missingKeyOpenai',
-  'local-not-ready': 'talk.localNotReady',
-  'local-components-missing': 'talk.localComponentsMissing',
-  'voice-auth-unavailable': 'talk.authUnavailable',
-  'voice-service-unavailable': 'talk.serviceUnavailable',
-  'voice-connection-failed': 'talk.connectionFailed',
-  'microphone-denied': 'talk.microphoneDenied',
-  'voice-session-failed': 'talk.sessionFailed',
-  'voice-closed-inactivity': 'talk.closedInactivity',
-  'voice-closed-max-duration': 'talk.closedMaxDuration',
-  'voice-lost-server': 'talk.lostServer',
-} as const;
+
 
 function CopieTranscript({ texte, etiquette }: { texte: string; etiquette: string }) {
   const [copie, setCopie] = useState(false);
@@ -78,8 +68,9 @@ export function TalkOrb({
   open, state, statusLabel, error, serviceReady, checkingService, provider,
   transcripts, toolEvents = [], verification, screenSharing = false, audioSource = null,
   micSource = null, onStart, onStop, onInterrupt, onClose,
+  conversationSeule = false, onStartConversation,
 }: TalkOrbProps) {
-  const { t, locale } = useTranslation();
+  const { t } = useTranslation();
   const titreId = useId();
   const detailsId = useId();
   const fenetre = useSurfaceVitree(true, open);
@@ -109,15 +100,12 @@ export function TalkOrb({
   }, [open]);
 
   const active = state === 'listening' || state === 'speaking' || state === 'connecting';
-  const { supported, transcript: heard, start: startCaptions, stop: stopCaptions } = useLiveDictation(locale);
-  const [caption, setCaption] = useState('');
-  useEffect(() => {
-    if (!supported || !open || state !== 'listening') return;
-    void startCaptions();
-    return () => { void stopCaptions(); };
-  }, [supported, open, state, startCaptions, stopCaptions]);
-  useEffect(() => { if (heard) setCaption(heard); }, [heard]);
-  useEffect(() => { if (!active) setCaption(''); }, [active]);
+  // 27/09/2026 : les sous-titres Apple ouvraient une deuxième capture et
+  // affichaient d'autres mots que ceux transmis au modèle par Whisper.
+  // Le seul partiel affiché vient désormais du vrai flux de la conversation.
+  const derniereTranscription = transcripts[transcripts.length - 1];
+  const caption = active && derniereTranscription?.role === 'user' && !derniereTranscription.final
+    ? derniereTranscription.text : '';
 
   const selectedModel = useAppStore((s) => s.selectedModel);
   const [elapsed, setElapsed] = useState(0);
@@ -139,10 +127,14 @@ export function TalkOrb({
     listening: 'talk.resonance.listening', speaking: 'talk.resonance.speaking',
     error: 'talk.resonance.error',
   } as const;
+  const etatVocal = state === 'listening' ? cleEtatVocal(statusLabel) : undefined;
+  const attente = etatVocal && statusLabel !== 'listening';
   const aide = checkingService ? t('talk.checkingService')
     : !active && !serviceReady ? t('talk.serviceUnavailable')
+    : statusLabel === 'ending' ? t('talk.stage.ending')
+    : attente ? t('talk.stage.micStillOn')
     : state === 'listening' ? t('talk.resonance.listeningHint')
-    : state === 'speaking' ? t('talk.resonance.speakingHint')
+    : state === 'speaking' ? t(conversationSeule ? 'talk.conversation.speakingHint' : 'talk.resonance.speakingHint')
     : state === 'connecting' ? t('talk.resonance.connectingHint')
     : t('talk.resonance.micOff');
   const agir = (action: () => void) => {
@@ -161,9 +153,9 @@ export function TalkOrb({
         if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onClose(); }
         // Le raccourci global Espace du moteur vocal ne doit pas voler
         // l'activation clavier de Terminer, Copier ou Détails.
-        if (event.code === 'Space' && (event.target as HTMLElement).closest('button')) event.stopPropagation();
+        if (event.code === 'Space' && (event.target as HTMLElement).closest('button,select')) event.stopPropagation();
         if (event.key !== 'Tab') return;
-        const boutons = Array.from(fenetre.current?.querySelectorAll<HTMLElement>('button:not(:disabled), [tabindex="0"]') ?? []);
+        const boutons = Array.from(fenetre.current?.querySelectorAll<HTMLElement>('button:not(:disabled), select:not(:disabled), [tabindex="0"]') ?? []);
         const premier = boutons[0], dernier = boutons[boutons.length - 1];
         if (event.shiftKey && (document.activeElement === premier || document.activeElement === fenetre.current)) {
           event.preventDefault(); dernier?.focus();
@@ -190,7 +182,7 @@ export function TalkOrb({
       </header>
       {details && <div id={detailsId} className="resonance-details">
         <span>{fournisseur}{provider === 'local' && selectedModel ? ` / ${selectedModel}` : ''}</span>
-        <span>{statusLabel}</span>
+        <span>{etatVocal ? t(etatVocal) : statusLabel}</span>
       </div>}
       <div className="resonance-corps">
         <section className="resonance-presence">
@@ -200,8 +192,9 @@ export function TalkOrb({
             </Suspense>
           </div>
           <div className="resonance-parole">
-            <h2 className="resonance-titre" aria-live="polite">{t(titres[state])}</h2>
+            <h2 className="resonance-titre" aria-live="polite">{t(etatVocal ?? titres[state])}</h2>
             <p className="resonance-aide">{aide}</p>
+            {active && conversationSeule && <p className="resonance-aide" role="status">{t('talk.conversation.active')}</p>}
             {caption && <p className="resonance-caption" aria-live="polite">{caption}</p>}
           </div>
           <div className="resonance-commandes">
@@ -217,6 +210,10 @@ export function TalkOrb({
               <Mic size={18} />{t('chat.talk.startHint')}
             </button>}
           </div>
+          {!active && onStartConversation && <button type="button" className="resonance-terminer mt-3 max-w-full text-sm"
+            disabled={!serviceReady || checkingService} onClick={() => agir(onStartConversation)}>
+            {t('talk.conversation.start')}
+          </button>}
           {error && <p className="resonance-erreur" role="alert">
             {error in ERREURS ? t(ERREURS[error as keyof typeof ERREURS]) : error}
           </p>}

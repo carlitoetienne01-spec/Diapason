@@ -1,3 +1,5 @@
+import { useVoixPartagee } from '../../hooks/contexteVoix';
+import { BrouillonVocal } from './BarreVocale';
 import { useShallow } from 'zustand/react/shallow';
 import { useRef, useEffect, useLayoutEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router';
@@ -52,6 +54,7 @@ function greetingKey():
 }
 
 export function ChatArea() {
+  const voix = useVoixPartagee();
   const { t } = useTranslation();
   const messages = useAppStore((s) => s.messages);
   const streamState = useAppStore(useShallow((s) => ({
@@ -124,7 +127,7 @@ export function ChatArea() {
       .catch(() => setHasConnectedSources(null));
   }, []);
 
-  const isEmpty = messages.length === 0 && !streamState.isStreaming;
+  const isEmpty = messages.length === 0 && !streamState.isStreaming && !voix.isActive;
 
   useEffect(() => {
     // Sending a message always pins the view to the bottom, even if the
@@ -140,7 +143,7 @@ export function ChatArea() {
       // coupée sous l'en-tête, sans le salut ni l'invitation.
       listRef.current.scrollTop = isEmpty ? 0 : listRef.current.scrollHeight;
     }
-  }, [messages, streamState.isStreaming, isEmpty]);
+  }, [messages, streamState.isStreaming, isEmpty, voix.transcripts]);
 
   // Combien de récentes tiennent sous « Reprendre » dans le fil tel qu'il
   // est (nombreDeRecentesQuiTiennent sur sa hauteur). Le NSPanel se
@@ -452,11 +455,12 @@ export function ChatArea() {
                   <MessageBubble
                     key={msg.id}
                     message={msg}
-                    isLive={isLastAssistant && streamState.isStreaming}
+                    isLive={isLastAssistant && (streamState.isStreaming || (voix.isActive && voix.transcripts[voix.transcripts.length - 1]?.role === 'assistant' && !voix.transcripts[voix.transcripts.length - 1]?.final))}
                     cible={msg.id === messageCible}
                   />
                 );
               })}
+              <BrouillonVocal />
               {(() => {
                 if (!streamState.isStreaming || !streamState.attendTexte) return null;
                 return (

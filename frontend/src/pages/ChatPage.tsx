@@ -1,3 +1,4 @@
+import { conversationVocaleEnCours } from '../lib/conversationVocale';
 import { useEffect } from 'react';
 import { ChatArea } from '../components/Chat/ChatArea';
 import { SystemPanel } from '../components/Chat/SystemPanel';
@@ -24,6 +25,7 @@ import { useTranslation } from '../i18n/useTranslation';
  * partirait dans le mauvais fil (contre-revue du 17 sept. 2026).
  */
 function atterrir(): void {
+  if (conversationVocaleEnCours()) return;
   const etat = useAppStore.getState();
   if (tientLeFil({ enFlux: etat.streamState.isStreaming, brouillon: brouillonDuCompositeur() })) {
     return;

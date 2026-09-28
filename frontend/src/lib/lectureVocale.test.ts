@@ -33,7 +33,8 @@ describe('§100 — l’état suit la lecture réellement en file', () => {
     lecture.ajouter(trame, 24000);
     lecture.ajouter(trame, 24000);
     const contexte = Contexte.tous[0];
-    expect(contexte.sources[1].start).toHaveBeenCalledWith(0.01);
+    expect(contexte.sources[0].start).toHaveBeenCalledWith(0.06);
+    expect(contexte.sources[1].start.mock.calls[0][0]).toBeCloseTo(0.07);
     contexte.sources[0].onended?.();
     expect(publier).toHaveBeenLastCalledWith(contexte.sortie, true);
     contexte.sources[1].onended?.();
@@ -67,7 +68,7 @@ describe('§100 — l’état suit la lecture réellement en file', () => {
     contexte.state = 'suspended';
     lecture.ajouter(trame, 24000);
     expect(Contexte.tous).toHaveLength(1);
-    expect(contexte.sources[1].start).toHaveBeenCalledWith(2);
+    expect(contexte.sources[1].start).toHaveBeenCalledWith(2.06);
     expect(contexte.resume).toHaveBeenCalledOnce();
     lecture.arreter();
   });
@@ -78,5 +79,19 @@ describe('§100 — l’état suit la lecture réellement en file', () => {
     expect(() => lecture.ajouter(btoa('x'), 24000)).toThrow();
     expect(() => lecture.ajouter(trame, NaN)).toThrow();
     expect(publier).not.toHaveBeenCalled();
+  });
+  it('joue une phrase préparée sans trou même si la livraison varie de quelques millisecondes', () => {
+    const lecture = new LectureVocale(vi.fn());
+    const morceau = btoa('\x00\x00'.repeat(11520)); // 480 ms par morceau.
+    lecture.ajouter(morceau, 24000);
+    const contexte = Contexte.tous[0];
+    contexte.currentTime = 0.014;
+    lecture.ajouter(morceau, 24000);
+    contexte.currentTime = 0.039;
+    lecture.ajouter(morceau, 24000);
+    const debuts = contexte.sources.map((source) => source.start.mock.calls[0][0]);
+    expect(debuts[1] - debuts[0]).toBeCloseTo(0.48);
+    expect(debuts[2] - debuts[1]).toBeCloseTo(0.48);
+    lecture.arreter();
   });
 });

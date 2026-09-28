@@ -1,19 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, ChevronDown, Cloud, Cpu, Loader2, SlidersHorizontal } from 'lucide-react';
+import { Check, ChevronDown, Cloud, Cpu, Loader2, Plus, Paperclip, Brain } from 'lucide-react';
 import { useAppStore } from '../../lib/store';
 import { fetchServerConfig, preloadModel, setServerConfigKey } from '../../lib/api';
 import { isCloudModel } from '../../lib/cloud-models';
 import { useTranslation } from '../../i18n/useTranslation';
 import { useSurfaceVitree } from './useSurfaceVitree';
 import { demanderLeFocusDuCompositeur } from '../../lib/panneau';
+import { conversationVocaleEnCours } from '../../lib/conversationVocale';
 
-/* The composer's bottom toolbar: tool-permission mode on the left, the
- * active model and a context-window ring on the right. Everything here
- * reflects a REAL wire: the mode chip reads/writes agent.tool_approval
- * (answered by the approval bell), the model chip drives the same
- * setSelectedModel/preload path as the ⌘K palette, and the ring divides
- * actual token usage by the window the server reports. */
+/* 27/09/2026 : le menu + regroupe les pièces et les permissions réelles.
+ * Le pourcentage de contexte a été retiré du compositeur à la demande de
+ * Carlito ; le choix du modèle garde le préchauffage de la palette. */
 
 // ---------------------------------------------------------------------------
 // Shared upward-opening portal menu
@@ -82,14 +80,19 @@ function ChipMenu({ anchor, width = 280, role = 'menu', onClose, children }: Men
   // focus au compositeur (contre-revue du 17 sept. 2026 : « Autorisations
   // des outils » ouvert, clic dans le fil → activeElement = BODY).
   useEffect(() => () => {
-    window.setTimeout(demanderLeFocusDuCompositeur, 0);
+    window.setTimeout(() => {
+      // 27/09/2026 : lancer la voix depuis + rendait aussitôt le focus au
+      // texte, ce qui mettait le micro en pause dès son ouverture.
+      if (!conversationVocaleEnCours()) demanderLeFocusDuCompositeur();
+    }, 0);
   }, []);
 
   // The composer sits at the bottom of the screen: menus open UPWARD,
   // anchored to the chip, and never off the horizontal edges.
   const menuWidth = Math.min(width, Math.max(0, window.innerWidth - 16));
   const left = Math.min(Math.max(8, anchor.rect.left), window.innerWidth - menuWidth - 8);
-  const bottom = window.innerHeight - anchor.rect.top + 6;
+  const auDessus = anchor.rect.top >= window.innerHeight - anchor.rect.bottom;
+  const espace = auDessus ? anchor.rect.top - 14 : window.innerHeight - anchor.rect.bottom - 14;
 
   return createPortal(
     <div
@@ -98,9 +101,9 @@ function ChipMenu({ anchor, width = 280, role = 'menu', onClose, children }: Men
       className="composer-glass-menu fixed z-50 py-1.5 px-1.5 overflow-y-auto"
       style={{
         left,
-        bottom,
+        ...(auDessus ? { bottom: window.innerHeight - anchor.rect.top + 6 } : { top: anchor.rect.bottom + 6 }),
         width: menuWidth,
-        maxHeight: '50vh',
+        maxHeight: Math.max(0, espace),
       }}
     >
       {children}
@@ -116,7 +119,10 @@ const chipClass =
 // Mode chip — Auto / Ask, backed by agent.tool_approval
 // ---------------------------------------------------------------------------
 
-export function ModeChip({ disabled }: { disabled: boolean }) {
+export function ComposerPlus({ disabled, onJoindre, recherche, onRecherche, onConversationSeule }: {
+  disabled: boolean; onJoindre: () => void; recherche: boolean; onRecherche: () => void;
+  onConversationSeule?: () => void;
+}) {
   const { t } = useTranslation();
   const [mode, setMode] = useState<'auto' | 'ask' | null>(null);
   const [anchor, setAnchor] = useState<Anchor | null>(null);
@@ -152,7 +158,6 @@ export function ModeChip({ disabled }: { disabled: boolean }) {
     });
   };
 
-  const label = mode === 'ask' ? t('composer.modeAsk') : t('composer.modeAuto');
 
   const item = (value: 'auto' | 'ask', title: string, desc: string) => (
     <button
@@ -179,7 +184,7 @@ export function ModeChip({ disabled }: { disabled: boolean }) {
       <button
         type="button"
         disabled={disabled || mode === null}
-        className={chipClass}
+        className="composer-glass-chip composer-plus inline-flex items-center justify-center cursor-pointer disabled:opacity-40"
         data-active={mode === 'ask' && !writeFailed}
         style={
           writeFailed
@@ -193,16 +198,23 @@ export function ModeChip({ disabled }: { disabled: boolean }) {
               : { rect: e.currentTarget.getBoundingClientRect(), el: e.currentTarget },
           )
         }
-        title={writeFailed ? t('composer.modeWriteFailed') : t('composer.modeTitle')}
+        title={writeFailed ? t('composer.modeWriteFailed') : t('composer.plus')}
+        aria-label={t('composer.plus')}
         aria-haspopup="menu"
         aria-expanded={anchor !== null}
       >
-        <SlidersHorizontal size={12} />
-        {writeFailed ? t('composer.modeWriteFailed') : mode === null ? '…' : label}
-        <ChevronDown size={12} />
+        <Plus size={20} aria-hidden="true" />
       </button>
       {anchor && (
         <ChipMenu anchor={anchor} onClose={() => setAnchor(null)}>
+          <button type="button" role="menuitem" className="composer-glass-menu-item flex w-full items-center gap-3 px-3 py-2.5 text-sm text-left"
+            onClick={() => { setAnchor(null); onJoindre(); }}><Paperclip size={17} />{t('composer.attach')}</button>
+          <button type="button" role="menuitemcheckbox" aria-checked={recherche}
+            className="composer-glass-menu-item flex w-full items-center gap-3 px-3 py-2.5 text-sm text-left"
+            onClick={() => { onRecherche(); setAnchor(null); }}><Brain size={17} />{t('common.deepResearch')}{recherche && <Check size={14} className="ml-auto" />}</button>
+          {onConversationSeule && <button type="button" role="menuitem" className="composer-glass-menu-item w-full px-3 py-2.5 text-sm text-left"
+            onClick={() => { setAnchor(null); onConversationSeule(); }}>{t('talk.conversation.start')}</button>}
+          {writeFailed && <p role="alert" className="px-3 text-xs" style={{ color: 'var(--color-error)' }}>{t('composer.modeWriteFailed')}</p>}
           <div
             className="px-3 pt-1.5 pb-1 text-[10px] font-medium uppercase tracking-wider"
             style={{ color: 'var(--color-text-tertiary)' }}
@@ -251,8 +263,7 @@ export function ModelChip({ disabled }: { disabled: boolean }) {
       <button
         type="button"
         disabled={disabled}
-        className={chipClass}
-        style={{ maxWidth: 220 }}
+        className={`${chipClass} composer-model-selector`}
         onClick={(e) =>
           setAnchor(
             anchor
@@ -260,15 +271,15 @@ export function ModelChip({ disabled }: { disabled: boolean }) {
               : { rect: e.currentTarget.getBoundingClientRect(), el: e.currentTarget },
           )
         }
-        title={t('composer.model')}
+        title={`${t('composer.model')} : ${selectedModel || t('sidebar.selectModel')}`}
         aria-haspopup="menu"
         aria-expanded={anchor !== null}
       >
-        <Icon size={12} className={modelLoading ? 'animate-spin' : undefined} />
+        <Icon size={14} className={`composer-model-icon shrink-0 ${modelLoading ? 'animate-spin' : ''}`} />
         <span className="truncate" style={{ color: 'var(--color-text-secondary)' }}>
           {selectedModel || t('sidebar.selectModel')}
         </span>
-        <ChevronDown size={12} />
+        <ChevronDown size={14} className="shrink-0" />
       </button>
       {anchor && (
         <ChipMenu anchor={anchor} width={260} onClose={() => setAnchor(null)}>
@@ -304,169 +315,6 @@ export function ModelChip({ disabled }: { disabled: boolean }) {
               ⌘K
             </kbd>
           </button>
-        </ChipMenu>
-      )}
-    </>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Context ring — how full the model's window is
-// ---------------------------------------------------------------------------
-
-export function ContextRing({ draftLength }: { draftLength: number }) {
-  const { t } = useTranslation();
-  const messages = useAppStore((s) => s.messages);
-  const models = useAppStore((s) => s.models);
-  const selectedModel = useAppStore((s) => s.selectedModel);
-  const serverInfo = useAppStore((s) => s.serverInfo);
-  const savings = useAppStore((s) => s.savings);
-  const [anchor, setAnchor] = useState<Anchor | null>(null);
-
-  const { used, windowSize, pct } = useMemo(() => {
-    let lastUsage: { prompt_tokens?: number; completion_tokens?: number } | undefined;
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const m = messages[i];
-      if (m.role === 'assistant' && m.usage) {
-        lastUsage = m.usage;
-        break;
-      }
-    }
-    // prompt_tokens is the FULL prompt of the last turn (system + history +
-    // user); the reply joins the context next turn; the draft is ~4 chars
-    // per token. Approximate by design — presented as such.
-    const usedTokens =
-      (lastUsage?.prompt_tokens ?? 0) +
-      (lastUsage?.completion_tokens ?? 0) +
-      Math.ceil(draftLength / 4);
-
-    const spec = models.find((m) => m.id === selectedModel);
-    const isCloud = isCloudModel(selectedModel);
-    const numCtx = serverInfo?.num_ctx;
-    let size: number | null = null;
-    if (isCloud) {
-      // Cloud windows are not surfaced by /v1/models; better honest
-      // silence than an invented denominator.
-      size = spec?.context_length ?? null;
-    } else if (spec?.context_length) {
-      size = numCtx ? Math.min(spec.context_length, numCtx) : spec.context_length;
-    } else {
-      size = numCtx ?? null;
-    }
-    return {
-      used: usedTokens,
-      windowSize: size,
-      pct: size
-        ? Math.min(
-            100,
-            Math.max(usedTokens > 0 ? 1 : 0, Math.round((usedTokens / size) * 100)),
-          )
-        : 0,
-    };
-  }, [messages, models, selectedModel, serverInfo, draftLength]);
-
-  if (!windowSize) return null;
-
-  const r = 7;
-  const circumference = 2 * Math.PI * r;
-  const color =
-    pct > 90
-      ? 'var(--color-error)'
-      : pct > 70
-        ? 'var(--color-warning, #e8a34c)'
-        : 'var(--color-accent)';
-
-  return (
-    <>
-      <button
-        type="button"
-        className="composer-glass-context inline-flex items-center gap-1.5 px-1.5 py-1 cursor-pointer"
-        onClick={(e) =>
-          setAnchor(
-            anchor
-              ? null
-              : { rect: e.currentTarget.getBoundingClientRect(), el: e.currentTarget },
-          )
-        }
-        title={t('composer.contextWindow')}
-        aria-haspopup="dialog"
-        aria-expanded={anchor !== null}
-      >
-        <svg width={18} height={18} viewBox="0 0 18 18" aria-hidden="true">
-          <circle
-            cx={9}
-            cy={9}
-            r={r}
-            fill="none"
-            stroke="var(--color-border)"
-            strokeWidth={2.5}
-          />
-          <circle
-            cx={9}
-            cy={9}
-            r={r}
-            fill="none"
-            stroke={color}
-            strokeWidth={2.5}
-            strokeLinecap="round"
-            strokeDasharray={`${(pct / 100) * circumference} ${circumference}`}
-            transform="rotate(-90 9 9)"
-          />
-        </svg>
-        <span className="text-[11px] tabular-nums">{pct}%</span>
-      </button>
-      {anchor && (
-        <ChipMenu anchor={anchor} width={280} role="dialog" onClose={() => setAnchor(null)}>
-          <div className="px-3 py-2">
-            <div
-              className="flex items-center justify-between text-[13px]"
-              style={{ color: 'var(--color-text)' }}
-            >
-              <span>{t('composer.contextWindow')}</span>
-              <span className="tabular-nums" style={{ color: 'var(--color-text-secondary)' }}>
-                {t('composer.contextTokens', {
-                  used: used.toLocaleString(),
-                  max: windowSize.toLocaleString(),
-                  pct,
-                })}
-              </span>
-            </div>
-            <div
-              className="mt-2 h-1.5 rounded-full overflow-hidden"
-              style={{ background: 'var(--color-bg-tertiary)' }}
-            >
-              <div
-                className="h-full rounded-full"
-                style={{ width: `${pct}%`, background: color }}
-              />
-            </div>
-            <div className="mt-1.5 text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>
-              {t('composer.contextApprox')}
-            </div>
-            <div className="my-2" style={{ borderTop: '1px solid var(--color-border)' }} />
-            <div
-              className="text-[10px] font-medium uppercase tracking-wider mb-1"
-              style={{ color: 'var(--color-text-tertiary)' }}
-            >
-              {t('composer.session')}
-            </div>
-            <div
-              className="flex items-center justify-between text-[12px]"
-              style={{ color: 'var(--color-text-secondary)' }}
-            >
-              <span>{t('composer.sessionRequests')}</span>
-              <span className="tabular-nums">{(savings?.total_calls ?? 0).toLocaleString()}</span>
-            </div>
-            <div
-              className="flex items-center justify-between text-[12px] mt-0.5"
-              style={{ color: 'var(--color-text-secondary)' }}
-            >
-              <span>{t('composer.sessionTokens')}</span>
-              <span className="tabular-nums">
-                {(savings?.total_completion_tokens ?? 0).toLocaleString()}
-              </span>
-            </div>
-          </div>
         </ChipMenu>
       )}
     </>

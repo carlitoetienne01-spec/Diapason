@@ -3,23 +3,41 @@ import { TalkOrb } from './Chat/TalkOrb';
 import { useVoiceLive } from '../hooks/useVoiceLive';
 import { fetchScreenShareStatus, isTauri, pollTriggers } from '../lib/api';
 import { serviParLeTailnet } from '../lib/tailnet';
+import { useLocation } from 'react-router';
+import { ContexteVoix } from '../hooks/contexteVoix';
 
 /** Global Talk-to-Diapason host (Alt+Space / wake-word / button). */
-export function TalkToDiapasonHost() {
+export function TalkToDiapasonHost({ children }: { children: React.ReactNode }) {
+  const { pathname } = useLocation();
   const [open, setOpen] = useState(false);
   const [screenSharing, setScreenSharing] = useState(false);
   const voice = useVoiceLive();
   const triggerOffset = useRef(0);
 
+  useEffect(() => {
+    if (voice.finVocale) setOpen(false);
+  }, [voice.finVocale]);
+
   const openTalk = useCallback(() => {
+    if (pathname === '/') {
+      window.dispatchEvent(new CustomEvent('diapason-voice-inline'));
+      return;
+    }
     setOpen(true);
     void voice.refreshAvailability();
-  }, [voice]);
+  }, [voice, pathname]);
 
   const closeTalk = useCallback(() => {
     voice.stop();
     setOpen(false);
   }, [voice]);
+
+  useEffect(() => {
+    // 27/09/2026 : le dialogue séparé ne doit pas conserver le micro en
+    // passant dans Discussion, où le même moteur a désormais son contrôle.
+    setOpen(false);
+    voice.stop();
+  }, [pathname, voice.stop]);
 
   const toggleTalk = useCallback(() => {
     if (open) closeTalk();
@@ -140,10 +158,13 @@ export function TalkToDiapasonHost() {
   }, [open]);
 
   return (
+    <ContexteVoix.Provider value={voice}>
+    {children}
     <TalkOrb
       open={open}
       state={voice.state}
       statusLabel={voice.statusLabel}
+      conversationSeule={voice.conversationSeule}
       error={voice.error}
       serviceReady={voice.serviceReady}
       checkingService={voice.checkingService}
@@ -156,10 +177,12 @@ export function TalkToDiapasonHost() {
       micSource={voice.micNode}
       onProviderChange={voice.setProvider}
       onStart={() => void voice.start()}
+      onStartConversation={serviParLeTailnet() ? undefined : () => void voice.start({ conversationOnly: true })}
       onStop={voice.stop}
       onInterrupt={voice.interrupt}
       onClose={closeTalk}
     />
+    </ContexteVoix.Provider>
   );
 }
 

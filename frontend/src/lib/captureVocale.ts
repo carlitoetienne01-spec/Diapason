@@ -1,6 +1,7 @@
 // Une URL data: serait refusée par la CSP de Tauri. Conserver un vrai
 // fichier local, même sous le seuil d'inlining de Vite (4 Ko).
 import moduleCapture from './captureVocale.worklet.js?url&no-inline';
+import { deconnecterBrancheAudio } from './connexionAudio';
 
 export interface CaptureVocale {
   methode: 'worklet' | 'secours';
@@ -47,18 +48,20 @@ export async function creerCaptureVocale(
   source.connect(processeur);
   processeur.connect(silence);
   silence.connect(contexte.destination);
+  let arretee = false;
   return {
     methode: 'port' in processeur ? 'worklet' : 'secours',
     arreter() {
+      if (arretee) return;
+      arretee = true;
       if ('port' in processeur) {
         processeur.port.onmessage = null;
         processeur.port.close();
       } else {
         processeur.onaudioprocess = null;
       }
-      source.disconnect(processeur);
-      processeur.disconnect();
-      silence.disconnect();
+      try { deconnecterBrancheAudio(source, processeur); }
+      finally { processeur.disconnect(); silence.disconnect(); }
     },
   };
 }

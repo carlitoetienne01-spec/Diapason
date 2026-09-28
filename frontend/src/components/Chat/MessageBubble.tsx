@@ -387,6 +387,7 @@ export const MessageBubble = memo(function MessageBubble({ message, isLive = fal
           <VerifierEnLigneButton messageId={message.id} />
         )}
       </div>
+      {message.voice?.interrupted && <p className="text-xs mt-2" style={{ color: 'var(--color-text-tertiary)' }}>{t('composer.interrupted')}</p>}
       <XRayFooter
         usage={message.usage}
         telemetry={message.telemetry}

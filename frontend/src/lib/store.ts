@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { creerCacheConversations } from './cacheConversations';
+import { fusionnerMessagesVocaux } from './conversationVocale';
 
 import { modeleInitial } from './modelePrefere';
 import { barreOuverteAuDemarrage } from './barre';
@@ -269,6 +270,7 @@ interface AppState {
   duplicateConversation: (id: string, newTitle: string) => string | null;
   loadMessages: (conversationId: string | null) => void;
   addMessage: (conversationId: string, message: ChatMessage) => void;
+  recevoirMessagesVocaux: (conversationId: string, messages: ChatMessage[]) => void;
   updateLastAssistant: (
     conversationId: string,
     content: string,
@@ -617,6 +619,21 @@ export const useAppStore = create<AppState>((set, get) => {
           (a, b) => b.updatedAt - a.updatedAt,
         ),
       });
+    },
+
+    recevoirMessagesVocaux: (conversationId, messages) => {
+      const store = copieConversations();
+      const avant = store.conversations[conversationId];
+      if (!avant) return; // Une séance tardive ne ressuscite pas un fil supprimé.
+      const fusion = fusionnerMessagesVocaux(avant.messages, messages);
+      if (fusion === avant.messages) return;
+      const premier = fusion.find(m => m.role === 'user');
+      const conv = { ...avant, messages: fusion, updatedAt: dateEcriture(avant.updatedAt),
+        title: avant.title || premier?.content.slice(0, 50) || '' };
+      store.conversations[conversationId] = conv;
+      saveConversations(store);
+      set({ ...(doitAfficherLeFil(conversationId, get().activeId) ? { messages: fusion } : {}),
+        conversations: Object.values(store.conversations).sort((a, b) => b.updatedAt - a.updatedAt) });
     },
 
     updateLastAssistant: (

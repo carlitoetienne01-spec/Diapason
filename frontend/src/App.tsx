@@ -514,6 +514,7 @@ export default function App() {
     <ModeGestesProvider>
     <ConfirmProvider>
       <Suspense fallback={<div role="status" className="p-6" data-chargement="">Chargement…</div>}>
+        <TalkToDiapasonHost>
         <Routes>
           <Route element={<MesureDeRoute><Layout /></MesureDeRoute>}>
             <Route index element={<ChatPage />} />
@@ -538,6 +539,7 @@ export default function App() {
             <Route path="devices" element={<DevicesPage />} />
           </Route>
         </Routes>
+        </TalkToDiapasonHost>
       </Suspense>
       {/* En bas à droite, les toasts couvraient le compositeur et le bas de
           chaque module dans le mini-panneau (16 sept. 2026). Le sens de la
@@ -551,7 +553,6 @@ export default function App() {
         position={estCompact ? 'top-center' : estMobile ? 'bottom-center' : 'bottom-right'}
         {...(estMobile ? { offset: { bottom: 76 }, mobileOffset: { bottom: 76 } } : {})}
       />
-      <TalkToDiapasonHost />
       {/* Seule la fenêtre du Mac vide la boîte du maillage et publie sa vue
           (lib/hotesDuMac.ts, 26/09/2026). */}
       {HOTES.boiteDuMaillage && <MeshHost />}

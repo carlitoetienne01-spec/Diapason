@@ -52,7 +52,7 @@ import {
 import { isAutoUpdateDisabled, setAutoUpdateDisabled } from '../components/Desktop/miseAJour';
 import { ZOOM_MAX, ZOOM_MIN, normaliserZoom, zoomEnPourcent, zoomSuivant } from '../lib/zoom';
 import { loadDictationStats, type DictationStats } from '../lib/dictationStats';
-import { fetchVoiceLiveHealth } from '../lib/voiceLive';
+import { fetchVoiceLiveHealth, type VoiceLiveHealth } from '../lib/voiceLive';
 import { annonceDEnregistrement, enregistrerHorsBureau } from '../lib/enregistrerFichier';
 import { estMobile } from '../lib/natif';
 import {
@@ -66,9 +66,14 @@ import { toast } from 'sonner';
 import { useTranslation } from '../i18n/useTranslation';
 import { LOCALES, LOCALE_NAMES, type Locale } from '../i18n/locale';
 import { SectionCompte } from '../features/compte/SectionCompte';
+import { ProfilVocal } from '../features/voix/ProfilVocal';
+import { serviParLeTailnet } from '../lib/tailnet';
 import { MesuresFluidite } from '../components/MesuresFluidite';
 
 const CLOUD_KEY_STATUS_CHANGED = 'diapason-cloud-key-status-changed';
+// Noms de produit, séparés des identifiants persistants. Un ancien serveur
+// ne doit pas réintroduire les timbres retirés (27/09/2026).
+const NOMS_VOIX_LOCALES = new Map([['qwen3-b', 'Orion']]);
 
 function OllamaModelList() {
   const { t } = useTranslation();
@@ -325,6 +330,9 @@ export function SettingsPage() {
   const [speechBackendAvailable, setSpeechBackendAvailable] = useState<boolean | null>(null);
   const [voiceLiveAvailable, setVoiceLiveAvailable] = useState<boolean | null>(null);
   const [voiceProvider, setVoiceProvider] = useState('local');
+  const [santeVoix, setSanteVoix] = useState<VoiceLiveHealth | null>(null);
+  const [enregistrementVoix, setEnregistrementVoix] = useState(false);
+  const voixInstallees = (santeVoix?.voices ?? []).filter((id) => NOMS_VOIX_LOCALES.has(id));
   // Held as a shape rather than a finished sentence: the sentence is built at
   // render, so it follows a language change instead of freezing the wording
   // that was current when the health check answered.
@@ -445,6 +453,7 @@ export function SettingsPage() {
         return h;
       })
       .then((h) => {
+        setSanteVoix(h);
         setVoiceLiveAvailable(h.available);
         const parts = Object.entries(h.providers || {})
           .filter(([, v]) => v.configured)
@@ -468,6 +477,22 @@ export function SettingsPage() {
   const showSaved = () => {
     setSaved(true);
     setTimeout(() => setSaved(false), 1500);
+  };
+
+  const choisirVoix = async (id: string) => {
+    if (enregistrementVoix || !voixInstallees.includes(id)) return;
+    setEnregistrementVoix(true);
+    try {
+      await setServerConfigKey('speech.realtime.voice', id);
+      const sante = await fetchVoiceLiveHealth();
+      setSanteVoix(sante);
+      if (sante.defaultVoice !== id) throw new Error('voice-not-saved');
+      showSaved();
+    } catch {
+      toast.error(t('settings.speech.voiceSaveError'));
+    } finally {
+      setEnregistrementVoix(false);
+    }
   };
 
   const patchServer = useCallback(
@@ -1053,6 +1078,28 @@ export function SettingsPage() {
 
           {/* Speech */}
           <Section title={t('settings.speech.title')}>
+            <SettingRow label={t('settings.speech.voiceLabel')} description={t('settings.speech.voiceDescription')}>
+              <div className="flex min-w-0 max-w-full flex-col items-start gap-1.5 sm:items-end">
+                <select
+                  aria-label={t('settings.speech.voiceLabel')}
+                  value={voixInstallees.includes(santeVoix?.defaultVoice ?? '') ? santeVoix!.defaultVoice : ''}
+                  disabled={enregistrementVoix || voixInstallees.length < 2}
+                  onChange={(event) => void choisirVoix(event.target.value)}
+                  className="max-w-full rounded-lg px-3 py-2 text-sm"
+                  style={{ background: 'var(--color-bg-secondary)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}
+                >
+                  {!voixInstallees.includes(santeVoix?.defaultVoice ?? '') && <option value="" disabled>
+                    {voiceLiveAvailable === null ? t('common.checking') : t('common.unavailable')}
+                  </option>}
+                  {voixInstallees.map((id) => <option key={id} value={id}>{NOMS_VOIX_LOCALES.get(id)}</option>)}
+                </select>
+                {santeVoix?.defaultVoice === 'qwen3-b' && voixInstallees.includes('qwen3-b') && <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                  {t('settings.speech.orionDescription')}
+                </span>}
+                {enregistrementVoix && <span className="text-xs" role="status">{t('settings.speech.voiceSaving')}</span>}
+              </div>
+            </SettingRow>
+            {!estMobile && !serviParLeTailnet() && <ProfilVocal />}
             <SettingRow label={t('settings.speech.sttLabel')} description={t('settings.speech.sttDescription')}>
               <button
                 onClick={() => { updateSettings({ speechEnabled: !settings.speechEnabled }); showSaved(); }}

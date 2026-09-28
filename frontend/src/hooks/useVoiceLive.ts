@@ -14,6 +14,7 @@ import { refreshLocalApiKey } from '../lib/api';
 import { serviParLeTailnet } from '../lib/tailnet';
 import { LectureVocale } from '../lib/lectureVocale';
 import { creerCaptureVocale, type CaptureVocale } from '../lib/captureVocale';
+import { cleEtatVocal } from '../lib/etatVocal';
 // Le même lecteur et le même badge qu'au chat : deux calculs du même niveau
 // finiraient par diverger, et c'est celui qu'on oublierait qui mentirait.
 import {
@@ -36,6 +37,8 @@ export interface TranscriptLine {
   final: boolean;
   /** Rang d'arrivée, partagé avec les outils : le fil se lit dans l'ordre vécu. */
   at: number;
+  interrupted?: boolean;
+  timestamp?: number;
 }
 
 export interface ToolEventLine {
@@ -69,6 +72,7 @@ export function useVoiceLive() {
   // Local is the product's promise (« rien ne quitte ce Mac ») — it is the
   // default everywhere; cloud providers are the opt-in, never the reverse.
   const [provider, setProvider] = useState<VoiceLiveProvider>('local');
+  const [voixSession, setVoixSession] = useState('');
   const [transcripts, setTranscripts] = useState<TranscriptLine[]>([]);
   const [toolEvents, setToolEvents] = useState<ToolEventLine[]>([]);
   // Le niveau de vérification du dernier tour d'actualité (22/09/2026). Le
@@ -80,6 +84,15 @@ export function useVoiceLive() {
   // affiché ne peut pas respecter l'ordre réellement vécu.
   const seqRef = useRef(0);
   const [statusLabel, setStatusLabel] = useState('Idle');
+  const [conversationSeule, setConversationSeule] = useState(false);
+  const [microEnPause, setMicroEnPause] = useState(false);
+  const [finVocale, setFinVocale] = useState(false);
+  const [enFermeture, setEnFermeture] = useState(false);
+  const fermetureRef = useRef<{ recue: boolean; finir: () => void; garde: number } | null>(null);
+  const pauseRef = useRef(false);
+  const lectureEnCoursRef = useRef(false);
+  const repriseMicroRef = useRef(0);
+  const etapeRef = useRef('Listening · speak');
 
   const wsRef = useRef<WebSocket | null>(null);
   const generationRef = useRef(0);
@@ -95,10 +108,20 @@ export function useVoiceLive() {
   const lectureRef = useRef<LectureVocale | null>(null);
   if (!lectureRef.current) {
     lectureRef.current = new LectureVocale((sortie, parle) => {
+      lectureEnCoursRef.current = parle;
+      if (!parle) repriseMicroRef.current = performance.now() + 300;
       setOutputNode(sortie);
+      if (fermetureRef.current) {
+        if (!parle && fermetureRef.current.recue) fermetureRef.current.finir();
+        else {
+          setState(parle ? 'speaking' : 'listening');
+          setStatusLabel('ending');
+        }
+        return;
+      }
       if (!wsRef.current) return;
       setState((precedent) => precedent === 'error' ? precedent : parle ? 'speaking' : 'listening');
-      setStatusLabel(parle ? 'Speaking' : 'Listening · speak');
+      setStatusLabel(parle ? 'Speaking' : etapeRef.current);
     });
   }
 
@@ -171,6 +194,12 @@ export function useVoiceLive() {
   }, []);
 
   const stop = useCallback(() => {
+    if (fermetureRef.current) window.clearTimeout(fermetureRef.current.garde);
+    fermetureRef.current = null;
+    setEnFermeture(false);
+    pauseRef.current = false;
+    setMicroEnPause(false);
+    setConversationSeule(false);
     generationRef.current++;
     demarrageRef.current = false;
     const ws = wsRef.current;
@@ -186,8 +215,11 @@ export function useVoiceLive() {
   }, [cleanupCapture, stopPlayback]);
 
   const interrupt = useCallback(() => {
+    if (fermetureRef.current) { fermetureRef.current.finir(); return; }
     if (!wsRef.current) return;
+    etapeRef.current = 'Listening · speak';
     stopPlayback();
+    setTranscripts(prev => prev.map(l => l.role === 'assistant' && !l.final ? { ...l, final: true, interrupted: true } : l));
     try {
       wsRef.current?.send(JSON.stringify({ type: 'interrupt' }));
     } catch {}
@@ -196,22 +228,34 @@ export function useVoiceLive() {
   }, [stopPlayback]);
 
   const start = useCallback(
-    async (opts?: { provider?: VoiceLiveProvider; voice?: string }) => {
+    async (opts?: { provider?: VoiceLiveProvider; voice?: string; conversationOnly?: boolean;
+      model?: string; history?: Array<{ role: 'user' | 'assistant'; content: string }> }) => {
       if (wsRef.current || demarrageRef.current) return;
       const generation = ++generationRef.current;
       demarrageRef.current = true;
+      setFinVocale(false);
+      pauseRef.current = false;
+      setMicroEnPause(false);
+      setState('connecting');
+      setStatusLabel('Connecting…');
       setError(null);
       setTranscripts([]);
       setToolEvents([]);
       setVerification(undefined);
+      const conversationOnly = opts?.conversationOnly === true;
+      etapeRef.current = 'Listening · speak';
+      setConversationSeule(conversationOnly);
+      let modeConfirme = !conversationOnly;
 
-      const chosen = opts?.provider || provider;
+      const chosen = conversationOnly ? 'local' : opts?.provider || provider;
 
       // Revalidate immediately before the handshake. Besides preventing a
       // startup race, apiFetch refreshes the desktop key after a 401 so the
       // synchronous URL builder below sees the current credential.
       const current = await checkService(true);
       if (generation !== generationRef.current) return;
+      const voixChoisie = opts?.voice || (chosen === 'local' ? current?.defaultVoice : '') || '';
+      setVoixSession(voixChoisie);
       if (!canStartVoiceSession(current, chosen)) {
         demarrageRef.current = false;
         setState('idle');
@@ -251,6 +295,18 @@ export function useVoiceLive() {
       wsRef.current = ws;
       demarrageRef.current = false;
       const actuelle = () => wsRef.current === ws && generationRef.current === generation;
+      let serveurPret = false;
+      let capturePrete = false;
+      let ecouteAnnoncee = false;
+      const annoncerEcoute = () => {
+        // 27/09/2026 : READY du serveur pouvait précéder la permission
+        // micro ou le chargement du worklet. « Je t'écoute » faisait alors
+        // parler l'utilisateur avant le premier échantillon capturable.
+        if (!actuelle() || fermetureRef.current || socketFailed || !serveurPret || !capturePrete || ecouteAnnoncee) return;
+        ecouteAnnoncee = true;
+        setState('listening');
+        setStatusLabel('Listening · speak');
+      };
 
       // La garde du client (26/09/2026, contre-épreuve) : la coupure du Mac
       // n'atteint pas un téléphone hors réseau. Toutes les 5 s, on regarde
@@ -284,26 +340,30 @@ export function useVoiceLive() {
           JSON.stringify({
             type: 'start',
             provider: chosen,
-            voice: opts?.voice || '',
-            include_memory: true,
+            voice: voixChoisie,
+            ...(opts?.model ? { model: opts.model } : {}),
+            ...(opts?.history ? { history: opts.history } : {}),
+            include_memory: !conversationOnly,
+            ...(conversationOnly ? { conversationOnly: true, enable_tools: false } : {}),
           }),
         );
 
         try {
           const stream = await navigator.mediaDevices.getUserMedia({
             audio: {
-              echoCancellation: true,
-              noiseSuppression: true,
+              echoCancellation: !conversationOnly,
+              noiseSuppression: !conversationOnly,
               channelCount: 1,
             },
           });
           // Une permission micro peut rester ouverte après « Terminer ».
           // Son résultat tardif ne doit jamais rallumer une session fermée.
-          if (!actuelle()) {
+          if (!actuelle() || fermetureRef.current) {
             stream.getTracks().forEach((piste) => piste.stop());
             return;
           }
           streamRef.current = stream;
+          for (const track of stream.getTracks()) track.enabled = !pauseRef.current;
           const ctx = new AudioContext({ sampleRate: 16000 });
           captureCtxRef.current = ctx;
           const source = ctx.createMediaStreamSource(stream);
@@ -312,7 +372,14 @@ export function useVoiceLive() {
           source.connect(micTap);
           setMicNode(micTap);
           const processor = await creerCaptureVocale(ctx, source, (pcm) => {
-            if (!actuelle() || ws.readyState !== WebSocket.OPEN) return;
+            if (!actuelle() || socketFailed || ws.readyState !== WebSocket.OPEN || !pcm.byteLength) return;
+            capturePrete = true;
+            annoncerEcoute();
+            // Aucun son vers un ancien serveur qui ignorerait ce mode.
+            // Sans anti-écho, la propre lecture de Diapason est écartée.
+            if (fermetureRef.current || !serveurPret || !modeConfirme || pauseRef.current || (conversationOnly && (
+              lectureEnCoursRef.current || performance.now() < repriseMicroRef.current
+            ))) return;
             ws.send(
               JSON.stringify({
                 type: 'audio',
@@ -321,7 +388,7 @@ export function useVoiceLive() {
               }),
             );
           });
-          if (!actuelle()) { processor.arreter(); return; }
+          if (!actuelle() || fermetureRef.current) { processor.arreter(); return; }
           processorRef.current = processor;
           if (ctx.state === 'suspended') await ctx.resume();
         } catch (err) {
@@ -342,13 +409,51 @@ export function useVoiceLive() {
         derniereTrameMs = Date.now();
         try {
           const msg = JSON.parse(ev.data as string);
+          // 27/09/2026 : après le départ, seul le dernier message et son
+          // audio peuvent encore arriver. Ni un READY tardif ni une
+          // interruption ne doivent réannoncer un micro déjà fermé.
+          if (fermetureRef.current && (
+            fermetureRef.current.recue || !['audio', 'transcript', 'closed', 'error'].includes(msg.type)
+          )) return;
           switch (msg.type) {
+            case 'closing': {
+              if (msg.reason !== 'farewell') break;
+              cleanupCapture();
+              stopPlayback();
+              setEnFermeture(true);
+              setState('listening');
+              setStatusLabel('ending');
+              const finir = () => {
+                if (!actuelle()) return;
+                setFinVocale(true);
+                stop();
+              };
+              // 8 s de synthèse maximum côté serveur + une courte formule
+              // et la marge de transport. Un lecteur suspendu ne bloque
+              // jamais la fermeture ; le micro est déjà physiquement arrêté.
+              fermetureRef.current = { recue: false, finir,
+                garde: window.setTimeout(finir, 12000) };
+              break;
+            }
             case 'alive':
               battementVu = true;
               break;
             case 'ready':
-              setState('listening');
-              setStatusLabel('Listening · speak');
+              if (conversationOnly && msg.conversationOnly !== true) {
+                socketFailed = true;
+                stop();
+                setError('voice-conversation-unavailable');
+                return;
+              }
+              modeConfirme = true;
+              serveurPret = true;
+              annoncerEcoute();
+              break;
+            case 'status':
+              if (cleEtatVocal(msg.stage)) {
+                etapeRef.current = msg.stage;
+                setStatusLabel(msg.stage);
+              }
               break;
             case 'audio':
               enqueuePcm(msg.data, msg.sample_rate || 24000);
@@ -360,6 +465,7 @@ export function useVoiceLive() {
                 if (last && last.role === role && !last.final) {
                   const next = [...prev];
                   next[next.length - 1] = {
+                    ...last,
                     at: last.at,
                     role,
                     // `replace` distingue les deux protocoles. Gemini et
@@ -384,11 +490,14 @@ export function useVoiceLive() {
                     text: msg.text || '',
                     final: !!msg.final,
                     at: seqRef.current,
+                    timestamp: Date.now(),
                   },
                 ];
               });
               break;
             case 'interrupted':
+              setTranscripts(prev => prev.map(l => l.role === 'assistant' && !l.final ? { ...l, final: true, interrupted: true } : l));
+              etapeRef.current = 'Listening · speak';
               stopPlayback();
               setState('listening');
               setStatusLabel('Listening · speak');
@@ -417,6 +526,7 @@ export function useVoiceLive() {
               setVerification(lireVerification(msg));
               break;
             case 'error':
+              if (fermetureRef.current) stop();
               console.error('[voice-live] server session error', {
                 provider: chosen,
                 detail: msg.detail || 'unknown error',
@@ -433,6 +543,11 @@ export function useVoiceLive() {
               setStatusLabel('Error');
               break;
             case 'closed': {
+              if (msg.reason === 'farewell' && fermetureRef.current) {
+                fermetureRef.current.recue = true;
+                if (!lectureEnCoursRef.current) fermetureRef.current.finir();
+                break;
+              }
               // Le motif AVANT stop() : stop() coupe le micro (le voyant
               // d'Android s'éteint), le motif dit pourquoi.
               const motif = motifDeFermeture(msg);
@@ -450,6 +565,7 @@ export function useVoiceLive() {
 
       ws.onerror = (event) => {
         if (!actuelle()) return;
+        if (fermetureRef.current) stop();
         socketFailed = true;
         cleanupCapture();
         stopPlayback();
@@ -466,6 +582,12 @@ export function useVoiceLive() {
 
       ws.onclose = (event) => {
         if (!actuelle()) return;
+        if (fermetureRef.current?.recue) {
+          // Le serveur libère sa séance pendant que le dernier PCM se lit.
+          // onended termine le client ; X peut toujours couper avant.
+          return;
+        }
+        if (fermetureRef.current) { fermetureRef.current.finir(); return; }
         console.info('[voice-live] WebSocket closed', {
           provider: chosen,
           code: event.code,
@@ -493,10 +615,25 @@ export function useVoiceLive() {
     void checkService(true);
   }, [checkService]);
 
+  const mettreMicroEnPause = useCallback((pause: boolean) => {
+    if (fermetureRef.current) return;
+    if (pause === pauseRef.current) return;
+    pauseRef.current = pause;
+    setMicroEnPause(pause);
+    for (const track of streamRef.current?.getTracks() ?? []) track.enabled = !pause;
+    // Une seconde de silence clôt la parole déjà captée avant la pause ;
+    // sans elle, le serveur attendrait la fin de ce mot au prochain réveil.
+    if (pause && wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'audio',
+        data: arrayBufferToBase64(new ArrayBuffer(32000)), sample_rate: 16000 }));
+    }
+  }, []);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
       if (state === 'idle' || state === 'connecting' || state === 'error') return;
-      if (e.code === 'Space' && !e.repeat && !(e.target instanceof HTMLInputElement) && !(e.target instanceof HTMLTextAreaElement)) {
+      if (e.code === 'Space' && !e.repeat && !(e.target as HTMLElement | null)?.closest('input, textarea, button, select, [contenteditable="true"]')) {
         e.preventDefault();
         interrupt();
       }
@@ -519,7 +656,7 @@ export function useVoiceLive() {
         : provider === 'openai'
           ? 'missing-key-openai'
           : health.providers?.local?.reason === 'missing-dependencies'
-            || health.providers?.local?.reason === 'missing-phonemizer'
+            || health.providers?.local?.reason === 'missing-expressive-voice'
             ? 'local-components-missing'
             : 'local-not-ready'
       : null;
@@ -530,18 +667,26 @@ export function useVoiceLive() {
     available: !!health?.available,
     serviceReady: canStartVoiceSession(health, provider),
     checkingService,
+    voix: (state === 'connecting' || state === 'listening' || state === 'speaking') && voixSession
+      ? voixSession : health?.defaultVoice ?? 'qwen3-b',
+    voixDisponibles: health?.voices ?? [],
     provider,
     setProvider: chooseProvider,
     transcripts,
     toolEvents,
     verification,
     statusLabel,
+    conversationSeule,
     outputNode,
     micNode,
     refreshAvailability: () => checkService(true),
     start,
     stop,
     interrupt,
+    microEnPause,
+    enFermeture,
+    finVocale,
+    mettreMicroEnPause,
     isActive: state === 'connecting' || state === 'listening' || state === 'speaking',
   };
 }

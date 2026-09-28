@@ -169,6 +169,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp: number;
+  voice?: { interrupted?: boolean };
   reception?: ChatReception;
   toolCalls?: ToolCallInfo[];
   researchTraces?: ResearchSearchTrace[];

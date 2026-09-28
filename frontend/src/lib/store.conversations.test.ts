@@ -121,3 +121,33 @@ describe('les écritures réelles du store', () => {
     expect(mod.viderSauvegardeConversations()).toBe(true);
   });
 });
+
+describe('la sauvegarde des échanges vocaux', () => {
+  it('persiste les révisions une seule fois et date chaque vraie écriture', () => {
+    const app = mod.useAppStore.getState();
+    const id = app.createConversation('local');
+    app.recevoirMessagesVocaux(id, [msg('v1', 'user', 'Mon anglais'), msg('v2', 'assistant', 'Écoute.')]);
+    const avant = mod.loadConversations().conversations[id];
+    app.recevoirMessagesVocaux(id, [msg('v2', 'assistant', 'Écoute. Répète.')]);
+    const apres = mod.loadConversations().conversations[id];
+    expect(apres.messages).toHaveLength(2);
+    expect(apres.title).toBe('Mon anglais');
+    expect(apres.updatedAt).toBeGreaterThan(avant.updatedAt);
+    const ecritures = stockage.ecritures;
+    app.recevoirMessagesVocaux(id, [msg('v2', 'assistant', 'Écoute. Répète.')]);
+    expect(stockage.ecritures).toBe(ecritures);
+    app.loadMessages(id);
+    expect(mod.useAppStore.getState().messages[1].content).toBe('Écoute. Répète.');
+  });
+  it('un événement tardif ne change pas de fil et ne ressuscite pas une discussion supprimée', () => {
+    const app = mod.useAppStore.getState();
+    const a = app.createConversation('local');
+    const b = app.createConversation('local');
+    app.recevoirMessagesVocaux(a, [msg('v1', 'assistant', 'Ancien fil')]);
+    expect(mod.useAppStore.getState().activeId).toBe(b);
+    expect(mod.useAppStore.getState().messages).toEqual([]);
+    app.deleteConversation(a);
+    app.recevoirMessagesVocaux(a, [msg('v2', 'assistant', 'Trop tard')]);
+    expect(mod.loadConversations().conversations[a]).toBeUndefined();
+  });
+});

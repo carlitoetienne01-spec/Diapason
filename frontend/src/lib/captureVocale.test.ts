@@ -53,6 +53,20 @@ describe('§78 — une seule capture, silencieuse et libérée à l’arrêt', (
     expect(contexte.secours.onaudioprocess).toBeNull();
     expect(contexte.muet.disconnect).toHaveBeenCalledOnce();
   });
+
+  it('libère le worklet même après déconnexion externe et tolère deux arrêts', async () => {
+    vi.stubGlobal('AudioWorkletNode', Worklet);
+    const contexte = new Contexte(); const source = new Noeud();
+    const capture = await creerCaptureVocale(contexte as unknown as AudioContext, source as unknown as AudioNode, vi.fn());
+    source.disconnect.mockImplementation(() => {
+      throw new DOMException('The given destination is not connected', 'InvalidAccessError');
+    });
+    expect(() => { capture.arreter(); capture.arreter(); }).not.toThrow();
+    expect(Worklet.dernier.port.onmessage).toBeNull();
+    expect(Worklet.dernier.port.close).toHaveBeenCalledOnce();
+    expect(Worklet.dernier.disconnect).toHaveBeenCalledOnce();
+    expect(contexte.muet.disconnect).toHaveBeenCalledOnce();
+  });
 });
 
 describe('§100 — le processeur réellement embarqué découpe du PCM, pas une simulation', () => {

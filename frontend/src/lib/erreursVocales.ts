@@ -1,0 +1,15 @@
+export const ERREURS_VOCALES = {
+  'missing-key-gemini': 'talk.missingKeyGemini',
+  'missing-key-openai': 'talk.missingKeyOpenai',
+  'local-not-ready': 'talk.localNotReady',
+  'local-components-missing': 'talk.localComponentsMissing',
+  'voice-auth-unavailable': 'talk.authUnavailable',
+  'voice-service-unavailable': 'talk.serviceUnavailable',
+  'voice-connection-failed': 'talk.connectionFailed',
+  'microphone-denied': 'talk.microphoneDenied',
+  'voice-session-failed': 'talk.sessionFailed',
+  'voice-closed-inactivity': 'talk.closedInactivity',
+  'voice-closed-max-duration': 'talk.closedMaxDuration',
+  'voice-lost-server': 'talk.lostServer',
+  'voice-conversation-unavailable': 'talk.conversation.unavailable',
+} as const;

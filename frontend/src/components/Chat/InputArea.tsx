@@ -1,5 +1,9 @@
+import { useConversationVocale } from '../../hooks/useConversationVocale';
+import { actionDuCompositeur } from '../../lib/conversationVocale';
+import { BarreVocale } from './BarreVocale';
+import { serviParLeTailnet } from '../../lib/tailnet';
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Send, Square, Paperclip, Brain, FileText } from 'lucide-react';
+import { ArrowUp, AudioLines, Square, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAppStore, generateId, completerAudioMessage, viderSauvegardeConversations } from '../../lib/store';
 import { creerCadenceFlux } from '../../lib/cadenceFlux';
@@ -32,7 +36,7 @@ import { MicButton } from './MicButton';
 import { useSpeech } from '../../hooks/useSpeech';
 import { useLiveDictation } from '../../hooks/useLiveDictation';
 import { useTranslation } from '../../i18n/useTranslation';
-import { ContextRing, ModeChip, ModelChip } from './ComposerBar';
+import { ComposerPlus, ModelChip } from './ComposerBar';
 import { isCloudModel } from '../../lib/cloud-models';
 import { modeleDeLaReponse, type RoutageServeur } from './modeleDeLaReponse';
 import { EVENEMENT_VERIFIER_EN_LIGNE, lireVerification, type DemandeDeVerification } from './notesDeVerification';
@@ -117,6 +121,8 @@ function useResearchCorpusSync(enabled: boolean): {
 }
 
 export function InputArea() {
+  const voix = useConversationVocale();
+  const [champActif, setChampActif] = useState(false);
   const surfaceVitree = useSurfaceVitree(true);
   const { t, locale } = useTranslation();
   const [input, setInput] = useState('');
@@ -237,7 +243,7 @@ export function InputArea() {
   const live = useLiveDictation(locale);
   const liveMode = live.supported && speechEnabled;
 
-  const micDisabled =
+  const micDisabled = voix.isActive ||
     !speechEnabled ||
     (!liveMode && !speechAvailable) ||
     isStreaming;
@@ -268,6 +274,12 @@ export function InputArea() {
     start: liveStart,
     stop: liveStop,
   } = live;
+
+  useEffect(() => {
+    if (!voix.isActive) return;
+    if (liveListening) void liveStop();
+    if (speechState === 'recording') void stopRecording();
+  }, [voix.isActive, liveListening, liveStop, speechState, stopRecording]);
 
   /** Whatever was already typed when dictation began; speech appends to it. */
   const dictationBaseRef = useRef('');
@@ -601,6 +613,9 @@ export function InputArea() {
       setInput('');
     }
 
+    voix.arreter();
+    setChampActif(false);
+    textareaRef.current?.blur();
     let convId = activeId;
     if (!convId) {
       convId = createConversation(selectedModel);
@@ -1048,6 +1063,7 @@ export function InputArea() {
       }
     }
   }, [
+    voix.arreter,
     input,
     activeId,
     selectedModel,
@@ -1151,7 +1167,7 @@ export function InputArea() {
       )}
       <div
         ref={surfaceVitree}
-        className="composer-glass flex flex-col px-4 py-3"
+        className="composer-glass composer-saisie flex flex-col px-4 py-3"
         // Le dépôt se prend sur le composeur ENTIER, pas sur le seul champ de
         // texte : on dépose « sur la boîte », pas sur une ligne de vingt
         // pixels. Le preventDefault sur dragOver est ce qui autorise le
@@ -1251,11 +1267,12 @@ export function InputArea() {
             )}
           </div>
         )}
-        <div className="flex items-center gap-2">
         <textarea
           ref={textareaRef}
           value={input}
           onChange={handleInputChange}
+          onFocus={() => { setChampActif(true); if (voix.isActive) voix.mettreMicroEnPause(true); }}
+          onBlur={() => setChampActif(false)}
           onKeyDown={handleKeyDown}
           // Une capture d'écran collée arrive dans `items`, sans nom de
           // fichier. On n'intercepte que s'il y a vraiment une image, sinon
@@ -1269,8 +1286,8 @@ export function InputArea() {
           placeholder={
             selectedModel ? t('chat.input.placeholder') : t('chat.input.placeholderNoModel')
           }
-          rows={1}
-          className="composer-glass-input flex-1 min-w-0 bg-transparent outline-none resize-none text-sm leading-relaxed"
+          rows={2}
+          className="composer-glass-input w-full min-w-0 bg-transparent outline-none resize-none text-sm leading-relaxed"
           style={{ color: 'var(--color-text)', maxHeight: '200px' }}
           disabled={compositeurBloque}
           // Le seul champ d'où ⌘K, ⌘N, ⌘J, ⌘⇧[ et ⌘⇧] passent
@@ -1278,92 +1295,79 @@ export function InputArea() {
           // ne le porte pas et garde ⌘I pour l'italique.
           data-raccourcis-globaux=""
         />
-        {isStreaming ? (
-          <button
-            onClick={stopStreaming}
-            className="composer-glass-stop p-2 shrink-0 cursor-pointer"
-            style={{ background: 'var(--color-error)', color: 'var(--color-on-accent)' }}
-            title={t('chat.input.stopGenerating')}
-            aria-label={t('chat.input.stopGenerating')}
-          >
-            <Square size={16} />
-          </button>
-        ) : (
-          <div className="composer-glass-actions flex items-center gap-2">
-            {/* 22/09/2026 : le troisième chemin vers une image, après le
-                collage et le dépôt. Le champ reste caché — un <input
-                type="file"> ne se met pas au goût d'un thème. */}
-            <input
-              ref={champFichiers}
-              type="file"
-              accept="image/png,image/jpeg,image/gif,image/webp,.txt,.md,.csv,.pdf,.docx"
-              multiple
-              hidden
-              onChange={(e) => {
-                void joindre(Array.from(e.target.files ?? []));
-                // Remis à zéro : sans ça, rejoindre LA MÊME image deux fois
-                // de suite ne déclenche pas d'événement.
-                e.target.value = '';
-              }}
-            />
-            <button
-              type="button"
-              onClick={() => champFichiers.current?.click()}
-              disabled={compositeurBloque || (pieces.length >= IMAGES_MAX && documents.length >= DOCUMENTS_MAX)}
-              className="composer-glass-action p-2 shrink-0 cursor-pointer disabled:cursor-default disabled:opacity-40"
-              title={t('chat.input.attachImage')}
-              aria-label={t('chat.input.attachImage')}
-            >
-              <Paperclip size={16} />
-            </button>
-            <MicButton
-              state={liveMode ? (liveListening ? 'recording' : 'idle') : speechState}
-              onClick={handleMicClick}
-              // Hold-to-talk only stands in for the batch path; live dictation
-              // is a toggle, and passing these would suppress its click.
-              onPointerDown={liveMode ? undefined : handleMicPointerDown}
-              onPointerUp={liveMode ? undefined : handleMicPointerUp}
-              disabled={micDisabled}
-              reason={micReason}
-              live={liveMode}
-            />
-            <button
-              onClick={() => void sendMessage()}
-              disabled={!input.trim() || modelLoading || !selectedModel}
-              title={selectedModel ? t('chat.input.send') : t('chat.input.pickModel')}
-              aria-label={selectedModel ? t('chat.input.send') : t('chat.input.pickModel')}
-              className="composer-glass-send p-2 shrink-0 cursor-pointer disabled:cursor-default"
-            >
-              <Send size={16} />
-            </button>
-          </div>
-        )}
-        </div>
-
-        {/* Toolbar — permission mode and deep research on the left; the
-            context ring and active model on the right. Claude-Code grammar,
-            Diapason wiring. */}
         <div className="composer-glass-toolbar">
           <div className="composer-glass-tools">
-            <ModeChip disabled={isStreaming} />
-            <button
-              type="button"
-              onClick={() => setDeepResearch(!deepResearch)}
-              disabled={isStreaming}
-              aria-pressed={deepResearch}
-              aria-label={t('common.deepResearch')}
-              className="composer-glass-chip composer-glass-research inline-flex items-center justify-center cursor-pointer disabled:cursor-default disabled:opacity-50"
-              data-active={deepResearch}
-              title={deepResearch ? t('chat.input.deepResearchOn') : t('chat.input.deepResearchOff')}
-            >
-              <Brain size={15} strokeWidth={1.75} />
-            </button>
+            <ComposerPlus disabled={isStreaming || voix.isActive} onJoindre={() => champFichiers.current?.click()}
+              recherche={deepResearch} onRecherche={() => setDeepResearch(!deepResearch)}
+              onConversationSeule={serviParLeTailnet() || input.trim() || liveListening ? undefined : () => void voix.demarrer(true)} />
+            {deepResearch && <span className="composer-recherche-active text-xs truncate" style={{ color: 'var(--color-accent)' }} title={t('common.deepResearch')}>{t('common.deepResearch')}</span>}
           </div>
           <div className="composer-glass-models">
-            <ContextRing draftLength={input.length} />
-            <ModelChip disabled={isStreaming} />
+            <ModelChip disabled={isStreaming || voix.isActive} />
+            {isStreaming ? (
+              <button
+                onClick={stopStreaming}
+                className="composer-glass-stop composer-action-unique p-2 shrink-0 cursor-pointer"
+                style={{ background: 'var(--color-error)', color: 'var(--color-on-accent)' }}
+                title={t('chat.input.stopGenerating')}
+                aria-label={t('chat.input.stopGenerating')}
+              >
+                <Square size={16} />
+              </button>
+            ) : (
+              <div className="composer-glass-actions flex items-center gap-2">
+                {/* 22/09/2026 : le troisième chemin vers une image, après le
+                    collage et le dépôt. Le champ reste caché — un <input
+                    type="file"> ne se met pas au goût d'un thème. */}
+                <input
+                  ref={champFichiers}
+                  type="file"
+                  accept="image/png,image/jpeg,image/gif,image/webp,.txt,.md,.csv,.pdf,.docx"
+                  multiple
+                  hidden
+                  onChange={(e) => {
+                    void joindre(Array.from(e.target.files ?? []));
+                    // Remis à zéro : sans ça, rejoindre LA MÊME image deux fois
+                    // de suite ne déclenche pas d'événement.
+                    e.target.value = '';
+                  }}
+                />
+                {!voix.isActive && <MicButton
+                  state={liveMode ? (liveListening ? 'recording' : 'idle') : speechState}
+                  onClick={handleMicClick}
+                  // Hold-to-talk only stands in for the batch path; live dictation
+                  // is a toggle, and passing these would suppress its click.
+                  onPointerDown={liveMode ? undefined : handleMicPointerDown}
+                  onPointerUp={liveMode ? undefined : handleMicPointerUp}
+                  disabled={micDisabled}
+                  reason={micReason}
+                  live={liveMode}
+                />}
+                <button
+                  type="button"
+                  onPointerDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    if (actionDuCompositeur(champActif, input, pieces.length + documents.length) === 'envoyer') void sendMessage();
+                    else {
+                      setChampActif(false);
+                      textareaRef.current?.blur();
+                      void voix.demarrer();
+                    }
+                  }}
+                  disabled={modelLoading || !selectedModel || (actionDuCompositeur(champActif, input, pieces.length + documents.length) === 'envoyer'
+                    ? !input.trim() : liveListening || speechState === 'recording' || isCloudModel(selectedModel))}
+                  title={t(actionDuCompositeur(champActif, input, pieces.length + documents.length) === 'envoyer' ? 'chat.input.send' : 'composer.voice')}
+                  aria-label={t(actionDuCompositeur(champActif, input, pieces.length + documents.length) === 'envoyer' ? 'chat.input.send' : 'composer.voice')}
+                  className="composer-glass-send composer-action-unique p-2 shrink-0 cursor-pointer disabled:cursor-default"
+                >
+                  {actionDuCompositeur(champActif, input, pieces.length + documents.length) === 'envoyer'
+                    ? <ArrowUp size={21} aria-hidden="true" /> : <AudioLines size={21} aria-hidden="true" />}
+                </button>
+              </div>
+            )}
           </div>
         </div>
+        {voix.visible && <BarreVocale voix={voix} onClavier={() => textareaRef.current?.focus()} />}
       </div>
       {/* Sous sm (le mini-panneau), cette rangée coûtait une ligne au pied
           d'un fil déjà court pour rappeler un raccourci que le placeholder
