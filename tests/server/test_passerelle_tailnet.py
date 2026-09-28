@@ -9,6 +9,7 @@ passerelle) et une session d'appareil qui décident, jamais un en-tête.
 from __future__ import annotations
 
 import base64
+import logging
 import time
 from unittest.mock import MagicMock
 
@@ -1584,6 +1585,123 @@ class TestUnFluxHttpEstCoupeAussi:
         assert b"tic" in corps
         assert b"FIN-NATURELLE" not in corps, "le flux a survécu à la révocation"
         assert duree < 2, f"la coupure a pris {duree:.2f} s"
+
+
+def _app_d_un_flux_long():
+    """Un SSE du chat qui dure 4 s, pour être coupé en route."""
+    import asyncio
+
+    from starlette.responses import StreamingResponse
+
+    app = FastAPI()
+
+    @app.get("/v1/models")
+    async def _flux():
+        async def morceaux():
+            debut = time.monotonic()
+            while time.monotonic() - debut < 4:
+                yield b"tic\n"
+                await asyncio.sleep(0.02)
+            yield b"FIN-NATURELLE\n"
+
+        return StreamingResponse(morceaux())
+
+    return app
+
+
+class TestLaFermetureSeLitDansLeJournal:
+    """28/09/2026 : la fermeture d'une session tenue était journalisée en
+    INFO, sous le niveau WARNING du logger diapason — elle n'atteignait
+    jamais serve.err.log. Le 26/09 à 19:44, une réponse du chat coupée au
+    téléphone ne se distinguait donc pas d'une coupure du réseau."""
+
+    _JOURNAL = "diapason.server.passerelle_tailnet"
+
+    def _couper_en_route(self, monde, caplog, agir) -> list:
+        caplog.set_level(logging.INFO, logger=self._JOURNAL)
+        passerelle = monde.passerelle(_app_d_un_flux_long(), intervalle_s=0.05)
+        client = TestClient(passerelle, base_url=ICI)
+        jeton = _ouvrir_une_session(client, monde)
+        preparer = agir(jeton)
+        corps, _ = _pilote_asgi(
+            passerelle,
+            _portee_http("/v1/models", jeton),
+            apres_premier_morceau=preparer,
+        )
+        assert b"FIN-NATURELLE" not in corps, "le flux devait être coupé en route"
+        return [r for r in caplog.records if r.name == self._JOURNAL]
+
+    def test_une_revocation_se_dit_en_warning_avec_son_motif(self, monde, caplog):
+        lignes = self._couper_en_route(
+            monde, caplog, lambda _jeton: lambda: monde.registry.revoke(PHONE)
+        )
+        assert [r.levelno for r in lignes] == [logging.WARNING], (
+            "une coupure par révocation doit atteindre serve.err.log (WARNING)"
+        )
+        texte = lignes[0].getMessage()
+        assert "appareil révoqué depuis le Mac" in texte, texte
+        assert "/v1/models" in texte and PHONE in texte, (
+            "le journal doit dire quel flux et quel appareil"
+        )
+
+    def test_fermer_les_sessions_ne_se_dit_pas_revoquer(self, monde, caplog):
+        lignes = self._couper_en_route(
+            monde,
+            caplog,
+            lambda _jeton: lambda: monde.sessions.close_device_sessions(PHONE),
+        )
+        assert [r.levelno for r in lignes] == [logging.WARNING]
+        assert "session fermée" in lignes[0].getMessage(), lignes[0].getMessage()
+
+    def test_une_expiration_se_dit_expiree(self, monde, caplog):
+        from contextlib import closing
+
+        from diapason.mesh.registry import now_ms
+
+        def expirer_bientot(jeton):
+            # La session vit encore 150 ms : la vérification d'entrée passe,
+            # la surveillance la voit mourir en route.
+            with closing(monde.registry._connect()) as conn, conn:
+                conn.execute(
+                    "UPDATE mesh_sessions SET expires_at_ms=?", (now_ms() + 150,)
+                )
+                conn.commit()
+            return None
+
+        lignes = self._couper_en_route(monde, caplog, expirer_bientot)
+        assert [r.levelno for r in lignes] == [logging.WARNING]
+        texte = lignes[0].getMessage()
+        assert "session expirée (12 h)" in texte, texte
+
+    @pytest.mark.parametrize(
+        ("confiance", "maintenant", "attendu"),
+        [
+            (None, 0, "appareil oublié par le Mac"),
+            ("REVOKED", 10_000, "appareil révoqué depuis le Mac"),
+            ("PENDING", 0, "appareil plus approuvé (PENDING)"),
+            ("TRUSTED", 10_000, "session expirée (12 h)"),
+            ("TRUSTED", 9_999, "session fermée"),
+        ],
+    )
+    def test_chaque_motif_se_nomme(self, confiance, maintenant, attendu):
+        from diapason.server.passerelle_tailnet import motif_de_fermeture
+
+        motif = motif_de_fermeture(10_000, maintenant, confiance)
+        assert motif.startswith(attendu), (
+            f"{confiance} à {maintenant} : « {motif} » au lieu de « {attendu} »"
+        )
+
+    def test_un_registre_illisible_se_dit_aussi(self, monde):
+        passerelle = monde.passerelle(FastAPI())
+
+        class _Casse:
+            def find(self, _appareil):
+                raise OSError("disque")
+
+        passerelle._registre = _Casse()
+        assert passerelle._motif_de_fermeture(PHONE, 0) == (
+            "motif inconnu : registre illisible (OSError)"
+        ), "une panne du registre ne doit ni lever ni se faire passer pour un motif"
 
 
 def _trou_maximal(passerelle, requete) -> float:
