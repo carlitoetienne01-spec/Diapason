@@ -14,6 +14,7 @@ import {
   lireCoupure,
   lireLeCorps,
   nomBrut,
+  planifierLeTour,
   preparerRenvoi,
   texteFinal,
 } from './coupureDuFlux';
@@ -185,5 +186,63 @@ describe('renvoyer la même question, sans doublon', () => {
   it('une recherche approfondie coupée se renvoie en recherche approfondie', () => {
     const fil = [q('q1'), r('r1', { ...coupee, isResearch: true })];
     expect(preparerRenvoi(fil, 'r1')?.recherche).toBe(true);
+  });
+});
+
+describe('le plan d’un tour : un renvoi ne recopie rien', () => {
+  // Revue du 28/09/2026 : ces règles vivaient en ligne dans InputArea, que
+  // rien ne teste. Huit mutations du câblage (la question réécrite à chaque
+  // renvoi, le fil complet relu, le brouillon vidé, la recherche perdue…)
+  // laissaient les 1 803 tests verts.
+  const neuf = {
+    renvoi: null, saisie: '  Bonjour  ', reponsesAuQuestionnaire: false,
+    verifierEnLigne: false, garderBrouillon: false, rechercheActive: false,
+  };
+
+  it('un renvoi n’écrit pas la question, garde le brouillon et relit le fil jusqu’à elle', () => {
+    const question = q('q1', { images: ['data:image/png;base64,AAAA'] });
+    const fil = [q('q0'), r('r0', { content: 'Réponse entière' }), question, r('r1', { ...coupee, content: 'Début' })];
+    const renvoi = preparerRenvoi(fil, 'r1');
+    const plan = planifierLeTour({ ...neuf, renvoi, saisie: 'brouillon en cours', rechercheActive: true });
+    expect(plan.ecrireLaQuestion, 'la question est déjà dans le fil : la réécrire la doublerait, au Mac aussi')
+      .toBe(false);
+    expect(plan.contenu, 'le texte envoyé est la question, pas le brouillon').toBe('Question q1');
+    expect(plan.viderLeBrouillon, 'le brouillon en cours ne part pas et ne s’efface pas').toBe(false);
+    expect(plan.historique?.map((m) => m.id), 'le modèle relit le fil jusqu’à la question, sans la réponse coupée')
+      .toEqual(['q0', 'r0', 'q1']);
+    expect(plan.recherche, 'le mode vient de la réponse coupée, pas du bouton du compositeur').toBe(false);
+  });
+
+  it('une recherche approfondie coupée se renvoie en recherche, même bouton éteint', () => {
+    const renvoi = preparerRenvoi([q('q1'), r('r1', { ...coupee, isResearch: true })], 'r1');
+    expect(planifierLeTour({ ...neuf, renvoi }).recherche).toBe(true);
+  });
+
+  it('le renvoi d’une réponse à un questionnaire ne rouvre pas de questionnaire', () => {
+    const avecReponse = q('q1', { questionReply: { requestId: 'x', answers: [{ questionId: 'a', answer: 'Oui' }] } });
+    const renvoi = preparerRenvoi([avecReponse, r('r1', coupee)], 'r1');
+    expect(planifierLeTour({ ...neuf, renvoi }).questionsInteractives).toBe(false);
+    const simple = preparerRenvoi([q('q1'), r('r1', coupee)], 'r1');
+    expect(planifierLeTour({ ...neuf, renvoi: simple }).questionsInteractives).toBe(true);
+  });
+
+  it('un tour neuf écrit la question, vide le brouillon et relit le fil courant', () => {
+    const plan = planifierLeTour(neuf);
+    expect(plan).toEqual({
+      contenu: 'Bonjour', ecrireLaQuestion: true, viderLeBrouillon: true,
+      historique: null, recherche: false, questionsInteractives: true,
+    });
+  });
+
+  it('les règles d’avant tiennent : « Vérifier en ligne » et les réponses d’un questionnaire', () => {
+    expect(planifierLeTour({ ...neuf, rechercheActive: true }).recherche).toBe(true);
+    expect(planifierLeTour({ ...neuf, rechercheActive: true, verifierEnLigne: true }).recherche,
+      'vérifier en ligne est une question, pas un dossier').toBe(false);
+    expect(planifierLeTour({ ...neuf, garderBrouillon: true }).viderLeBrouillon,
+      'vérifier en ligne n’efface pas le brouillon').toBe(false);
+    const questionnaire = planifierLeTour({ ...neuf, reponsesAuQuestionnaire: true, rechercheActive: true });
+    expect(questionnaire.viderLeBrouillon).toBe(false);
+    expect(questionnaire.recherche).toBe(false);
+    expect(questionnaire.questionsInteractives).toBe(false);
   });
 });

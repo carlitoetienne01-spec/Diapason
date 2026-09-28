@@ -9,7 +9,7 @@ import { useAppStore, generateId, completerAudioMessage, viderSauvegardeConversa
 import { creerCadenceFlux } from '../../lib/cadenceFlux';
 import { EVENEMENT_REPONSES_CHAT, lireQuestions, preparerEnvoiQuestions, texteQuestions, type EnvoiReponses } from '../../lib/questionsChat';
 import { streamChat, streamResearch } from '../../lib/sse';
-import { EVENEMENT_RENVOYER, issueDuFlux, preparerRenvoi, texteFinal, type ConnexionPerdue, type DemandeDeRenvoi } from '../../lib/coupureDuFlux';
+import { EVENEMENT_RENVOYER, issueDuFlux, planifierLeTour, preparerRenvoi, texteFinal, type ConnexionPerdue, type DemandeDeRenvoi } from '../../lib/coupureDuFlux';
 import { fusionnerLesSources, historiqueDeRecherche, remplacerLesSources } from './historiqueDeRecherche';
 import {
   DOCUMENTS_MAX,
@@ -602,10 +602,18 @@ export function InputArea() {
       ? preparerRenvoi(useAppStore.getState().messages, options.renvoi)
       : null;
     if (options?.renvoi && !renvoi) return;
-    // 21/09/2026 : « Vérifier en ligne » passe par le chat ordinaire, jamais
-    // par la recherche profonde — c'est une question, pas un dossier.
-    const recherche = renvoi ? renvoi.recherche : deepResearch && !envoi && !options?.verifyOnline;
-    const content = renvoi ? renvoi.question.content : (override ?? input).trim();
+    // Question écrite ou non, brouillon, fil relu, mode : `planifierLeTour`
+    // (lib/coupureDuFlux.ts), testé — la revue du 28/09 a trouvé ces règles
+    // en ligne ici, où aucune mutation n'était vue.
+    const plan = planifierLeTour({
+      renvoi,
+      saisie: override ?? input,
+      reponsesAuQuestionnaire: !!envoi,
+      verifierEnLigne: !!options?.verifyOnline,
+      garderBrouillon: !!options?.garderBrouillon,
+      rechercheActive: deepResearch,
+    });
+    const { contenu: content, recherche } = plan;
     if (!content || useAppStore.getState().streamState.isStreaming) return;
     if (!selectedModel) {
       toast.error(t('chat.input.pickModel'));
@@ -615,7 +623,7 @@ export function InputArea() {
     if (envoi) {
       const actuel = useAppStore.getState();
       if (actuel.activeId !== envoi.conversationId || !preparerEnvoiQuestions(actuel.messages, envoi)) return;
-    } else if (!options?.garderBrouillon && !renvoi) {
+    } else if (plan.viderLeBrouillon) {
       // Revue du 21/09 : « Vérifier en ligne » effaçait le brouillon en cours ;
       // la dictée, elle, passe par ce vidage (elle pose son texte dans le champ).
       setInput('');
@@ -629,7 +637,7 @@ export function InputArea() {
       convId = createConversation(selectedModel);
     }
 
-    if (!renvoi) {
+    if (plan.ecrireLaQuestion) {
       // 22/09/2026 : les images partent avec CE message et sont retirées du
       // composeur aussitôt — les garder ferait qu'un second envoi les
       // renverrait sans que rien ne le dise.
@@ -653,7 +661,7 @@ export function InputArea() {
 
     // Build API messages before adding assistant placeholder. Un renvoi
     // relit le fil jusqu'à sa question : la réponse coupée n'y entre pas.
-    const currentMessages = renvoi ? renvoi.historique : useAppStore.getState().messages;
+    const currentMessages = plan.historique ?? useAppStore.getState().messages;
     const apiMessages = messagesPourLApi(currentMessages, (m) => {
       const cadrage = m.role === 'assistant' ? lireQuestions(m.questions) : null;
       return cadrage ? texteQuestions(cadrage) : m.content;
@@ -880,7 +888,7 @@ export function InputArea() {
           action_mode: 'auto',
           // Le tour qui reçoit les réponses réalise la demande ; il ne rouvre
           // pas un questionnaire identique sous l'effet du rappel d'interface.
-          interactiveQuestions: !envoi && !renvoi?.question.questionReply,
+          interactiveQuestions: plan.questionsInteractives,
           visuals: true,
           ...(options?.verifyOnline ? { verifyOnline: true } : {}),
         },

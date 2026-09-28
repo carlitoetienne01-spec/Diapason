@@ -202,6 +202,67 @@ export function preparerRenvoi(messages: ChatMessage[], messageId: string): Renv
   };
 }
 
+/** Ce que `sendMessage` fait d'un tour, neuf ou renvoyé. */
+export interface PlanDuTour {
+  /** Le texte envoyé : la question déjà dans le fil pour un renvoi, la saisie sinon. */
+  contenu: string;
+  /** Écrire la question dans le fil, avec les pièces du compositeur. Jamais pour un renvoi. */
+  ecrireLaQuestion: boolean;
+  /** Vider le brouillon du compositeur. */
+  viderLeBrouillon: boolean;
+  /** Le fil que le modèle relit ; `null` : le fil courant, question comprise. */
+  historique: ChatMessage[] | null;
+  recherche: boolean;
+  /** Le questionnaire interactif peut-il s'ouvrir sur ce tour. */
+  questionsInteractives: boolean;
+}
+
+/**
+ * Le plan d'un tour, pour InputArea.
+ *
+ * Revue du 28/09/2026 : ces décisions vivaient en ligne dans `sendMessage`,
+ * que le dépôt ne teste pas (aucun test de composant) — remettre la question
+ * dans le fil à chaque « Renvoyer », avec les images en attente du
+ * compositeur, relire la réponse coupée, vider le brouillon ou perdre la
+ * recherche approfondie laissaient les 1 803 tests verts. Un renvoi ne
+ * recopie RIEN : la question est déjà dans le fil, et la synchronisation
+ * propagerait la copie au Mac.
+ *
+ * Hors renvoi, deux règles d'avant : « Vérifier en ligne » passe par le chat
+ * ordinaire, jamais par la recherche profonde — c'est une question, pas un
+ * dossier (21/09/2026) ; et ni lui (`garderBrouillon`) ni les réponses à un
+ * questionnaire n'effacent le brouillon en cours (revue du 21/09).
+ */
+export function planifierLeTour(demande: {
+  renvoi: Renvoi | null;
+  saisie: string;
+  reponsesAuQuestionnaire: boolean;
+  verifierEnLigne: boolean;
+  garderBrouillon: boolean;
+  rechercheActive: boolean;
+}): PlanDuTour {
+  const { renvoi } = demande;
+  if (renvoi) {
+    return {
+      contenu: renvoi.question.content,
+      ecrireLaQuestion: false,
+      viderLeBrouillon: false,
+      historique: renvoi.historique,
+      recherche: renvoi.recherche,
+      // Le tour qui reçoit les réponses d'un questionnaire n'en rouvre pas un.
+      questionsInteractives: !renvoi.question.questionReply,
+    };
+  }
+  return {
+    contenu: demande.saisie.trim(),
+    ecrireLaQuestion: true,
+    viderLeBrouillon: !demande.reponsesAuQuestionnaire && !demande.garderBrouillon,
+    historique: null,
+    recherche: demande.rechercheActive && !demande.reponsesAuQuestionnaire && !demande.verifierEnLigne,
+    questionsInteractives: !demande.reponsesAuQuestionnaire,
+  };
+}
+
 /** Le bouton « Renvoyer » d'une bulle demande le renvoi ; InputArea écoute. */
 export interface DemandeDeRenvoi { conversationId: string; messageId: string }
 export const EVENEMENT_RENVOYER = 'diapason:renvoyer-message';
