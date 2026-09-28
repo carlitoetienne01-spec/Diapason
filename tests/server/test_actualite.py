@@ -57,7 +57,7 @@ class TestCeQuiEstDActualite:
         "question",
         [
             "Quelle est la capitale du Canada ?",
-            'Que veut dire "self aware" en français ?',
+            'Que veut dire "well done" en français ?',
             "Explique-moi pourquoi le ciel est bleu",
             "C'est quoi un président ?",
             "Quelles sont mes tâches aujourd’hui ?",

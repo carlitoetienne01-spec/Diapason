@@ -40,7 +40,7 @@ import { ExtraitDeMessage } from './ExtraitDeMessage';
  *
  * Dès deux caractères, la requête fouille aussi les MESSAGES
  * (`rechercherDiscussions`) : le titre n'est que la première question, et
- * « la discussion où il m'a donné la date du permis » n'y est pas. L'extrait
+ * une date donnée plus loin dans le fil n'y est pas. L'extrait
  * (24 caractères avant, 40 après, terme surligné) tient en seconde ligne, cachée sous `sm`
  * où une rangée de 340 px n'a de place que pour le titre. ↩ sur un tel
  * résultat ouvre le fil AU message : défilement jusqu'à la bulle et halo

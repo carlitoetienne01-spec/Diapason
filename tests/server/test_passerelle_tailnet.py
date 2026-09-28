@@ -621,13 +621,13 @@ class TestLOrigine:
         """Si tailscale serve réécrit Host, l'adresse [tailnet] posée par
         Carlito reste reconnue comme la nôtre."""
         app, _ = _vraie_app()
-        passerelle = monde.passerelle(app, adresse="https://atelier.exemple.ts.net")
+        passerelle = monde.passerelle(app, adresse="https://mac.exemple.ts.net")
         client = TestClient(passerelle, base_url="https://127.0.0.1:8002")
         _ouvrir_une_session(client, monde)
         reponse = client.put(
             "/v1/conversations/c1",
             json={"id": "c1", "title": "t", "messages": []},
-            headers={"Origin": "https://atelier.exemple.ts.net"},
+            headers={"Origin": "https://mac.exemple.ts.net"},
         )
         assert reponse.status_code != 403, reponse.text
 
@@ -1941,9 +1941,9 @@ class TestLAdresseDuTailnet:
         ("posee", "attendue"),
         [
             ("", None),
-            ("atelier.tail6efbba.ts.net", "https://atelier.tail6efbba.ts.net"),
-            ("https://Atelier.tail6efbba.ts.net/", "https://atelier.tail6efbba.ts.net"),
-            ("http://atelier.tail6efbba.ts.net", None),
+            ("mac.tail0000.ts.net", "https://mac.tail0000.ts.net"),
+            ("https://Mac.tail0000.ts.net/", "https://mac.tail0000.ts.net"),
+            ("http://mac.tail0000.ts.net", None),
             ("https://x; script-src *", None),
         ],
     )
@@ -1959,9 +1959,7 @@ class TestLAdresseDuTailnet:
 
         chemin = tmp_path / "config.toml"
         chemin.write_text(
-            '[tailnet]\nadresse = "https://atelier.tail6efbba.ts.net"\n',
+            '[tailnet]\nadresse = "https://mac.tail0000.ts.net"\n',
             encoding="utf-8",
         )
-        assert load_config(chemin).tailnet.adresse == (
-            "https://atelier.tail6efbba.ts.net"
-        )
+        assert load_config(chemin).tailnet.adresse == "https://mac.tail0000.ts.net"

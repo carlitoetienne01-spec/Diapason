@@ -1810,7 +1810,7 @@ class TailnetConfig:
     """Comment le téléphone joint ce Mac hors de la maison (phase 2, 26/09/2026).
 
     ``adresse`` est l'URL https que ``tailscale serve`` publie pour ce Mac,
-    par exemple ``https://atelier.tail6efbba.ts.net``. Posée par Carlito,
+    par exemple ``https://mac.tail0000.ts.net``. Posée par Carlito,
     JAMAIS devinée : ni ``tailscale status`` ni le nom de la machine ne sont
     lus pour la remplir, parce qu'un nom deviné qui se trompe envoie le
     téléphone frapper à une porte qui n'existe pas — et l'échec s'affiche

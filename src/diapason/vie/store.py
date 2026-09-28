@@ -855,7 +855,8 @@ class VieStore:
             clauses.append("lower(title) LIKE ?")
             params.append(f"%{search.strip().lower()}%")
         with self._connect() as conn:
-            # 19/09/2026 : 702 tâches faisaient 1 + 2×702 lectures SQLite.
+            # 19/09/2026 : N tâches faisaient 1 + 2×N lectures SQLite, et N
+            # se compte en centaines sur un foyer réel.
             # Deux lectures groupées gardent les mêmes données et le même
             # arbre de sous-tâches, dans un instantané cohérent.
             conn.execute("BEGIN")

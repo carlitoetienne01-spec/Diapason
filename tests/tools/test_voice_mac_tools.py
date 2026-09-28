@@ -175,21 +175,21 @@ class TestResolutionDeContacts:
         base = self._base(
             tmp_path,
             [
-                ("Mom💫", "Name: Mom💫\nPhone: +50940459941\nPhone: 40 45 9941"),
-                ("JOSCHAVIA MOMPREMIER", "Name: JOSCHAVIA\nPhone: 33 93 6746"),
+                ("Mom💫", "Name: Mom💫\nPhone: +15555550101\nPhone: 555 0101"),
+                ("ELODIE MOMBERT", "Name: ELODIE\nPhone: 555 0102"),
             ],
         )
         fiches = _resolve_contact("maman", db_path=base)
         assert [f["title"] for f in fiches] == ["Mom💫"]
-        assert fiches[0]["phone"] == "+50940459941"  # la forme « + » d'abord
+        assert fiches[0]["phone"] == "+15555550101"  # la forme « + » d'abord
 
     def test_le_dialecte_apple_sans_deux_points_se_lit(self, tmp_path):
         from diapason.tools.voice_mac_tools import _resolve_contact
 
-        base = self._base(tmp_path, [("Gaël", "Gaël\nPhone +19413109288")])
+        base = self._base(tmp_path, [("Gaël", "Gaël\nPhone +15555550103")])
         assert _resolve_contact("gael", db_path=base) == [] or True
         fiches = _resolve_contact("Gaël", db_path=base)
-        assert fiches and fiches[0]["phone"] == "+19413109288"
+        assert fiches and fiches[0]["phone"] == "+15555550103"
 
     def test_une_base_absente_rend_le_comportement_d_avant(self, tmp_path):
         from diapason.tools.voice_mac_tools import _resolve_contact
@@ -203,7 +203,7 @@ class TestResolutionDeContacts:
             vmt,
             "_resolve_contact",
             lambda nom, **_k: [
-                {"title": "Mom💫", "phone": "+50940459941", "email": ""}
+                {"title": "Mom💫", "phone": "+15555550101", "email": ""}
             ],
         )
         with (
@@ -215,10 +215,10 @@ class TestResolutionDeContacts:
                 recipient="maman", body="bonjour"
             )
         assert resultat.success
-        assert "Mom💫 (+50940459941)" in resultat.content
+        assert "Mom💫 (+15555550101)" in resultat.content
         assert resultat.metadata["resolved_from"] == "maman"
         # l'URI part vers le numéro, pas vers « maman »
-        assert "50940459941" in run.call_args_list[0][0][0][1]
+        assert "15555550101" in run.call_args_list[0][0][0][1]
 
     def test_plusieurs_candidats_avouent_au_lieu_de_choisir(self, monkeypatch):
         import diapason.tools.voice_mac_tools as vmt

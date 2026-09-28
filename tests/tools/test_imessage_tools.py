@@ -28,7 +28,7 @@ def _faux_chat_db(tmp_path, rangees):
         db.execute(
             "CREATE TABLE chat_message_join (chat_id INTEGER, message_id INTEGER)"
         )
-        db.execute("INSERT INTO chat VALUES (1, '+50940459941')")
+        db.execute("INSERT INTO chat VALUES (1, '+15555550101')")
         for i, (texte, de_moi) in enumerate(rangees, start=1):
             db.execute(
                 "INSERT INTO message VALUES (?, ?, ?, ?)",
@@ -43,7 +43,7 @@ class TestLireConversation:
         base = _faux_chat_db(
             tmp_path, [("Salut !", 0), ("Salut maman", 1), ("Tu viens dimanche ?", 0)]
         )
-        constat = lire_conversation("+50940459941", db_path=base)
+        constat = lire_conversation("+15555550101", db_path=base)
         assert constat["issue"] == "found"
         assert [m["texte"] for m in constat["messages"]] == [
             "Salut !",
@@ -54,13 +54,13 @@ class TestLireConversation:
 
     def test_les_rangees_sans_texte_se_comptent_sans_s_inventer(self, tmp_path):
         base = _faux_chat_db(tmp_path, [("Regarde ça", 0), (None, 0)])
-        constat = lire_conversation("+50940459941", db_path=base)
+        constat = lire_conversation("+15555550101", db_path=base)
         assert len(constat["messages"]) == 1
         assert constat["sans_texte"] == 1
 
     def test_une_base_illisible_le_dit(self, tmp_path):
         constat = lire_conversation(
-            "+509", db_path=str(tmp_path / "absente" / "chat.db")
+            "+1555", db_path=str(tmp_path / "absente" / "chat.db")
         )
         assert constat["issue"] == "unreadable"
 
@@ -76,7 +76,7 @@ class TestOutil:
             vmt,
             "_resolve_contact",
             lambda nom, **_k: [
-                {"title": "Mom💫", "phone": "+50940459941", "email": ""}
+                {"title": "Mom💫", "phone": "+15555550101", "email": ""}
             ],
         )
         monkeypatch.setattr("diapason.tools.imessage_tools._DB_PAR_DEFAUT", base)
@@ -95,7 +95,7 @@ class TestOutil:
             r = IMessageConversationTool().execute(contact="maman")
         assert r.success
         lire.assert_called_once()
-        assert lire.call_args[0][0] == "+50940459941"  # le numéro résolu
+        assert lire.call_args[0][0] == "+15555550101"  # le numéro résolu
         assert "Mom💫" in r.content and "Tu viens dimanche ?" in r.content
 
     def test_sans_acces_disque_le_remede_est_nomme(self, monkeypatch):
@@ -104,7 +104,7 @@ class TestOutil:
         monkeypatch.setattr(
             vmt,
             "_resolve_contact",
-            lambda nom, **_k: [{"title": "Mom💫", "phone": "+509", "email": ""}],
+            lambda nom, **_k: [{"title": "Mom💫", "phone": "+1555", "email": ""}],
         )
         with patch(
             "diapason.tools.imessage_tools.lire_conversation",

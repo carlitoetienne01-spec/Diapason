@@ -14,7 +14,7 @@
     {
       "route": "/v1/succes/tasks?include_done=true",
       "statut": 200,
-      "octets": 840823,
+      "octets": "plusieurs centaines de Ko (foyer réel, non reproduit)",
       "temps_ms": [
         56.6,
         19.2,
@@ -25,7 +25,7 @@
     {
       "route": "/v1/succes/notes",
       "statut": 200,
-      "octets": 965671,
+      "octets": "plusieurs centaines de Ko (foyer réel, non reproduit)",
       "temps_ms": [
         7.14,
         4.21,
@@ -36,7 +36,7 @@
     {
       "route": "/v1/succes/projects",
       "statut": 200,
-      "octets": 3361,
+      "octets": "quelques Ko (foyer réel, non reproduit)",
       "temps_ms": [
         2.94,
         1.98,
@@ -47,7 +47,7 @@
     {
       "route": "/v1/succes/dashboard",
       "statut": 200,
-      "octets": 4488,
+      "octets": "quelques Ko (foyer réel, non reproduit)",
       "temps_ms": [
         15.8,
         14.57,
@@ -146,8 +146,8 @@
     }
   ],
   "historique": {
-    "messages": 24,
-    "caracteres": 17300
+    "messages": "quelques dizaines (non reproduit)",
+    "caracteres": "plus de dix mille (non reproduit)"
   },
   "date": "2026-09-19",
   "timezone": "America/Toronto",

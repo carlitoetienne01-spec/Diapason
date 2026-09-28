@@ -28,11 +28,11 @@ class TestAttraper:
             "/succes/projects",
             ressource_type="project",
             ressource_id="p1",
-            ressource_titre="Zéro à Héro",
+            ressource_titre="Carnet de voyage",
         )
         objet = pp.attraper()
         assert objet.type == "project" and objet.id == "p1"
-        assert objet.titre == "Zéro à Héro"
+        assert objet.titre == "Carnet de voyage"
 
     def test_sans_element_selectionne_on_attrape_l_ecran(self):
         """« Reprends ça là-bas » a un sens même sans élément précis."""

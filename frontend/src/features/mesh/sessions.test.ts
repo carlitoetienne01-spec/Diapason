@@ -129,9 +129,9 @@ describe('phraseDeFermeture — le résultat rendu par le serveur (§100)', () =
 
 describe('adresseDInvitation — l’adresse à saisir, jamais devinée', () => {
   it('rend l’adresse https lue dans [tailnet] adresse', () => {
-    expect(adresseDInvitation(invitation({ tailnetAddress: 'https://atelier.tail6efbba.ts.net' }))).toEqual({
+    expect(adresseDInvitation(invitation({ tailnetAddress: 'https://mac.tail0000.ts.net' }))).toEqual({
       type: 'adresse',
-      adresse: 'https://atelier.tail6efbba.ts.net',
+      adresse: 'https://mac.tail0000.ts.net',
     });
   });
 
@@ -144,7 +144,7 @@ describe('adresseDInvitation — l’adresse à saisir, jamais devinée', () => 
   });
 
   it('n’affiche pas une adresse en clair ou mal formée', () => {
-    expect(adresseDInvitation(invitation({ tailnetAddress: 'http://atelier.ts.net' }))).toEqual({ type: 'nonPosee' });
+    expect(adresseDInvitation(invitation({ tailnetAddress: 'http://mac.ts.net' }))).toEqual({ type: 'nonPosee' });
     expect(adresseDInvitation(invitation({ tailnetAddress: 'https://a b' }))).toEqual({ type: 'nonPosee' });
   });
 });

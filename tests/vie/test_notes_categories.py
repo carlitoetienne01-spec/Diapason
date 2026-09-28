@@ -52,9 +52,9 @@ class TestCategoriesDeNotes:
         _note(db, "Un", category="Ecole")
         _note(db, "Deux", category="Ecole")
         db.order_note_categories(["Ecole"])
-        assert db.rename_note_category("Ecole", "La Cité") == 2
-        assert db.list_note_categories() == ["La Cité"]
-        assert all(n["category"] == "La Cité" for n in db.list_notes())
+        assert db.rename_note_category("Ecole", "La Forêt") == 2
+        assert db.list_note_categories() == ["La Forêt"]
+        assert all(n["category"] == "La Forêt" for n in db.list_notes())
 
     def test_dissoudre_rend_les_notes_sans_categorie_sans_les_supprimer(
         self, db
@@ -81,8 +81,8 @@ class TestCategoriesDeNotes:
 
 class TestNoteRattacheeAUnProjet:
     def test_le_lien_se_pose_et_le_projet_inexistant_est_refuse(self, db) -> None:
-        projet = db.create_project({"name": "La Cité"})
-        note = _note(db, "Immigration", projectId=projet["id"])
+        projet = db.create_project({"name": "La Forêt"})
+        note = _note(db, "Inventaire", projectId=projet["id"])
         assert note["projectId"] == projet["id"]
         with pytest.raises(VieError):
             _note(db, "Perdue", projectId="proj_fantome")

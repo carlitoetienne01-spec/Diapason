@@ -108,7 +108,7 @@ Essais locaux avec **qwen3:14b**, sur l'historique de la capture :
 Ces temps mesurent des essais ponctuels, pas une garantie de rapidité. La
 génération du programme reste lente sur ce modèle. Les essais ne valident
 pas la fiabilité factuelle générale du modèle (notamment l'autre réponse
-visible sur la capture, relative à Haïti).
+visible sur la capture, sur un autre sujet).
 
 La suite Python complète passe : **10 061 réussis, 40 ignorés**. Elle inclut
 le parcours SSE avec une trousse volumineuse, le choix cliquable après une

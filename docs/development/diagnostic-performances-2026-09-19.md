@@ -10,13 +10,14 @@ pas enregistré de nouveaux messages dans les discussions.
 
 ## Suite du 20 septembre 2026 — ce que les lots n'avaient pas vu
 
-Deux tours réels du matin, télémétrie des messages et journal d'Ollama :
+Deux tours réels du matin (les phrases ne sont pas reproduites ici), télémétrie des
+messages et journal d'Ollama :
 
 | Tour | Modèle | Total | Premier texte | Passages Ollama |
 |---|---|---:|---:|---|
-| « Qui est le président actuel d'Haïti ? » | qwen3.8:27b-mlx | 56,6 s | 47,5 s | 37,4 s (décide `web_search`) + 18,0 s |
-| « Que veut dire "Self Aware" en français ? » | qwen3.8:27b-mlx | 89,4 s | **88,3 s** | 53,2 s + 36,2 s |
-| « Ouvre moi Youtube et joue la musique Self Away » | voie éclair, sans modèle | 1,2 s | 1,1 s | aucun |
+| Question d'actualité sur un chef d'État | qwen3.8:27b-mlx | 56,6 s | 47,5 s | 37,4 s (décide `web_search`) + 18,0 s |
+| Traduction d'une expression anglaise | qwen3.8:27b-mlx | 89,4 s | **88,3 s** | 53,2 s + 36,2 s |
+| Commande YouTube avec un titre de musique | voie éclair, sans modèle | 1,2 s | 1,1 s | aucun |
 
 Trois causes, trois réponses, dans l'ordre des commits :
 
@@ -35,7 +36,7 @@ Trois causes, trois réponses, dans l'ordre des commits :
    « onglets » amorcent le même outil) ; un suivi court n'hérite du sujet que
    s'il interroge ou enchaîne et que le tour précédent a réellement lu.
 2. **Le 27b ne tient pas sur ce Mac.** 18 à 26 Go résidents pour 32 Go, 10,5
-   libres au chargement (journal d'Ollama 10:54:14) ; la première passe après
+   libres au chargement (journal d'Ollama) ; la première passe après
    chargement a duré 1 min 38 s. Le classificateur marquait ces questions
    « trivial » (0,06) mais ne changeait que le budget de jetons — ses motifs
    sont anglais, en français presque tout est trivial. `server/tour_leger.py`
@@ -1172,7 +1173,8 @@ sont identiques. Activation locale uniquement, sans publication GitHub.
 
 Changements vérifiés sur le serveur et dans le vrai moteur WebKit du Mac :
 
-- La liste des tâches passe de **1 405 SELECT pour 702 tâches à deux SELECT**
+- La liste des tâches passe de **deux SELECT par tâche (plusieurs centaines de
+  tâches) à deux SELECT**
   groupés dans le même instantané SQLite. Les champs, carnets, rangs et arbres
   de sous-tâches restent complets ; aucune tâche terminée n’est retirée du
   contrat. Un test compare le résultat groupé aux lectures détaillées.
@@ -1203,9 +1205,9 @@ Changements vérifiés sur le serveur et dans le vrai moteur WebKit du Mac :
 
 | Route / résultat | Avant | Après |
 |---|---:|---:|
-| Charge utile des cartables | 1 101 391 octets | **5 799 octets**, −99,47 % |
+| Charge utile des cartables | plus d'un Mo | **quelques Ko**, −99 % |
 | Liste des tâches, durées successives | 62,25 / 17,56 / 14,64 ms | 58,49 / 11,74 / 10,15 ms |
-| Charge utile des tâches | 840 823 octets | 840 823 octets, contenus préservés |
+| Charge utile des tâches | plusieurs centaines de Ko | la même, contenus préservés |
 
 Le résumé des notes n’accélère **pas** la seule réponse HTTP : analyser leur
 HTML côté serveur prend environ 23 ms ici, contre environ 3 à 4 ms pour rendre
@@ -1369,13 +1371,15 @@ initiale avec le temps nécessaire pour rédiger plusieurs centaines de lignes.
 |---|---:|---:|---:|---:|
 | Question courte | 0,399 s | 1,984 s | 0,371 s | 18,3 jetons/s |
 | Même question, entrée identique | 0,094 s | 1,673 s | 0,082 s | 18,4 jetons/s |
-| Historique « Anglais », nouveau préfixe | 15,873 s | 16,694 s | 15,857 s | 17,1 jetons/s |
+| Historique réel, nouveau préfixe | 15,873 s | 16,694 s | 15,857 s | 17,1 jetons/s |
 | Exactement la même entrée | 0,116 s | 0,903 s | 0,099 s | 17,8 jetons/s |
 | Une seconde changée dans la date du préfixe | 16,252 s | 17,023 s | 16,213 s | 18,2 jetons/s |
 | Répétition de la dernière entrée, avec concurrence extérieure | délai dépassé | 100 s | non disponible | non disponible |
 
-L’historique contient 24 messages et 17 300 caractères. Les trois essais
-terminés avec cet historique ont reçu un contexte de 5 910 jetons selon Ollama.
+L’historique compte quelques dizaines de messages et plus de dix mille
+caractères (les comptes exacts ne sont pas reproduits ici). Les trois essais
+terminés avec cet historique ont reçu un contexte de quelques milliers de
+jetons selon Ollama.
 Ils ajoutent une petite consigne et une question courte ; ils **n’incluent pas**
 la trousse d’outils, les fichiers de personnalité et la recherche mémoire de
 l’application. Ils isolent le coût du contexte ; ce n’est pas un benchmark
@@ -1403,10 +1407,10 @@ réception du corps, mais ni son rendu React ni les ponts Tauri/WebKit.
 | Lecture | Médiane | Étendue | Corps reçu |
 |---|---:|---:|---:|
 | Santé | 15,79 ms | 12,48–18,52 ms | 15 octets |
-| Tâches, terminées incluses | 19,20 ms | 16,41–56,60 ms | 840 823 octets |
-| Notes | 4,78 ms | 4,21–7,14 ms | 965 671 octets |
-| Projets | 1,98 ms | 1,75–2,94 ms | 3 361 octets |
-| Tableau de bord | 14,57 ms | 12,32–15,80 ms | 4 488 octets |
+| Tâches, terminées incluses | 19,20 ms | 16,41–56,60 ms | plusieurs centaines de Ko |
+| Notes | 4,78 ms | 4,21–7,14 ms | plusieurs centaines de Ko |
+| Projets | 1,98 ms | 1,75–2,94 ms | quelques Ko |
+| Tableau de bord | 14,57 ms | 12,32–15,80 ms | quelques Ko |
 
 Ces résultats ne révèlent pas une base SQLite lente au repos. Les corps des
 notes et tâches sont toutefois volumineux pour afficher une liste ou cinq
@@ -1427,7 +1431,7 @@ code. L’importance en millisecondes reste à mesurer quand elle n’est pas do
 | P1 | Trousse très large sur les demandes ordinaires | 45 noms dans la trousse par défaut, aucun remplacement configuré. Le filtre retire les outils seulement pour des salutations/acquiescements. Le nombre réellement disponible et son coût en jetons doivent être instrumentés. | Utiliser les outils adaptés au besoin, avec une voie d’élargissement. Une demande sur les tâches, l’agenda, les fichiers ou le Web doit toujours pouvoir consulter ses sources réelles. |
 | P1 | Travaux d’IA supplémentaires | Mémoire automatique activée : extraction en arrière-plan avec le modèle par défaut, jusqu’à 512 jetons. Réflexion activée avec `qwen3:14b` : brouillon jusqu’à 700 jetons puis réponse, seulement sur les chemins et demandes éligibles sans outils. | Donner la priorité à la conversation ; reporter/regrouper les extractions ; réserver la double passe à un bénéfice mesuré. Ces mécanismes ne sont pas la cause démontrée de chaque attente. |
 | P1 | Réponses longues : plusieurs coûts ajoutés récemment | Jusqu’à trois passes, amorce retenue jusqu’à 2 048 caractères ou détection d’une liste/table, possible régénération d’un refus technique. Ces garde-fous améliorent la complétude mais peuvent retarder le premier texte. | Réduire la rétention, annoncer honnêtement l’avancement, reprendre uniquement sur une preuve d’incomplétude, borner temps et budget. Valider les données produites, pas seulement le nombre de lignes. |
-| P1 | Réécriture du stockage pendant le flux | `updateLastAssistant` relit/parcourt puis sérialise toutes les conversations dans `localStorage`, jusqu’à une fois toutes les 80 ms. Deux conversations, 38 messages et environ 27,7 Ko de messages côté serveur aujourd’hui : coût actuel non chronométré, croissance certaine du travail avec l’historique. | Garder l’état courant en mémoire, écrire uniquement les changements à une cadence distincte de l’affichage, assurer la sauvegarde finale et la reprise après incident. Préserver la fusion serveur/mini-panneau. |
+| P1 | Réécriture du stockage pendant le flux | `updateLastAssistant` relit/parcourt puis sérialise toutes les conversations dans `localStorage`, jusqu’à une fois toutes les 80 ms. Quelques conversations, quelques dizaines de messages et quelques dizaines de Ko côté serveur ce jour-là : coût actuel non chronométré, croissance certaine du travail avec l’historique. | Garder l’état courant en mémoire, écrire uniquement les changements à une cadence distincte de l’affichage, assurer la sauvegarde finale et la reprise après incident. Préserver la fusion serveur/mini-panneau. |
 | P1 | Rendu du chat très sollicité | État modifié à chaque fragment et chronomètre toutes les 100 ms ; `ChatArea` rend toute la liste ; `MessageBubble` n’est pas mémorisé ; Markdown, coloration et mathématiques reparcourent les réponses. Le défilement lit la hauteur puis déplace la vue. | Regrouper les fragments, isoler le chronomètre, stabiliser les objets/messages inchangés, mémoriser les réponses terminées, regrouper les mesures de mise en page. Profiler avant une virtualisation. |
 | P2 | Listes lourdes et chargements couplés | Corps complets des notes/carnets transférés. Tâches attend aussi projets et gabarits via `Promise.all`. Le cache existant ne coordonne pas les requêtes déjà en vol. | Résumés pour les listes et détails à l’ouverture ; afficher les données essentielles dès réception ; mutualiser les lectures et ignorer les réponses périmées. Maintenir les comptes et filtres exacts. |
 | P2 | Réessais trop généraux | Le client Succès peut répéter jusqu’à quatre fois toute méthode après une erreur réseau, et attend aussi sur 429 ; annulation non distinguée. Une mutation peut avoir réussi avant la perte de réponse. | Réessais limités aux cas sûrs, respect immédiat des annulations, identifiants d’opération pour les mutations qui nécessitent une reprise. |

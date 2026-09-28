@@ -1,10 +1,10 @@
 """La compression du JSON de l'API — et jamais celle d'un flux.
 
 Chantier de la fluidité, lot 1 (26/09/2026). La liste des tâches partait
-brute au téléphone (365 834 octets au banc, 825 Ko chez Carlito), relue par
-trois pages à 10 Mbit/s. Chaque test nomme ce qui arriverait sans la règle
-qu'il tient — et la règle qui ne se négocie pas : le chat et la voix restent
-mot à mot.
+brute au téléphone (365 834 octets au banc, plus du double sur un foyer
+réel), relue par trois pages à 10 Mbit/s. Chaque test nomme ce qui
+arriverait sans la règle qu'il tient — et la règle qui ne se négocie pas :
+le chat et la voix restent mot à mot.
 """
 
 from __future__ import annotations

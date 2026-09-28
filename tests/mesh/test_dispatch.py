@@ -406,14 +406,14 @@ class TestPrivacyBoundary:
         """Étape 8 du plan mobile (26/09/2026) : ipaddress tient 100.64.0.0/10
         pour ni privé ni public, et un envoi par Tailscale était refusé en
         local_only comme s'il partait sur Internet. Ici le noyau route le /10
-        par l'interface du tailnet (source 100.90.245.46, celle d'atelier)."""
+        par l'interface du tailnet (source 100.101.102.103, celle du Mac)."""
         from diapason.mesh import transport
 
         monkeypatch.setattr(
-            transport, "_source_address_for", lambda _ip: "100.90.245.46"
+            transport, "_source_address_for", lambda _ip: "100.101.102.103"
         )
         assert address_is_private("100.100.1.1"), "une adresse Tailscale"
-        assert address_is_private("http://100.90.245.46:8001")
+        assert address_is_private("http://100.101.102.103:8001")
         assert address_is_private("100.64.0.1"), "premier du /10"
         assert address_is_private("100.127.255.254"), "dernier du /10"
         assert address_is_private("http://[fd7a:115c:a1e0::1]:8001"), "Tailscale IPv6"
@@ -424,8 +424,8 @@ class TestPrivacyBoundary:
     @pytest.mark.parametrize("source", ["192.168.0.104", None])
     def test_le_nat_des_operateurs_n_est_pas_le_tailnet(self, monkeypatch, source):
         """100.64.0.0/10 est AUSSI le NAT des opérateurs (RFC 6598). Constaté
-        le 26/09/2026 sur atelier : Tailscale ne route que ses pairs (le
-        téléphone, 100.74.116.36, part de 100.90.245.46), et 100.100.1.1
+        le 26/09/2026 sur le Mac : Tailscale ne route que ses pairs (le
+        téléphone, un pair, part de l'adresse 100.x du Mac), et 100.100.1.1
         part de 192.168.0.104 par en0 — vers le fournisseur, pas le
         tailnet. Une telle adresse n'est pas « le réseau de l'utilisateur »,
         ni pour pousser une commande, ni pour jumeler sous local_only."""
@@ -452,7 +452,7 @@ class TestPrivacyBoundary:
         from diapason.mesh import transport
 
         monkeypatch.setattr(
-            transport, "_source_address_for", lambda _ip: "100.90.245.46"
+            transport, "_source_address_for", lambda _ip: "100.101.102.103"
         )
 
         monkeypatch.setattr(local_mode, "local_only", lambda config=None: True)

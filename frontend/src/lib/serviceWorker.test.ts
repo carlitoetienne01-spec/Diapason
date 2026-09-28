@@ -35,11 +35,11 @@ describe('gererLeServiceWorker', () => {
 
   it('n’inscrit rien au téléphone, et désinscrit ce qu’un chargement précédent avait inscrit', async () => {
     const { conteneur, desinscrire } = faux(2);
-    const { caches, effaces } = fauxCaches(['workbox-precache-v2-https://atelier/', 'autre-cache']);
+    const { caches, effaces } = fauxCaches(['workbox-precache-v2-https://mac/', 'autre-cache']);
     await expect(gererLeServiceWorker({ conteneur, caches, servi: true, actif: true })).resolves.toBe('desinscrit');
     expect(conteneur.register, 'une inscription au téléphone servirait un bundle en cache').not.toHaveBeenCalled();
     expect(desinscrire).toHaveBeenCalledTimes(2);
-    expect(effaces, 'seul le précache de Workbox est vidé').toEqual(['workbox-precache-v2-https://atelier/']);
+    expect(effaces, 'seul le précache de Workbox est vidé').toEqual(['workbox-precache-v2-https://mac/']);
   });
 
   it('une désinscription qui échoue n’arrête pas les autres', async () => {

@@ -25,9 +25,10 @@ from diapason.tools._stubs import BaseTool, ToolSpec
 
 logger = logging.getLogger(__name__)
 
-# ca-fr : Carlito est à Ottawa et écrit en français ; ``us-en`` classait la
-# page anglaise de Trudeau devant tout. DIAPASON_SEARCH_REGION pour un autre
-# poste. Le repli sans région reste en fin de chaîne.
+# ca-fr : le poste du propriétaire est au Canada et écrit en français ;
+# ``us-en`` classait la page anglaise de Trudeau devant tout.
+# DIAPASON_SEARCH_REGION pour un autre poste. Le repli sans région reste en
+# fin de chaîne.
 REGION_PAR_DEFAUT = "ca-fr"
 # Un ordre fixe, pour qu'une même question rende les mêmes sources et que
 # l'on sache qui a répondu. Sondé le 20/09 : duckduckgo (texte) refusait la
@@ -80,7 +81,8 @@ def domaine(url: str) -> str:
 def date_locale(brute: str) -> str:
     """AAAA-MM-JJ dans le fuseau du poste ; ddgs rend de l'UTC.
 
-    Revue du 20/09 : « 1 hour ago » lu à 23:50 à Ottawa donnait le lendemain.
+    Revue du 20/09 : « 1 hour ago » lu peu avant minuit, heure locale, donnait
+    le lendemain.
     Revue du 21/09 : la ``published_date`` de Tavily est en RFC 2822 (« Tue,
     11 Mar 2025 17:00:00 GMT ») et devenait « Tue, 11 Ma » — une forme que
     l'analyseur de web_read ne lit pas vaut « pas de date ».

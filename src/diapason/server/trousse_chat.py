@@ -101,9 +101,9 @@ _GROUPES = (
     (r"\b(calcule|calcul|combien)\b|\d\s*[+*/×÷]\s*\d", ("calculator",)),
 )
 _INDICES = [(re.compile(motif), noms) for motif, noms in _GROUPES]
-# 20/09/2026 : « Que veut dire "Self Aware" en français ? » a coûté 89 s sur
+# 20/09/2026 : la traduction d'une expression anglaise a coûté 89 s sur
 # le 27b, dont 88 s sans un mot à l'écran. Le tour précédent parlait de
-# musique (« Ouvre moi Youtube et joue… ») et un web_search traînait dans
+# musique (une commande YouTube) et un web_search traînait dans
 # l'historique : la trousse était réduite, la réponse directe — juste — a
 # été retenue puis rejouée avec les 44 schémas (53 s + 36 s, journal
 # d'Ollama). Une relecture n'a de sens que si l'absence d'appel rend la
@@ -237,8 +237,8 @@ def _amorcer(messages: Sequence[Message]) -> tuple[set[str], bool]:
     """Les schémas à précharger, et si la demande courante est RECONNUE.
 
     Seule une demande reconnue justifie de différer les autres schémas.
-    Revue du 20/09/2026 : « Mets la musique Self Aware sur Spotify » puis
-    « Est-ce que Carlito m'a répondu ? » — la demande précédente, fusionnée
+    Revue du 20/09/2026 : une demande de musique sur Spotify, puis une
+    question sur la réponse d'un contact — la demande précédente, fusionnée
     parce que la courante est courte, réduisait la trousse à Spotify, et le
     modèle répondait « non » sans lire les messages. La précédente ne fait
     plus qu'AJOUTER des schémas ; elle ne rend pas la courante connue.

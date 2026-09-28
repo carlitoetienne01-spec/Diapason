@@ -8,7 +8,7 @@
   },
   "before": {
     "tasks?include_done=true": {
-      "bytes": 840823,
+      "bytes": "plusieurs centaines de Ko (foyer réel, non reproduit)",
       "ms": [
         62.25,
         17.56,
@@ -16,7 +16,7 @@
       ]
     },
     "notes?search=": {
-      "bytes": 1101391,
+      "bytes": "plus d'un Mo (foyer réel, non reproduit)",
       "ms": [
         6.9,
         3.15,
@@ -24,7 +24,7 @@
       ]
     },
     "projects?search=": {
-      "bytes": 3361,
+      "bytes": "quelques Ko (foyer réel, non reproduit)",
       "ms": [
         2.22,
         1.43,
@@ -34,7 +34,7 @@
   },
   "after": {
     "tasks?include_done=true": {
-      "bytes": 840823,
+      "bytes": "plusieurs centaines de Ko (foyer réel, non reproduit)",
       "ms": [
         58.49,
         11.74,
@@ -42,7 +42,7 @@
       ]
     },
     "notes?search=": {
-      "bytes": 1101391,
+      "bytes": "plus d'un Mo (foyer réel, non reproduit)",
       "ms": [
         7.44,
         4.26,
@@ -50,7 +50,7 @@
       ]
     },
     "notes/resumes?search=": {
-      "bytes": 5799,
+      "bytes": "quelques Ko (foyer réel, non reproduit)",
       "ms": [
         26.34,
         22.67,
@@ -58,7 +58,7 @@
       ]
     },
     "projects?search=": {
-      "bytes": 3361,
+      "bytes": "quelques Ko (foyer réel, non reproduit)",
       "ms": [
         2.32,
         1.55,
@@ -66,9 +66,9 @@
       ]
     }
   },
-  "notesPayloadReductionPercent": 99.47,
+  "notesPayloadReductionPercent": 99,
   "taskSqlSelects": {
-    "beforeFor702Tasks": 1405,
+    "beforeForAllTasks": "deux lectures par tâche, plus une (plusieurs centaines de tâches)",
     "afterForNonemptyList": 2,
     "regressionTestTasks": 24
   },
@@ -113,7 +113,7 @@
   "limits": [
     "Trois GET ne mesurent pas un p95 représentatif ; le premier de chaque série n’est pas un démarrage à froid contrôlé.",
     "Le résumé des notes économise le transfert et le travail côté client ; le calcul HTML côté serveur prend environ 23 ms, contre environ 3 à 4 ms pour la liste complète.",
-    "Les tâches conservent leur contenu complet et leurs sous-tâches : même charge utile de 840823 octets.",
+    "Les tâches conservent leur contenu complet et leurs sous-tâches : même charge utile qu’avant.",
     "La suspension des sondes est vérifiée par tests de visibilité, pas par une campagne CPU/GPU au repos.",
     "WebView2 Windows, coût graphique de production et saturation SQLite restent à mesurer.",
     "Le jeu Projets artificiel ne vérifie pas le recomptage métier des tâches ; ces règles restent couvertes par les tests serveur."
@@ -125,9 +125,9 @@
     },
     "/v1/succes/notes/resumes": {
       "status": 200,
-      "bytes": 5799,
+      "bytes": "quelques Ko (foyer réel, non reproduit)",
       "sansContenu": true,
-      "nombre": 12
+      "nombre": "foyer réel, non reproduit"
     },
     "interfaceAppEtServeurIdentique": true,
     "sha256Interface": "428efa1fa33482e7d3ce922bad2607ec0a4fe0a937d10e2b5014c20503e3959a",

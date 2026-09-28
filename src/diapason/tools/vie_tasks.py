@@ -59,7 +59,7 @@ class VieTasksTool(MagasinParesseux, BaseTool):
                 "ID or by title; an ambiguous title is refused with the candidates "
                 "— ask the user which one, never guess. "
                 # Sans cette phrase, un modèle 9b appelle list sans date et
-                # reçoit les quatre-vingt-cinq tâches d'un coup — dont il ne
+                # reçoit des dizaines de tâches d'un coup — dont il ne
                 # voit qu'un extrait, et sur lequel il répond de travers. La
                 # question posée est presque toujours datée (« aujourd'hui »,
                 # « demain », « cette semaine ») : le dire ici coûte une ligne
@@ -191,8 +191,9 @@ class VieTasksTool(MagasinParesseux, BaseTool):
                     raise VieError(
                         "La page contient de 1 à 12 tâches ; offset doit être positif."
                     )
-                # 27/09/2026 : le modèle comptait les 727 tâches de toutes
-                # les années. Le total porte sur la période AVANT pagination.
+                # 27/09/2026 : le modèle annonçait le total de toutes les
+                # années, pas celui de la période demandée. Le total porte sur
+                # la période AVANT pagination.
                 page = tasks[offset : offset + limite] if action == "list" else []
                 resumes = [
                     {

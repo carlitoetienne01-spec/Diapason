@@ -66,8 +66,8 @@ def test_un_detenteur_sur_une_adresse_tierce_est_vu() -> None:
     les anciennes sondes, qui essayaient quatre adresses littérales, rendaient
     « libre » — et ``diapason start`` lançait un second serveur.
     """
-    # 24/09/2026 : le nom de la machine ne se résout pas toujours —
-    # « MacBookeCarlito », sans « .local », dépend des domaines de recherche du
+    # 24/09/2026 : le nom de la machine ne se résout pas toujours — le nom
+    # local du Mac, sans « .local », dépend des domaines de recherche du
     # réseau du moment. Le test levait alors gaierror et rougissait la
     # commande de vérification du dépôt au gré du Wi-Fi. Une adresse
     # introuvable est le même cas qu'une adresse inutilisable, déjà sauté

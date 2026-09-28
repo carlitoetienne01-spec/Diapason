@@ -546,7 +546,7 @@ class TestAttraperEtDeposer:
             "/succes/projects",
             ressource_type="project",
             ressource_id="p1",
-            ressource_titre="Zéro à Héro",
+            ressource_titre="Carnet de voyage",
         )
 
     def _appareil(self, nom, etat, capacites=("app.show_resource", "app.navigate")):
@@ -593,7 +593,7 @@ class TestAttraperEtDeposer:
         assert resultat["done"] is False
         assert resultat["reason"] == "ALL_OFFLINE"
         assert "PC du bureau" in resultat["message"]
-        assert "Zéro à Héro" in resultat["message"]
+        assert "Carnet de voyage" in resultat["message"]
 
     def test_deux_candidats_font_poser_la_question(self):
         """§81 : deux appareils joignables, aucune direction mesurée — on
@@ -670,7 +670,7 @@ class TestTrancherEntreDeuxAppareils:
             "/succes/projects",
             ressource_type="project",
             ressource_id="p1",
-            ressource_titre="Zéro à Héro",
+            ressource_titre="Carnet de voyage",
         )
 
     def _appareil(self, nom, capacites=("app.show_resource", "app.navigate")):
@@ -723,7 +723,7 @@ class TestTrancherEntreDeuxAppareils:
         self._poser_la_question(client)
         attente = client.get("/v1/gestures/state").json()["pendingDrop"]
         assert attente is not None
-        assert attente["object"]["title"] == "Zéro à Héro"
+        assert attente["object"]["title"] == "Carnet de voyage"
         assert {c["name"] for c in attente["candidates"]} == {"iPad", "PC"}
         assert all(c["deviceId"] for c in attente["candidates"])
         assert 0 < attente["secondsLeft"] <= 45.0
@@ -759,7 +759,7 @@ class TestTrancherEntreDeuxAppareils:
     def test_la_main_ne_garde_pas_de_fantome_apres_un_depot(self, client):
         """`held` venait de la session, le presse-papiers de son module :
         les deux pouvaient se contredire, et le voyant annonçait « dans ta
-        main : Zéro à Héro » sur une main vide."""
+        main : Carnet de voyage » sur une main vide."""
         jeton = self._poser_la_question(client)["token"]
         with patch(
             "diapason.mesh.dispatch.dispatch_command",
@@ -840,7 +840,7 @@ class TestTrancherEntreDeuxAppareils:
         self._poser_la_question(client)
         corps = client.post("/v1/gestures/drop/cancel").json()
         assert corps["cancelled"] is True
-        assert "Zéro à Héro" in corps["message"]
+        assert "Carnet de voyage" in corps["message"]
         assert pp.tenu() is None
         assert client.get("/v1/gestures/state").json()["pendingDrop"] is None
 
@@ -1180,14 +1180,14 @@ class TestLeJournalDesGestes:
             "/succes/projects",
             ressource_type="project",
             ressource_id="p1",
-            ressource_titre="Zéro à Héro",
+            ressource_titre="Carnet de voyage",
         )
         client.post("/v1/gestures/arm")
-        gr._noter("attrapé", "Zéro à Héro", reussi=True)
+        gr._noter("attrapé", "Carnet de voyage", reussi=True)
         journal = client.get("/v1/gestures/state").json()["journal"]
         assert len(journal) == 1
         assert journal[0]["what"] == "attrapé"
-        assert journal[0]["detail"] == "Zéro à Héro"
+        assert journal[0]["detail"] == "Carnet de voyage"
         assert journal[0]["ok"] is True
         assert ":" in journal[0]["at"], "l'heure doit être lisible"
         ca.oublier()

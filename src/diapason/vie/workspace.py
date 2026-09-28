@@ -670,7 +670,7 @@ class VieWorkspaceStore(VieStore):
         """Les tâches vivantes d'un projet, sous-tâches comprises.
 
         `list_tasks` n'a jamais filtré par projet : l'outil vocal aurait
-        résolu « budget » parmi les quatre-vingt-cinq tâches de toutes les
+        résolu « budget » parmi les dizaines de tâches de toutes les
         listes, et relié deux tâches de projets différents.
         """
         self.get_project(project_id)

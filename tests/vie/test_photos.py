@@ -44,7 +44,7 @@ def magasin(tmp_path: Path) -> ViePhotosStore:
 
 @pytest.fixture
 def projet(magasin: ViePhotosStore) -> dict:
-    return magasin.create_project({"name": "La Cité"})
+    return magasin.create_project({"name": "La Forêt"})
 
 
 class TestLaSignature:
@@ -400,8 +400,8 @@ class TestLesRoutes:
         """Étape 5 du plan 1b : les chemins de photos sont RELATIFS en base.
 
         Le 25/09/2026, la route /ocr passait la valeur brute de la base à
-        Vision, qui la résolvait depuis le dossier courant — /Users/carlito.e
-        pour launchd : 502 sur toutes les photos migrées, et l'OCR automatique
+        Vision, qui la résolvait depuis le dossier courant — le dossier
+        personnel pour launchd : 502 sur toutes les photos migrées, et l'OCR automatique
         des nouvelles échouait sans un mot."""
         import diapason.desktop.ocr as ocr
 

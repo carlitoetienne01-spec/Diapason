@@ -319,7 +319,7 @@ lui ferait envoyer quelque chose qu'il ne sait pas nommer.
 
 | Pièce | Où |
 |---|---|
-| `Dans la main (geste) : le projet « Zéro à Héro ».` | `presse_papiers_spatial.decrire` |
+| `Dans la main (geste) : le projet « Carnet de voyage ».` | `presse_papiers_spatial.decrire` |
 | Injection côté voix (message système, en fin de contexte) | `local_voice._turn_messages` |
 | Injection côté chat (concaténée à l'ancre, en tête) | `routes._ensure_identity_prompt` |
 | L'outil | `tools/gestes_spatiaux.py`, `geste_deposer` |

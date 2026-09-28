@@ -18,8 +18,9 @@ import { STORAGE_KEY, loadTasksViewMode } from './uiPrefs';
 /**
  * 25/09/2026, étape 8 du plan de la phase 1b : `diapason-succes-*` devient
  * `diapason-vie-*`. Sans copie, les préférences des pages et les rappels
- * d'habitude du jour repartaient ; sans suppression, 1,7 Mo d'anciens caches
- * s'ajoutaient au budget du cache renommé et dépassaient les 5 Mo de WebKit —
+ * d'habitude du jour repartaient ; sans suppression, les anciens caches d'un
+ * foyer réel (de l'ordre de 2 Mo) s'ajoutaient au budget du cache renommé et
+ * dépassaient les 5 Mo de WebKit —
  * `saveSettings`, écrit sans `try`, aurait alors perdu les réglages.
  */
 
@@ -121,9 +122,10 @@ describe('migrerStockage', () => {
   });
 
   it('laisse la place aux caches neufs et aux réglages sous un quota de 5 Mo', () => {
-    // 3,5 Mo d'anciens caches (le 25/09/2026 : 1,7 Mo mesurés, deux fois
-    // plus pour la marge), puis ce que le lancement écrit vraiment : tâches
-    // (1,62 Mo) et notes (1,86 Mo), et les réglages d'apparence.
+    // 3,5 Mo d'anciens caches (bien plus qu'un foyer réel n'en gardait le
+    // 25/09/2026, pour la marge), puis ce qu'un lancement écrit : tâches et
+    // notes à 2 Mo chacune — au-dessus des listes d'un foyer réel, sous le
+    // plafond par entrée —, et les réglages d'apparence.
     const store = new StockageFactice();
     store.quotaUnites = QUOTA_WEBKIT_OCTETS / OCTETS_PAR_UNITE;
     const ancien = 'a'.repeat(3_500_000 / OCTETS_PAR_UNITE / 4);
@@ -138,8 +140,8 @@ describe('migrerStockage', () => {
       planifier: (travail) => travaux.push(travail),
       empreinte: 'neuf',
     });
-    cache.ecrireCache(clesVie.taches(), 't'.repeat(1_620_000 / OCTETS_PAR_UNITE));
-    cache.ecrireCache(clesVie.notes(), 'n'.repeat(1_860_000 / OCTETS_PAR_UNITE));
+    cache.ecrireCache(clesVie.taches(), 't'.repeat(2_000_000 / OCTETS_PAR_UNITE));
+    cache.ecrireCache(clesVie.notes(), 'n'.repeat(2_000_000 / OCTETS_PAR_UNITE));
     for (const travail of travaux.splice(0)) travail();
 
     expect(store.entrees.has(PREFIXE_STOCKAGE + clesVie.taches()), 'tâches persistées').toBe(true);
@@ -164,8 +166,8 @@ describe('migrerStockage', () => {
       planifier: (travail) => travaux.push(travail),
       empreinte: 'neuf',
     });
-    cache.ecrireCache(clesVie.taches(), 't'.repeat(1_620_000 / OCTETS_PAR_UNITE));
-    cache.ecrireCache(clesVie.notes(), 'n'.repeat(1_860_000 / OCTETS_PAR_UNITE));
+    cache.ecrireCache(clesVie.taches(), 't'.repeat(2_000_000 / OCTETS_PAR_UNITE));
+    cache.ecrireCache(clesVie.notes(), 'n'.repeat(2_000_000 / OCTETS_PAR_UNITE));
     for (const travail of travaux.splice(0)) travail();
 
     const persistees = [clesVie.taches(), clesVie.notes()].filter((cle) =>

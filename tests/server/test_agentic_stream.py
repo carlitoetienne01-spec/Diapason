@@ -267,9 +267,9 @@ def test_max_tool_turns_est_respecte(tours):
 class TestObservation:
     """Ce que le MODÈLE lit d'un résultat d'outil.
 
-    ``succes_tasks(action="list")`` rend ``content = "85 tâche(s) trouvée(s)."``
+    ``succes_tasks(action="list")`` rend ``content = "12 tâche(s) trouvée(s)."``
     et met les tâches dans ``metadata``. Le modèle ne recevait que la phrase :
-    il appelait le bon outil, obtenait les quatre-vingt-cinq tâches, et n'en
+    il appelait le bon outil, obtenait des dizaines de tâches, et n'en
     voyait que le nombre. Les outils Succès étaient inutiles même branchés.
     """
 
@@ -278,11 +278,11 @@ class TestObservation:
 
         r = ToolResult(
             tool_name="succes_tasks",
-            content="85 tâche(s) trouvée(s).",
+            content="12 tâche(s) trouvée(s).",
             metadata={"tasks": [{"title": "Appeler le dentiste", "done": False}]},
         )
         vu = observation(r)
-        assert "85 tâche(s) trouvée(s)." in vu
+        assert "12 tâche(s) trouvée(s)." in vu
         assert "Appeler le dentiste" in vu, "sans ça le modèle ne sait pas LESQUELLES"
 
     def test_le_contenu_seul_suffit_quand_il_n_y_a_rien_de_plus(self):

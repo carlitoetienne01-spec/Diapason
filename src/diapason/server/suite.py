@@ -1,20 +1,20 @@
 """La suite d'une conversation hérite de son sujet.
 
-21 septembre 2026, 23 h : « Qui est le président actuel d'Haïti ? », réponse
-vérifiée en ligne — puis « Raconte-moi l'histoire de ce pays » recevait
+21 septembre 2026 : une question d'actualité sur un pays, réponse vérifiée
+en ligne — puis la demande de raconter l'histoire « de ce pays » recevait
 « il faudrait que tu me dises de quel pays tu parles ! Est-ce que tu veux
 parler de la France, du Canada, des États-Unis… ». Le fil était bien
-envoyé en entier (16 722 jetons) ; rejoué par l'API avec le même
-historique, le 9b répond « Est-ce Haïti, comme suggéré par la question
-précédente ? » — il VOIT la question d'avant et n'ose pas conclure. Avec
-une ligne qui dit que « ce pays » renvoie à l'échange précédent, il
-raconte 1804 sans hésiter.
+envoyé en entier (des milliers de jetons) ; rejoué par l'API avec le même
+historique, le 9b demandait s'il s'agissait du pays de la question
+précédente — il VOIT la question d'avant et n'ose pas conclure. Avec une
+ligne qui dit que « ce pays » renvoie à l'échange précédent, il raconte
+l'histoire du bon pays sans hésiter.
 
 Le code sait, lui, qu'une demande courte qui dit « ce pays », « cette
 équipe », « celui-ci », « parle-moi de lui », « son histoire » renvoie à
 ce qui précède : il le dit au modèle, en citant la question précédente et
 le début de sa réponse. Rien n'est deviné (§34) — le référent reste à
-résoudre par le modèle, dans deux phrases au lieu de seize mille jetons.
+résoudre par le modèle, dans deux phrases au lieu de milliers de jetons.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ from diapason.server.actualite import _plat, est_une_demande_de_verification
 # porte son sujet.
 LONGUEUR_MAX = 200
 # Ce qu'on cite de la réponse précédente : assez pour y lire le référent
-# (« Alix Didier Fils-Aimé », « les Hurricanes ») sans tout recopier.
+# (un nom de chef d'État, « les Hurricanes ») sans tout recopier.
 EXTRAIT_REPONSE = 240
 
 # Les démonstratifs qui désignent une chose dite avant — pas le temps (« ce
@@ -55,9 +55,10 @@ _RENVOI = re.compile(
 )
 _CITATION = re.compile(r"\s*\[\d+\]")
 
-# 27/09/2026 : « oui », puis « Oui tu peux me les donner » reproduisaient
-# mot pour mot un refus inventé de fournir des recettes. Les démonstratifs
-# seuls ne rattachaient pas ces accords à la demande encore dans le fil.
+# 27/09/2026 : un « oui », puis un accord plus long qui demandait de donner
+# ce qui était promis — au PLURIEL, pronom « les » —, reproduisaient mot
+# pour mot un refus inventé de fournir des recettes. Les démonstratifs seuls
+# ne rattachaient pas ces accords à la demande encore dans le fil.
 _ACCORD = re.compile(
     r"^(?=[a-z])(?:(?:oui|ouais|ok(?:ay)?|d'accord|entendu|parfait)[,!. ]*)?"
     r"(?:vas[ -]y|allez[ -]y|continue|poursuis|"

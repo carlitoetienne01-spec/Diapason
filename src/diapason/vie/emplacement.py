@@ -9,7 +9,7 @@ renommage, chacun silencieux :
   travail) pendant que l'ancien serveur tourne : ce dernier recrée une
   ``succes.db`` vide, avec un nouveau ``device_id``, et les écritures se
   coupent en deux bases ;
-- la base renommée sans ses photos : les 62 aperçus deviennent ``""``
+- la base renommée sans ses photos : tous les aperçus deviennent ``""``
   (``photos._data_url``), sans une erreur ;
 - un magasin construit avant la migration, qui garde l'ancien chemin.
 
@@ -58,8 +58,8 @@ NOM_VERROU = ".vie-migration.lock"
 DOSSIER_SAUVEGARDES = "backups"
 
 # L'attente du verrou de migration. La migration réelle est une sauvegarde
-# `conn.backup()` et un renommage : mesurée à 0,26 s pour une base de 310 Mo
-# sur ce Mac (25/09/2026 ; succes.db en pèse 311). Trente secondes laissent
+# `conn.backup()` et un renommage : mesurée à 0,26 s sur ce Mac pour une base
+# de quelques centaines de Mo (25/09/2026). Trente secondes laissent
 # cent fois la marge à un second `serve` lancé en même temps, sans qu'un
 # verrou tenu par un processus bloqué fige le démarrage indéfiniment.
 _ATTENTE_VERROU_S = 30.0
@@ -383,7 +383,8 @@ def _nom_neuf(nom: str) -> str:
     """``succes_tasks_date_idx`` → ``vie_tasks_date_idx`` ; ``idx_succes_txn_date``
     → ``idx_vie_txn_date``. Les noms d'index suivent ceux des tables : les
     laisser dériver ferait créer par le schéma neuf un second index identique
-    sur chaque table, et vie_operations pèse 306 Mo sur 311 (25/09/2026)."""
+    sur chaque table, et vie_operations fait presque toute la taille d'une
+    base réelle (25/09/2026)."""
     return nom.replace(PREFIXE_TABLES_HERITE, PREFIXE_TABLES, 1)
 
 
@@ -476,7 +477,7 @@ def _migrer_tables(data_dir: Path, base: Path) -> str | None:
 def relativiser_photo(chemin: str, data_dir: Path) -> str | None:
     """Le chemin d'une photo, relatif au dossier de données — ou None.
 
-    Les 62 photos du 25/09/2026 portent un chemin ABSOLU contenant
+    Les photos d'avant le 25/09/2026 portent un chemin ABSOLU contenant
     ``/succes-photos/`` : renommer le dossier les aurait toutes perdues.
     Relatif, le chemin survit au prochain déménagement du dossier de données.
     """

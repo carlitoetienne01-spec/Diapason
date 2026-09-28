@@ -698,7 +698,7 @@ def _oublier_la_main() -> None:
     """Vider le presse-papiers ET l'écho que l'interface en affiche.
 
     Les deux vont ensemble, toujours. Vider l'un sans l'autre laisse le
-    voyant annoncer « dans ta main : Zéro à Héro » sur une main vide — le
+    voyant annoncer « dans ta main : Carnet de voyage » sur une main vide — le
     fantôme exact que le §12 interdit.
     """
     from diapason.desktop.presse_papiers_spatial import vider

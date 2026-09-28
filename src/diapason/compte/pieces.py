@@ -5,11 +5,11 @@ Conception : ``docs/development/compte-chiffre.md`` §4.7 (collection
 plancher de 4 096 o) et §3.4 (``/pieces/*``).
 
 Une image jointe à un message voyage dans le magasin comme une chaîne
-``data:image/png;base64,…`` — 93 % du poids de ``conversations.db`` d'après
-la carte du préambule. Dans un objet, elle repartait à CHAQUE poussée de la
-conversation : une réponse qui arrive au fil de l'eau renvoyait 1,57 Mo pour
-quelques mots (§4.7). Détachée, elle part une fois par époque, et l'objet
-ne porte plus que ``"diapason-piece:<pieceId>"``.
+``data:image/png;base64,…`` — l'essentiel du poids d'une ``conversations.db``
+réelle, d'après la carte du préambule. Dans un objet, elle repartait à CHAQUE
+poussée de la conversation : une réponse qui arrive au fil de l'eau renvoyait
+plus d'un Mo pour quelques mots (§4.7). Détachée, elle part une fois par
+époque, et l'objet ne porte plus que ``"diapason-piece:<pieceId>"``.
 
 **Le clair d'une pièce** (clés anglaises, CLAUDE.md §3) :
 

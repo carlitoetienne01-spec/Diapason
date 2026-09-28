@@ -43,8 +43,8 @@ class TestCeQuiEstLeger:
     @pytest.mark.parametrize(
         "question",
         [
-            "Qui est le président actuel d’Haïti ?",
-            'Que veut dire "Self Aware" en français ?',
+            "Qui est le président actuel de l’Autriche ?",
+            'Que veut dire "Well Done" en français ?',
             "Traduis « good morning » en français",
             "Quelle heure est-il ?",
             "Merci !",
@@ -52,7 +52,7 @@ class TestCeQuiEstLeger:
             # Revue du 20/09/2026 : des noms du quotidien renvoyaient au 27b.
             "Quel cours j'ai demain ?",
             "C'est quoi le plan aujourd'hui ?",
-            "As-tu reçu un courriel de La Cité ?",
+            "As-tu reçu un courriel de l'école ?",
             "Quand a été créé ce projet ?",
             "C'est quoi la différence par rapport à hier ?",
         ],
@@ -66,7 +66,7 @@ class TestCeQuiEstLeger:
             "Prepare moi un programme pour la programmation",
             "Explique-moi la relativité générale",
             "Pourquoi le ciel est-il bleu ?",
-            "Rédige une lettre de motivation pour La Cité",
+            "Rédige une lettre de motivation pour le club",
             "Donne-moi 30 exercices de conjugaison",
             "Why is the sky blue?",
             "Write a poem about autumn",
@@ -101,7 +101,7 @@ class TestCeQuiEstLeger:
         # sur le 9b, qui évinçait le 27b et prolongeait la lettre autrement.
         lettre = [
             Message(
-                role=Role.USER, content="Rédige une lettre de motivation pour La Cité"
+                role=Role.USER, content="Rédige une lettre de motivation pour le club"
             ),
             Message(role=Role.ASSISTANT, content="Madame, Monsieur…"),
         ]
@@ -127,7 +127,7 @@ class TestCeQuiEstLeger:
     def test_une_question_neuve_apres_une_lettre_redevient_legere(self):
         fil = [
             Message(
-                role=Role.USER, content="Rédige une lettre de motivation pour La Cité"
+                role=Role.USER, content="Rédige une lettre de motivation pour le club"
             ),
             Message(role=Role.ASSISTANT, content="Madame, Monsieur…"),
             Message(role=Role.USER, content="Quelle est la capitale du Canada ?"),
@@ -147,7 +147,7 @@ class TestCeQuiEstLeger:
 class TestLeChoixDuModele:
     def test_le_27b_choisi_cede_une_traduction_au_9b(self):
         routage = choisir_le_modele(
-            "qwen3.8:27b-mlx", fil('Que veut dire "Self Aware" ?'), config()
+            "qwen3.8:27b-mlx", fil('Que veut dire "Well Done" ?'), config()
         )
         assert routage == Routage(
             "qwen3.5:9b", origine="qwen3.8:27b-mlx", motif="tour léger"
@@ -243,7 +243,7 @@ class TestLeFluxDitQuiARepondu:
                 text="\n".join(
                     json.dumps(c)
                     for c in [
-                        {"message": {"content": "Conscient de soi."}},
+                        {"message": {"content": "Bien joué."}},
                         {"done": True, "done_reason": "stop", "eval_count": 3},
                     ]
                 ),
@@ -265,7 +265,7 @@ class TestLeFluxDitQuiARepondu:
                         "model": "lourd",
                         "stream": True,
                         "messages": [
-                            {"role": "user", "content": 'Que veut dire "Self Aware" ?'}
+                            {"role": "user", "content": 'Que veut dire "Well Done" ?'}
                         ],
                     },
                 )

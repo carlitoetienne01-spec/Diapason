@@ -42,7 +42,7 @@ class TestAvecUneRessource:
             "/succes/projects",
             ressource_type="project",
             ressource_id="p_42",
-            ressource_titre="Zéro à Héro",
+            ressource_titre="Carnet de voyage",
         )
         envois = []
 
@@ -201,7 +201,7 @@ class TestUnTelephoneVaCHERCHERSaCommande:
             "/succes/projects",
             ressource_type="project",
             ressource_id="p1",
-            ressource_titre="Zéro à Héro",
+            ressource_titre="Carnet de voyage",
         )
 
     def test_une_mise_en_file_qui_aboutit_est_un_succes(self):

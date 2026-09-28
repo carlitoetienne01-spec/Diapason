@@ -112,7 +112,7 @@ SHA-256 du binaire installé :
 `e9be98455015b8846b66013dfb63e69639a6be0e2d1be5f6e1a0efb5763b6605`.
 
 L'ancienne application est dans
-`/Users/carlito.e/.diapason/backups/Diapason.app.precedente`.
+`~/.diapason/backups/Diapason.app.precedente`.
 L'interface web du serveur a reçu les mêmes assets que le bundle isolé.
 Le serveur Python n'a pas redémarré et `/health` répond toujours `ok`.
 

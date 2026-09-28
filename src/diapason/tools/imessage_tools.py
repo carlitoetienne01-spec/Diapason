@@ -136,7 +136,7 @@ class IMessageConversationTool(BaseTool):
             limite = 30
         limite = max(1, min(100, limite))
 
-        # Le même résolveur que messages_send : « maman » → +509…
+        # Le même résolveur que messages_send : « maman » → son numéro.
         from diapason.tools.voice_mac_tools import _resoudre_ou_avouer
 
         identifiant, fiche, aveu = _resoudre_ou_avouer(contact, "imessage_conversation")

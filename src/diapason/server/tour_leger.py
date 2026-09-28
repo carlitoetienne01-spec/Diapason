@@ -2,10 +2,10 @@
 
 20 septembre 2026 : Carlito avait choisi qwen3.8:27b-mlx dans le sélecteur du
 chat. Ce modèle tient 18 à 26 Go sur un Mac de 32 Go qui n'en avait que
-10,5 de libres au chargement (journal d'Ollama, 10:54:14). Résultat sur deux
-questions d'une ligne : « Qui est le président actuel d'Haïti ? » 56,6 s,
-« Que veut dire "Self Aware" en français ? » 89,4 s — pendant que « Ouvre
-moi YouTube et joue… », servi sans modèle par la voie éclair, prenait 1,2 s.
+10,5 de libres au chargement (journal d'Ollama). Résultat sur deux questions
+d'une ligne : une question d'actualité sur un chef d'État, 56,6 s, et la
+traduction d'une expression anglaise, 89,4 s — pendant qu'une commande
+YouTube, servie sans modèle par la voie éclair, prenait 1,2 s.
 Le classificateur de complexité marquait les deux « trivial » (0,06) mais ne
 changeait que le budget de jetons, jamais le modèle. Ses motifs sont anglais
 (explain, why, write) : en français presque tout est « trivial », il ne peut

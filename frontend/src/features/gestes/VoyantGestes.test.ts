@@ -76,7 +76,7 @@ function avecQuestion(candidats = CANDIDATS): void {
       armed: true,
       pendingDrop: {
         token: 'jeton-42',
-        object: { type: 'project', id: 'p-1', title: 'Zéro à Héro' },
+        object: { type: 'project', id: 'p-1', title: 'Carnet de voyage' },
         candidates: candidats,
         secondsLeft: 11.6,
       },
@@ -143,7 +143,7 @@ describe('la carte « vers lequel ? »', () => {
   it('nomme l’objet tenu et le temps qui reste', () => {
     avecQuestion();
     const lu = texte(monter().arbre());
-    expect(lu).toContain('« Zéro à Héro » — vers lequel ?');
+    expect(lu).toContain('« Carnet de voyage » — vers lequel ?');
     expect(lu).toContain('12 s pour répondre');
   });
 

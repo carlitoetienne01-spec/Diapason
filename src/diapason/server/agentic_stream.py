@@ -325,11 +325,11 @@ def observation(resultat: Any) -> str:
     trouvée(s). » se dit bien à voix haute, et ne dit rien à un modèle à qui on
     demande LESQUELLES. Les données, elles, vivent dans ``metadata`` — que le
     modèle ne recevait pas. C'est ce qui rendait les outils Succès inutiles
-    même une fois branchés : l'assistant appelait le bon outil, obtenait les
-    quatre-vingt-cinq tâches, et n'en voyait que le nombre.
+    même une fois branchés : l'assistant appelait le bon outil, obtenait des
+    dizaines de tâches, et n'en voyait que le nombre.
 
     On ne corrige PAS le ``content`` des outils : le chemin vocal le prononce
-    tel quel, et « 85 tâches trouvées » y est la bonne phrase. C'est ici, au
+    tel quel, et « N tâches trouvées » y est la bonne phrase. C'est ici, au
     seul endroit qui s'adresse au modèle, que les données sont jointes.
     """
     contenu = str(getattr(resultat, "content", "") or "")
@@ -430,9 +430,10 @@ async def stream_with_tools(
         # 19/09/2026 : sur le 9b, le seul système initial donnait des listes
         # en prose. Le rappel au tour courant a produit le véritable appel.
         travail.append(Message(role=Role.SYSTEM, content=RAPPEL))
-    # 21/09/2026, 23 h : « Raconte-moi l'histoire de ce pays » après Haïti
-    # → « de quel pays tu parles ? ». Le rappel du sujet (server/suite.py)
-    # reste près de la demande ; les règles fixes rejoignent l'identité.
+    # 21/09/2026 : raconter l'histoire « de ce pays », juste après une
+    # question sur un pays → « de quel pays tu parles ? ». Le rappel du sujet
+    # (server/suite.py) reste près de la demande ; les règles fixes
+    # rejoignent l'identité.
     travail = avec_rappel(travail)
     # 20/09/2026 : « Qui est le président actuel du Canada ? » → « Justin
     # Trudeau, depuis 2015 », de mémoire, sans appel, en 5,1 s. Une question

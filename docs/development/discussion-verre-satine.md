@@ -255,7 +255,7 @@ signée avec la même identité Apple Development, signature vérifiée.
 SHA-256 du binaire :
 `b89a75e42e81fdfa76c7dd8441f98b414c97991efa2c49e3a3d95d2239af2ded`.
 Statique web actualisé avec les mêmes assets. Ancien bundle dans
-`/Users/carlito.e/.diapason/backups/Diapason.app.precedente`, ancien statique
+`~/.diapason/backups/Diapason.app.precedente`, ancien statique
 dans `static-precedent` sous la copie isolée. Serveur PID 67047 conservé,
 health `ok`. Aucun commit, push, changement Windows ou ouverture du micro
 par cette vérification.
@@ -305,6 +305,6 @@ le paquet vocal précédent, sans les changements Succès parallèles. App
 Mac installée avec la même signature Apple Development, vérifiée :
 SHA-256 `051078d4cad03c2444243445c22b40e704d715b4484e5e72c7da20996d3af44f`.
 Les assets web correspondent au même build. L'ancien bundle est dans
-`/Users/carlito.e/.diapason/backups/Diapason.app.precedente`, l'ancien statique
+`~/.diapason/backups/Diapason.app.precedente`, l'ancien statique
 dans `static-precedent` sous la copie isolée. Serveur PID 67047 conservé,
 health `ok`. Aucun commit, push ni déploiement Windows.

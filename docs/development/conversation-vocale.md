@@ -391,7 +391,7 @@ Le test utilisateur suivant montre pourquoi le banc invité ne suffit pas :
 4,64 puis 6,41 s de transcription, et premier son 17,36 puis 12,11 s
 **après transcription**, avec le contexte normal (environ 12 500 jetons).
 La question de suivi est correctement transcrite et la réponse conserve
-le sujet de l'apprentissage de l'anglais. Cela ne valide ni une latence
+le sujet de la conversation. Cela ne valide ni une latence
 conversationnelle ni toutes les prononciations.
 
 Deux pistes ont été mesurées puis écartées, sans modification du moteur :
