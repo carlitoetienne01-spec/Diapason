@@ -6,10 +6,12 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import platform
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 MODELE = "mlx-community/whisper-large-v3-turbo"
@@ -20,6 +22,215 @@ EMPREINTES = {
     ),
     "config.json": "b34fc29e4e11e0a25e812775dd67f4dd16fc2c8eb43d28ae25ff7d660ecb6379",
 }
+# Pas de refus des fichiers hors table ici, contrairement à la voix Orion
+# (install-expressive-voices.py) : mlx-whisper 0.4.3 ouvre config.json et
+# weights.safetensors PAR LEUR NOM (load_models.load_model), weights.npz
+# seulement si weights.safetensors manque — ce que la vérification refuse et
+# que moteur_installe() exclut —, et son tokenizer vient de ses propres
+# assets. Aucun glob : un fichier de trop dans model/ n'est jamais lu.
+# Les liens, eux, n'arrivent jamais jusqu'à la vérification : _sans_lien()
+# les défait avant tout téléchargement et toute copie. Ce commentaire disait
+# le 28/09/2026 qu'aucune écriture ne sortait de model/ parce que les deux
+# noms sont à sa racine ; c'était faux pour le téléchargement : quand les
+# métadonnées de local_dir manquent (installation par --model-source) ou sont
+# plus vieilles que la cible, huggingface_hub recopie son cache PAR-DESSUS
+# un weights.safetensors lié (shutil.copyfile), donc dans le fichier de
+# l'utilisateur, que la vérification déclarait ensuite conforme.
+
+
+def _empreinte(chemin: Path) -> str | None:
+    try:
+        with chemin.open("rb") as fichier:
+            return hashlib.file_digest(fichier, "sha256").hexdigest()
+    except OSError:
+        # 28/09/2026 : rien n'était capté. Un fichier absent ou en chmod 000
+        # levait hors de la vérification, sous l'ancien témoin intact.
+        return None
+
+
+def _non_conformes(dossier: Path) -> list[str]:
+    return [
+        nom
+        for nom, attendu in EMPREINTES.items()
+        if _empreinte(dossier / nom) != attendu
+    ]
+
+
+def _retirer(chemin: Path) -> None:
+    try:
+        if chemin.is_dir() and not chemin.is_symlink():
+            shutil.rmtree(chemin)
+        else:
+            chemin.unlink(missing_ok=True)
+    except OSError:
+        pass  # verifier() nomme ce qui reste, et demande de le retirer
+
+
+def _liens(modele: Path) -> list[str]:
+    if not modele.is_dir():
+        return []
+    return sorted(
+        chemin.relative_to(modele).as_posix()
+        for chemin in modele.rglob("*")
+        if chemin.is_symlink()
+    )
+
+
+def _sans_lien(modele: Path, operation: str) -> None:
+    # Tout lien sous model/, pas seulement les deux noms : le hub écrit aussi
+    # ses métadonnées et ses verrous sous .cache/huggingface/. rglob ne
+    # descend pas dans un dossier lié : chaque nom listé n'a de lien qu'à son
+    # dernier maillon, et _retirer() défait ce lien sans toucher sa cible.
+    liens = _liens(modele)
+    for nom in liens:
+        _retirer(modele / nom)
+    if restes := _liens(modele):
+        raise RuntimeError(
+            f"Impossible de retirer {', '.join(restes)} (lien symbolique) : "
+            "supprimez le lien lui-même, pas sa cible, puis relancez le "
+            f"script. Rien n'a été {operation}."
+        )
+    if liens:
+        print(
+            "Lien symbolique retiré de model/, sa cible reste intacte : "
+            + ", ".join(liens)
+        )
+
+
+def _dossiers_lies(chemin: Path) -> list[Path]:
+    return [dossier for dossier in (chemin, *chemin.parents) if dossier.is_symlink()]
+
+
+def _refuser_un_modele_lie(modele: Path, temoin: Path) -> None:
+    # 28/09/2026 : model/ LUI-MÊME lié (ou whisper-mlx, ou speech) passait,
+    # et tout le suivait : verifier() retirait le poids refusé dans sa cible,
+    # le hub y recopiait son cache, la copie y écrivait, et le témoin tombait
+    # à travers lui. get_config_dir() rend un chemin résolu, mais rien
+    # n'empêche un lien entre lui et model/ : chaque dossier est examiné, et
+    # on refuse avant la première écriture (mkdir et uv venv compris).
+    lies = _dossiers_lies(modele)
+    if not lies:
+        return
+    suite = "Rien n'a été écrit ni retiré derrière ce lien, pas même le témoin."
+    if not _dossiers_lies(temoin.parent):
+        # model/ seul est lié : le témoin est dans un vrai dossier. Le
+        # laisser ferait dire « installée » sur un modèle hors de model/.
+        temoin.unlink(missing_ok=True)
+        suite = (
+            "Rien n'a été écrit ni retiré derrière ce lien ; le témoin "
+            "d'installation est retiré."
+        )
+    raise RuntimeError(
+        f"Installation refusée — lien symbolique : {', '.join(map(str, lies))}. "
+        "Le modèle serait téléchargé, vérifié et remplacé dans le dossier qu'il "
+        f"désigne, qui n'est pas le sien. {suite} Remplacez ce lien par un vrai "
+        "dossier (en y déplaçant son contenu s'il s'agit bien de cette oreille), "
+        "puis relancez le script."
+    )
+
+
+def verifier(modele: Path) -> None:
+    refuses = _non_conformes(modele)
+    if not refuses:
+        return
+    # 28/09/2026 : le fichier refusé restait en place, et huggingface_hub le
+    # resservait sans le retélécharger (ses métadonnées de local_dir portent
+    # la bonne révision) : chaque relance le refusait de nouveau.
+    for nom in refuses:
+        _retirer(modele / nom)
+    restants = [nom for nom in refuses if os.path.lexists(modele / nom)]
+    suite = (
+        f"Impossible de retirer {', '.join(restants)} : supprimez-les, puis "
+        "relancez le script."
+        if restants
+        else "Ces fichiers ont été retirés : relancez le script pour les "
+        "retélécharger (ou --model-source avec une copie saine)."
+    )
+    raise RuntimeError(
+        "Modèle refusé — empreinte invalide ou fichier absent/illisible : "
+        f"{', '.join(refuses)}. {suite}"
+    )
+
+
+def _meme_fichier(a: Path, b: Path) -> bool:
+    try:
+        return os.path.samefile(a, b)
+    except OSError:
+        return False
+
+
+def _refuser_une_source_dans_le_modele(source: Path, modele: Path) -> None:
+    # 28/09/2026 : --model-source désignant model/ lui-même, ou un lien vers
+    # lui, effaçait weights.safetensors, le poids de 1,6 Go : copier() retire
+    # chaque fichier avant de le recopier (lecture seule), puis copy2 le
+    # cherchait dans la source qu'il venait de vider — FileNotFoundError
+    # brut, témoin déjà retiré, poids à retélécharger. Sur main, copy2
+    # levait SameFileError sans rien perdre. On refuse donc avant toute
+    # suppression une source résolue dans model/, et toute source dont un
+    # fichier à copier EST celui de model/ : un fichier lié vers model/, ou
+    # model/ écrit dans une autre casse, qu'APFS ouvre et que resolve() ne
+    # ramène pas à « model ».
+    communs = [nom for nom in EMPREINTES if _meme_fichier(source / nom, modele / nom)]
+    if not communs and not source.resolve().is_relative_to(modele.resolve()):
+        return
+    raise RuntimeError(
+        f"Copie source refusée, rien n'a été remplacé — {source} mène au "
+        f"modèle installé lui-même ({modele}) : la copie en retirerait chaque "
+        "fichier avant de le lire. Indiquez une copie située hors de model/ ; "
+        "pour re-vérifier l'installation, relancez le script sans "
+        "--model-source."
+    )
+
+
+def copier(source: Path, modele: Path, temoin: Path) -> None:
+    # 28/09/2026 : la copie écrasait l'installation avant de vérifier quoi que
+    # ce soit, une source fausse remplaçait donc des poids sains. Elle est
+    # vérifiée AVANT qu'un seul fichier ne soit remplacé.
+    _refuser_une_source_dans_le_modele(source, modele)
+    refuses = _non_conformes(source)
+    if refuses:
+        raise RuntimeError(
+            "Copie source refusée, rien n'a été remplacé — empreinte invalide "
+            "ou fichier absent/illisible : " + ", ".join(refuses)
+        )
+    # Une copie interrompue laisserait un modèle à moitié remplacé sous un
+    # témoin qui dirait le contraire.
+    temoin.unlink(missing_ok=True)
+    modele.mkdir(parents=True, exist_ok=True)
+    # La copie n'écrit que les deux noms, que _retirer() défait déjà un à
+    # un ; les autres liens partent quand même, pour qu'une installation
+    # réussie ne laisse aucun lien dans model/, quel que soit son chemin.
+    _sans_lien(modele, "copié")
+    for nom in EMPREINTES:
+        # Un fichier en lecture seule (copy2 recopie le mode de sa source)
+        # faisait lever PermissionError à copy2 : le poids refusé ne se
+        # remplaçait plus depuis une copie saine.
+        _retirer(modele / nom)
+        shutil.copy2(source / nom, modele / nom)
+
+
+def _ecrire_temoin(temoin: Path) -> None:
+    # 28/09/2026 : temoin.write_text() suit un installed.json lié. Ici,
+    # chaque branche retirait déjà le témoin avant de le réécrire, et aucun
+    # lien n'était suivi ; la voix Orion, elle, écrasait ainsi le fichier
+    # visé, ou créait le témoin hors de son dossier. La règle ne tient plus
+    # à l'ordre des appels : le témoin s'écrit sous un nom neuf à côté
+    # (mkstemp ouvre en O_EXCL, qui ne suit aucun lien), puis os.replace()
+    # prend sa place — rename(2) remplace le lien lui-même, jamais sa cible.
+    descripteur, provisoire = tempfile.mkstemp(
+        prefix=".installed-", suffix=".json", dir=temoin.parent
+    )
+    try:
+        with os.fdopen(descripteur, "w", encoding="utf-8") as fichier:
+            json.dump(
+                {"model": MODELE, "revision": REVISION, "sha256": EMPREINTES}, fichier
+            )
+        os.replace(provisoire, temoin)
+    except BaseException:
+        # Disque plein, ou installed.json devenu un dossier : le fichier
+        # provisoire ne doit pas s'accumuler d'une relance à l'autre.
+        Path(provisoire).unlink(missing_ok=True)
+        raise
 
 
 def main() -> None:
@@ -31,6 +242,9 @@ def main() -> None:
     from diapason.core.paths import get_config_dir
 
     racine = get_config_dir() / "speech" / "whisper-mlx"
+    modele = racine / "model"
+    temoin = racine / "installed.json"
+    _refuser_un_modele_lie(modele, temoin)
     racine.mkdir(parents=True, exist_ok=True)
     python = racine / "runtime/bin/python"
     uv = shutil.which("uv")
@@ -54,12 +268,17 @@ def main() -> None:
         ],
         check=True,
     )
-    modele = racine / "model"
+    # 28/09/2026 : un refus laissait l'ancien installed.json, et
+    # reconnaissance_mlx.moteur_installe() disait l'oreille prête sur un
+    # fichier qu'on venait de refuser (§5). Le témoin tombe désormais avant
+    # que le modèle ne change et n'est réécrit qu'après vérification : un
+    # téléchargement, une copie ou une vérification qui échoue ne laisse rien
+    # dire « installé ».
     if args.model_source:
-        modele.mkdir(exist_ok=True)
-        for nom in EMPREINTES:
-            shutil.copy2(args.model_source / nom, modele / nom)
+        copier(args.model_source, modele, temoin)
     else:
+        temoin.unlink(missing_ok=True)
+        _sans_lien(modele, "téléchargé")
         script = (
             "from huggingface_hub import snapshot_download; "
             f"snapshot_download({MODELE!r}, revision={REVISION!r}, "
@@ -67,14 +286,8 @@ def main() -> None:
             f"allow_patterns={list(EMPREINTES)!r})"
         )
         subprocess.run([str(python), "-c", script], check=True)
-    for nom, attendu in EMPREINTES.items():
-        with (modele / nom).open("rb") as fichier:
-            obtenu = hashlib.file_digest(fichier, "sha256").hexdigest()
-        if obtenu != attendu:
-            raise RuntimeError(f"Empreinte du fichier {nom} invalide")
-    (racine / "installed.json").write_text(
-        json.dumps({"model": MODELE, "revision": REVISION, "sha256": EMPREINTES})
-    )
+    verifier(modele)
+    _ecrire_temoin(temoin)
     print("Reconnaissance installée et vérifiée ; choix du moteur inchangé.")
 
 

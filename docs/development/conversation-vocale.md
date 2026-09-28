@@ -120,6 +120,56 @@ Installation explicite sur Mac Apple Silicon :
 le venv produit ni la voix par défaut. Aucun téléchargement au démarrage
 d'une conversation. Les autres plateformes gardent leur voix classique.
 
+Depuis le 28 septembre 2026, les douze fichiers que le chargeur lit (poids,
+codec, configurations, vocabulaire) ont un SHA-256 fixé, comme ceux de
+l'oreille MLX : seuls ceux-là sont téléchargés ou copiés, et le témoin
+`installed.json` n'est écrit qu'après leur vérification. Relancer le script
+sur une installation existante re-vérifie ses poids ; un refus retire le
+témoin, et la voix cesse de se dire disponible.
+
+Le dossier `model/` doit être exactement la table : mlx-audio charge tout
+`*.safetensors` de `model/` et de `speech_tokenizer/`, et AutoTokenizer tout
+nom qu'il reconnaît. Un fichier hors table est refusé comme un poids altéré ;
+seules sont tolérées la tenue de `huggingface_hub`
+(`model/.cache/huggingface/`) et, à la racine de `model/`, `README.md` et
+`.gitattributes`. Tout fichier refusé est retiré, pour que la relance le
+retélécharge au lieu de se le voir resservir par le hub. `--model-source`
+recopie même sur une installation existante, après avoir vérifié la source :
+une copie fausse ne remplace rien. Une source qui mène au modèle installé
+lui-même (`model/`, un lien vers lui, un dossier sous lui, ou un fichier qui
+est déjà celui de `model/`) est refusée d'emblée : la copie retire chaque
+fichier avant de le lire, et effaçait ainsi `config.json` avant de le
+chercher dans la source vidée (28 septembre 2026).
+
+Un lien symbolique sous `model/`, de fichier ou de dossier, est refusé lui
+aussi : le glob du chargeur suivrait un `speech_tokenizer` lié hors de la
+vérification. Seul le lien est retiré, jamais sa cible, et aucune
+suppression, aucune copie ni aucun téléchargement ne passe à travers un
+lien : avant de télécharger ou de copier, le script retire chaque lien de
+`model/` et le dit ; un lien impossible à retirer est nommé, rien n'est
+écrit, et ce qu'il y a derrière reste intact (28 septembre 2026 ; avant, la
+relance effaçait le fichier extérieur refusé, puis le téléchargement
+réécrivait encore le codec derrière un `speech_tokenizer` lié). Le témoin
+non plus ne s'écrit jamais à travers un lien : `installed.json` naît sous un
+nom neuf à côté, puis prend la place de l'ancien, lien compris, sans rien
+écrire dans sa cible (avant, la relance écrasait le fichier visé, et un lien
+pendant créait le témoin hors de `voices/qwen3`).
+
+`model/` lui-même, ou un dossier au-dessus (`voices/qwen3`, `voices`), ne
+doit pas être un lien : tout ce qui précède le suivrait, et un `model/` lié
+à un dossier partagé y verrait effacer tout ce qui n'est pas Orion.
+L'installation est refusée avant la première écriture (`mkdir` et `uv venv`
+compris) ; rien n'est écrit ni retiré derrière le lien, et le message
+demande de le remplacer par un vrai dossier. Seul le témoin tombe, quand
+il est lui-même dans un vrai dossier (`model/` seul lié).
+
+`README.md` et `.gitattributes` sont les deux noms que l'ancienne version
+du script posait, et qu'une installation faite avant le 28 septembre 2026
+contient encore ; aucun chargeur ne les ouvre. Les refuser rendait Orion
+indisponible dès la relance, jusqu'à une seconde avec réseau : ils passent
+désormais, et eux seuls — un autre nom que rien ne lit (`notes.txt`,
+`speech_tokenizer/README.md`) reste refusé.
+
 Dans **Parler**, le sélecteur propose B, A et la voix classique. Le choix
 passe par la configuration du serveur et reste identique entre les fenêtres.
 Il se fait avant la séance : une séance en cours conserve le timbre avec
@@ -483,6 +533,21 @@ Le choix `speech.realtime.stt_backend = "mlx-whisper"` utilise un processus
 isolé installé explicitement par `scripts/install-mlx-recognition.py`.
 Les poids et la configuration ont une révision et des SHA-256 fixés ; aucun
 téléchargement au premier mot. Le défaut portable reste `faster-whisper`.
+Depuis le 28 septembre 2026, le témoin `installed.json` tombe avant que le
+modèle ne change et n'est réécrit qu'après vérification ; un fichier refusé
+est retiré, pour que la relance le retélécharge, et `--model-source` vérifie
+la source avant de remplacer quoi que ce soit — et refuse d'emblée, comme
+pour Orion, une source qui mène à `model/` lui-même, qui effaçait le poids
+avant de le lire. Les fichiers en trop ne sont
+pas refusés ici : mlx-whisper 0.4.3 ouvre ses deux fichiers par leur nom.
+Les liens symboliques sous `model/`, eux, sont retirés (le lien seul, jamais
+sa cible) avant tout téléchargement et toute copie : sans métadonnées dans
+`model/`, le hub recopiait son cache dans le fichier de l'utilisateur
+derrière un `weights.safetensors` lié, que la vérification déclarait ensuite
+conforme. Même règle que pour Orion si `model/`, `whisper-mlx` ou `speech`
+est lui-même un lien : refus avant toute écriture. Le témoin s'écrit comme
+celui d'Orion, sous un nom neuf qui prend ensuite sa place : un
+`installed.json` lié est remplacé, jamais écrit à travers.
 Le processus reçoit uniquement le PCM déjà filtré par un tube local,
 applique les mêmes seuils anti-hallucination et ne journalise aucun mot.
 La dictée, le modèle de réponse, son contexte et les voix A/B sont inchangés.
