@@ -1135,7 +1135,8 @@ cadence (voir Méthode).
   donne 26 → 22 ms pour les Tâches. Le gain des lots porte sur la **fraîcheur** des données (la
   page stable), pas sur l'affichage.
 - **La piste 4 n'est pas faite** : chaque visite des Tâches relit toute la
-  liste. C'est 33 Ko comprimés au banc, environ 825 Ko bruts chez Carlito.
+  liste. C'est 33 Ko comprimés au banc, et plusieurs centaines de Ko bruts
+  sur un foyer réel.
   Une relecture conditionnelle (numéro d'écriture → 304) économiserait les
   octets, pas l'aller-retour de 110 ms. Pour passer sous 100 ms, il faudrait
   ne pas relire du tout, c'est-à-dire pousser les changements.

@@ -93,14 +93,16 @@ avant READY. Il n'y a aucun changement de modèle, de fenêtre de tokens,
 de timbre, de reconnaissance ou de paramètres de synthèse.
 
 Comparaison locale sur le même serveur, les mêmes trois questions et le
-même historique réel (16 messages, 6 619 caractères), sans micro ni lecture
-sonore. Délai **depuis réception du texte jusqu'au premier paquet audio** :
+même historique de 16 messages (quelques milliers de caractères), sans micro
+ni lecture sonore. Le sujet et la taille exacte de cet historique ne sont
+pas reproduits ici. Délai **depuis réception du texte jusqu'au premier
+paquet audio** :
 
 | Tour | Avant | Après |
 |---|---:|---:|
-| Conseil pour pratiquer l'anglais | 9,173 s | 2,543 s |
-| Exercice de prononciation | 9,445 s | 2,773 s |
-| Rappel de la langue étudiée | 8,712 s | 3,053 s |
+| Question sur le sujet de l'historique | 9,173 s | 2,543 s |
+| Exercice sur ce sujet | 9,445 s | 2,773 s |
+| Rappel d'un fait de l'historique | 8,712 s | 3,053 s |
 
 La préparation passe de 7,078 à 14,189 s sur cette paire d'essais ; son coût
 est visible avant l'écoute. Les formulations des réponses varient, mais

@@ -45,7 +45,7 @@ recours, les sources sont explicitement présentées comme encore à évaluer.
 
 ## Résultats établis
 
-- Avant correction, une recherche de jeux a proposé un lien absent des
+- Avant correction, une recherche a proposé un lien absent des
   résultats ; après une lecture en échec, une seconde adresse a été inventée.
 - La note de diagnostic a été créée dans Diapason avec son contenu exact.
   Après correction, le scénario de relecture a exécuté `read_note` et rendu
@@ -213,9 +213,10 @@ visible. La préparation initiale reste distincte des échanges une fois prêts.
 ## Complément : recettes refusées puis réponse répétée
 
 Des captures d'écran montrent un cas absent des premiers essais de recette :
-dans le fil chargé de l'audit, « Donne moi des recettes pour faire des pâtes »,
-puis « oui » et « Oui tu peux me les donner » produisent le même refus
-d'accéder aux « recettes de mes outils ». Aucun échec d'outil ne justifie ce
+dans le fil chargé de l'audit, une demande de recettes, puis un accord d'un
+seul mot et un accord plus long produisent le même refus : l'assistant
+prétend ne pas pouvoir accéder à des recettes dans ses outils. Les phrases
+de ce fil ne sont pas reproduites ici. Aucun échec d'outil ne justifie ce
 refus. La reproduction sur le serveur, avec une copie en lecture seule de
 l'historique, retrouve exactement cette réponse. Une conversation neuve
 donne seulement des idées de plats : elle ne reproduit pas la boucle.
@@ -237,7 +238,7 @@ et les 47 outils donnent :
 |---|---|---:|
 | Demande initiale, nouveau fil | Quatre recettes avec ingrédients et préparation. | 3,77 s / 24,51 s |
 | Même demande, historique de l'audit | Deux recettes, sans refus d'accès inventé. | 4,77 s / 18,13 s |
-| « Oui tu peux me les donner », avec les refus antérieurs | Deux recettes au lieu de la réponse répétée. | 5,67 s / 16,04 s |
+| Accord plus long, avec les refus antérieurs | Deux recettes au lieu de la réponse répétée. | 5,67 s / 16,04 s |
 
 Les réponses ne sont pas des textes prédéfinis. La dernière reste succincte
 et propose encore un développement ; le défaut de refus répété est corrigé

@@ -8,11 +8,13 @@ par Carlito, avec validation explicite.
 
 ## Défaut observé
 
-Deux tours transcrits de 1,70 et 1,88 seconde étaient ensuite refusés par
-l’identité vocale (similarités 0,30 et 0,32 ; seuil 0,45). Le profil comportait
-cinq captures apprises automatiquement pendant le dialogue. À l’inverse,
-l’ancienne extraction impossible, y compris moins d’une seconde de son,
-rendait `(1.0, True)` : absence de preuve présentée comme une identité sûre.
+Deux tours transcrits de moins de deux secondes étaient ensuite refusés par
+l’identité vocale : leurs similarités restaient sous le seuil de 0,45. Le profil
+se composait de captures apprises automatiquement pendant le dialogue. Les
+scores mesurés et la taille de ce profil réel ne sont pas reproduits ici.
+À l’inverse, l’ancienne extraction impossible, y compris moins d’une seconde
+de son, rendait `(1.0, True)` : absence de preuve présentée comme une
+identité sûre.
 Ces observations n’établissent pas si les captures de Carlito étaient bruitées,
 trop distantes ou peu représentatives : leurs enregistrements ne sont pas disponibles.
 
@@ -117,7 +119,7 @@ taux de reconnaissance de Carlito. Le filtrage d’identité reste actif à chaq
 tour ; une confiance héritée de la séance n’autorise pas une autre voix.
 
 Version reconstruite, signée, installée et relancée ; serveur rechargé. La sonde
-locale confirme Orion disponible et les cinq empreintes du profil existant
+locale confirme Orion disponible et les empreintes du profil existant
 toujours présentes. Le bundle livré contient la nouvelle indication et plus
 l’instruction de prononcer quelques mots supplémentaires. Contrôle de l’application
 native effectué sans ouvrir son microphone.
