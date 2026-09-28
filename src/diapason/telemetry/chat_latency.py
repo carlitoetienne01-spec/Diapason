@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -118,6 +119,14 @@ async def measured_sse(
 ) -> AsyncIterator[str | bytes]:
     token = _current.set(measure)
     completed = False
+    # 28/09/2026: a reply cut on the phone (26/09, 19:44) left
+    # "completed=False" and nothing else — a client that went away and a
+    # generator that raised read the same. `end` says which: done, no_done
+    # (the source stopped without [DONE]), client_gone:cancelled (the
+    # response task was cancelled — client disconnect or shutdown),
+    # client_gone:closed (the reader stopped iterating — a failed send, the
+    # tailnet gateway cutting a closed session), or error:<Type>.
+    end = "aborted"
     try:
         # The server generators yield complete SSE frames. Close them on
         # cancellation as well; cancelling a client must release its inference.
@@ -146,13 +155,33 @@ async def measured_sse(
                     if text.startswith("data: [DONE]"):
                         completed = True
                     yield frame
+        end = "done" if completed else "no_done"
+    except asyncio.CancelledError:
+        end = "client_gone:cancelled"
+        raise
+    except GeneratorExit:
+        end = "client_gone:closed"
+        raise
+    except Exception as exc:
+        end = f"error:{type(exc).__name__}"
+        raise
     finally:
-        _current.reset(token)
+        try:
+            _current.reset(token)
+        except ValueError:
+            # 28/09/2026: a reader that stops without closing us (a send that
+            # raised, ASGI 2.4) leaves this generator to the event loop's
+            # asyncgen finaliser, which runs aclose() in ANOTHER task and
+            # Context. reset() then raised "created in a different Context"
+            # and the line below was never written — the one ending that most
+            # needed it. That Context is discarded afterwards; nothing to undo.
+            pass
         # Timings and counters only: no prompt, answer, key, path or tool args.
         logger.info(
-            "chat_performance request=%s completed=%s metrics=%s",
+            "chat_performance request=%s completed=%s end=%s metrics=%s",
             measure.request_id,
             completed,
+            end,
             json.dumps(measure.snapshot()),
         )
 
