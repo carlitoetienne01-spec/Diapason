@@ -20,6 +20,10 @@ from typing import Any, get_type_hints
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, ValidationError, create_model
 
+from diapason.core.origine_telephone import (
+    MOTIF_OPERATION_REFUSEE,
+    depuis_le_telephone,
+)
 from diapason.core.registry import ToolRegistry
 from diapason.core.types import ToolResult
 from diapason.tools._stubs import BaseTool, ToolSpec
@@ -59,6 +63,23 @@ SUPPRESSIONS = {
 def _noms(suppression: bool = False) -> dict[str, str]:
     groupes = SUPPRESSIONS if suppression else OPERATIONS
     return {nom: domaine for domaine, noms in groupes.items() for nom in noms.split()}
+
+
+def operation_permise_au_telephone(operation: str) -> bool:
+    """Ce que cet outil fait pour le téléphone, s'il est un jour dans son plafond.
+
+    28/09/2026, revue de sécurité : le plafond du téléphone se décide NOM PAR
+    NOM (``OUTILS_DU_TELEPHONE``), mais ce nom porte à la fois les données de
+    Diapason et deux actions sur le Mac — ``navigate`` change la page de la
+    fenêtre du Mac, ``current_view`` lit ce qu'elle affiche. Le jour où la
+    phase 6 ouvrirait ``diapason_app`` pour ses données, ces deux-là
+    suivraient sans que personne l'ait décidé. Liste d'AUTORISATION, comme le
+    plafond : une opération du Mac ajoutée demain reste fermée au téléphone
+    tant qu'elle n'est pas une opération du catalogue des données.
+    """
+    return operation in {"catalogue", "describe"} or (
+        operation in _noms() or operation in _noms(True)
+    )
 
 
 def _camel(nom: str) -> str:
@@ -203,12 +224,57 @@ class DiapasonAppTool(BaseTool):
             metadata={"risk": "routine_write", "reversible": True},
         )
 
+    def schema_du_telephone(self) -> dict[str, Any]:
+        """Le schéma sans ce que operation_permise_au_telephone refuse.
+
+        28/09/2026, revue de f7428c98 : le téléphone se voyait refuser
+        navigate et current_view, mais son modèle les trouvait encore dans
+        l'enum, et la description lui disait de prendre une page « from
+        catalogue » — un catalogue qui, au téléphone, n'en liste plus. Il en
+        aurait inventé une, puis essuyé le refus. On retire donc de l'enum
+        chaque opération refusée, et de la description chaque phrase qui en
+        nomme une — y compris dans une description réécrite par
+        descriptions.toml. Le schéma du bureau, lui, ne change pas d'un
+        octet : son préfixe reste en cache.
+        """
+        fonction = copy.deepcopy(self.to_openai_function())
+        corps = fonction["function"]
+        operation = corps["parameters"]["properties"]["operation"]
+        refusees = [
+            nom for nom in operation["enum"] if not operation_permise_au_telephone(nom)
+        ]
+        if refusees:
+            operation["enum"] = [
+                nom for nom in operation["enum"] if nom not in refusees
+            ]
+            phrases = re.split(r"(?<=[.!?])\s+", corps["description"])
+            corps["description"] = " ".join(
+                phrase
+                for phrase in phrases
+                if not any(nom in phrase for nom in refusees)
+            )
+        return fonction
+
     def execute(self, **params: Any) -> ToolResult:
         return self._executer(params, suppression=False)
 
     def _executer(self, params: dict[str, Any], *, suppression: bool) -> ToolResult:
+        operation = str(params.get("operation") or "")
+        telephone = depuis_le_telephone()
+        # Aujourd'hui, l'exécuteur et l'enveloppe de BaseTool refusent déjà
+        # l'outil entier au téléphone. Ce refus-ci tient le jour où son NOM
+        # entrera au plafond : c'est un résultat d'outil, pas une exception,
+        # comme MOTIF_OUTIL_REFUSE — le modèle doit le lire et le dire.
+        if telephone and not operation_permise_au_telephone(operation):
+            return ToolResult(
+                tool_name=self.tool_id,
+                success=False,
+                content=MOTIF_OPERATION_REFUSEE.format(
+                    operation=operation, nom=self.tool_id
+                ),
+                metadata={"operation": operation},
+            )
         try:
-            operation = str(params.get("operation") or "")
             inconnus = set(params) - {"operation", "domain", "name", "params"}
             if inconnus:
                 raise ValueError(
@@ -220,7 +286,6 @@ class DiapasonAppTool(BaseTool):
                 if domaine is not None and domaine not in OPERATIONS:
                     raise ValueError("Domaine inconnu.")
                 donnees = {
-                    "pages": PAGES,
                     "catalogue": [
                         {
                             "domain": groupe,
@@ -231,6 +296,10 @@ class DiapasonAppTool(BaseTool):
                         if domaine is None or groupe == domaine
                     ],
                 }
+                # Les pages sont ce que navigate ouvre : les offrir au
+                # téléphone, qui se la voit refuser, serait promettre (§5).
+                if not telephone:
+                    donnees = {"pages": PAGES, **donnees}
             elif operation == "describe" and not suppression:
                 donnees = decrire_operation(str(params.get("name") or ""))
             elif operation == "navigate" and not suppression:

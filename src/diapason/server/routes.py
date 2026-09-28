@@ -230,6 +230,32 @@ def _chat_tooling(app_state: Any, config: Any) -> Optional[tuple[list, Any]]:
     return resultat
 
 
+class _VuDuTelephone:
+    """Un outil de la trousse, tel que le modèle du téléphone le voit.
+
+    28/09/2026 : TrousseChat dérive les schémas par ``to_openai_function()``.
+    Celui-ci rend ``schema_du_telephone()`` — sans navigate ni current_view
+    pour diapason_app. Le reste est l'outil lui-même, et l'exécuteur garde
+    ses propres instances : la vue ne décide d'aucun refus. Les instances
+    du cache ne sont pas modifiées, donc le préfixe du bureau non plus.
+    """
+
+    __slots__ = ("_outil",)
+
+    def __init__(self, outil: Any) -> None:
+        self._outil = outil
+
+    def __getattr__(self, nom: str) -> Any:
+        # Une copie faite sans __init__ n'a pas d'_outil : le lire ici
+        # rappellerait __getattr__ sans fin (RecursionError) au lieu de lever.
+        if nom == "_outil":
+            raise AttributeError(nom)
+        return getattr(self._outil, nom)
+
+    def to_openai_function(self) -> dict[str, Any]:
+        return self._outil.schema_du_telephone()
+
+
 def _trousse_de_l_origine(
     tooling: Optional[tuple[list, Any]],
 ) -> Optional[tuple[list, Any]]:
@@ -239,12 +265,16 @@ def _trousse_de_l_origine(
     elle ne peut pas savoir qu'elle sert le téléphone. Le refus, lui, vit
     dans l'exécuteur (core/origine_telephone.py) — ceci retire seulement au
     modèle les schémas d'outils qu'on lui refuserait de toute façon, pour
-    qu'il ne promette pas de lire l'écran du Mac avant d'échouer.
+    qu'il ne promette pas de lire l'écran du Mac avant d'échouer. Depuis le
+    28/09/2026, aussi les OPÉRATIONS qu'un outil permis refuse au téléphone
+    (``_VuDuTelephone``).
     """
     if tooling is None or not depuis_le_telephone():
         return tooling
     outils, executeur = tooling
-    permis = [o for o in outils if outil_permis_au_telephone(o.spec.name)]
+    permis = [
+        _VuDuTelephone(o) for o in outils if outil_permis_au_telephone(o.spec.name)
+    ]
     return (permis, executeur) if permis else None
 
 

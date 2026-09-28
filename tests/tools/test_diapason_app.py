@@ -96,6 +96,380 @@ class TestCatalogue:
         assert magasin.list_accounts() == comptes_avant, "aucune écriture en échec"
 
 
+_LE_MAC = [("navigate", {"page": "finances"}), ("current_view", {})]
+
+
+@pytest.fixture
+def mac_temoin(monkeypatch):
+    """navigate et current_view remplacés par des témoins : un appel noté,
+    c'est la fenêtre du Mac pilotée ou lue."""
+    from diapason.server import contexte_routes
+    from diapason.tools import diapason_app
+
+    touches: list[str] = []
+
+    def _naviguer(page):
+        touches.append("navigate")
+        return {"displayed": True, "page": page, "path": "/vie/finances"}
+
+    def _lire_la_vue():
+        touches.append("current_view")
+        return {"tracked": True, "path": "/vie/finances"}
+
+    monkeypatch.setattr(diapason_app, "naviguer", _naviguer)
+    monkeypatch.setattr(contexte_routes, "lire_la_vue", _lire_la_vue)
+    return touches
+
+
+@pytest.fixture
+def plafond_de_la_phase_6(monkeypatch):
+    """La décision de la phase 6 simulée : les deux noms entrent au plafond."""
+    from diapason.core import origine_telephone
+
+    monkeypatch.setattr(
+        origine_telephone,
+        "OUTILS_DU_TELEPHONE",
+        origine_telephone.OUTILS_DU_TELEPHONE | {"diapason_app", "diapason_app_delete"},
+    )
+
+
+def par_l_executeur(operation, params=None, **racine):
+    """Le chemin de la Discussion et de la voix : ToolExecutor, cloche acceptée."""
+    outil = (
+        DiapasonAppDeleteTool()
+        if operation.startswith("delete_")
+        else DiapasonAppTool()
+    )
+    executeur = ToolExecutor(
+        [outil],
+        interactive=True,
+        confirm_callback=lambda _: True,
+        autoload_capability_policy=False,
+    )
+    return executeur.execute(
+        ToolCall(
+            id="essai",
+            name=outil.tool_id,
+            arguments=json.dumps(
+                {"operation": operation, "params": params or {}, **racine}
+            ),
+        )
+    )
+
+
+_DONNEES = {"catalogue", "describe"} | {
+    nom for noms in OPERATIONS.values() for nom in noms.split()
+}
+
+
+def _par_nom(schemas):
+    return {s["function"]["name"]: s["function"] for s in schemas}
+
+
+def _sans_le_mac(fonction):
+    """Le schéma de diapason_app tel que le modèle du téléphone doit le voir."""
+    operations = fonction["parameters"]["properties"]["operation"]["enum"]
+    assert set(operations) == _DONNEES, (
+        "le téléphone voit exactement les opérations sur les données : "
+        f"en trop {set(operations) - _DONNEES}, en moins {_DONNEES - set(operations)}"
+    )
+    for nom in ("navigate", "current_view"):
+        assert nom not in fonction["description"], (
+            f"la description promet encore {nom} au téléphone"
+        )
+    assert "operation='describe'" in fonction["description"], (
+        "la consigne des données doit survivre au retrait du Mac"
+    )
+
+
+def _avec_le_mac(fonction):
+    """Témoin : le bureau garde navigate et current_view, et leur consigne."""
+    operations = fonction["parameters"]["properties"]["operation"]["enum"]
+    assert {"navigate", "current_view"} <= set(operations), "le bureau perd le Mac"
+    assert "page from catalogue" in fonction["description"], (
+        "le bureau perd la consigne de navigate"
+    )
+
+
+class TestLeTelephone:
+    """Revue de sécurité du 28/09/2026 : le plafond du téléphone se décide nom
+    par nom, et diapason_app porte sous un seul nom les données de Diapason
+    et deux actions sur la fenêtre du Mac."""
+
+    @pytest.mark.parametrize(
+        ("operation", "params"),
+        [
+            *_LE_MAC,
+            ("catalogue", {}),
+            ("create_note", {"body": {"title": "Interdite"}}),
+            ("delete_note", {"noteId": "absente"}),
+        ],
+    )
+    def test_aujourd_hui_les_deux_noms_sont_refuses_au_telephone(
+        self, magasin, mac_temoin, operation, params
+    ):
+        """§5 : tant que la phase 6 n'a rien décidé, ni les données ni le Mac
+        ne répondent au téléphone — par l'exécuteur comme en appel direct."""
+        from diapason.core.origine_telephone import (
+            OUTILS_DU_TELEPHONE,
+            marquer_le_telephone,
+        )
+
+        assert not {"diapason_app", "diapason_app_delete"} & OUTILS_DU_TELEPHONE, (
+            "la phase 6 a ouvert diapason_app : c'est une décision, mettre ce "
+            "test à jour avec elle. Le refus de navigate/current_view et leur "
+            "retrait du schéma du téléphone tiennent déjà ; reste à présenter "
+            "diapason_app dans TOOL_ORAL_HINT_TELEPHONE (oral_prompt.py), sans "
+            "ces deux opérations"
+        )
+        with marquer_le_telephone():
+            rendus = [
+                par_l_executeur(operation, params),
+                DiapasonAppTool().execute(operation=operation, params=params),
+                DiapasonAppDeleteTool().execute(operation=operation, params=params),
+            ]
+        for rendu in rendus:
+            assert not rendu.success, f"{operation} a répondu au téléphone"
+            assert "téléphone" in rendu.content, "le refus doit se dire"
+        assert mac_temoin == [], "la fenêtre du Mac a été touchée depuis le téléphone"
+        assert magasin.list_notes() == [], "aucune écriture depuis le téléphone"
+
+    @pytest.mark.parametrize(("operation", "params"), _LE_MAC)
+    def test_le_mac_reste_refuse_meme_si_le_plafond_ouvre_l_outil(
+        self, magasin, mac_temoin, plafond_de_la_phase_6, operation, params
+    ):
+        """§5 : ouvrir diapason_app pour ses données n'ouvre pas, sans
+        décision, le pilotage et la lecture de la fenêtre du Mac."""
+        from diapason.core.origine_telephone import marquer_le_telephone
+
+        with marquer_le_telephone():
+            rendus = [
+                par_l_executeur(operation, params),
+                DiapasonAppTool().execute(operation=operation, params=params),
+            ]
+        for rendu in rendus:
+            assert not rendu.success, f"{operation} a répondu au téléphone"
+            assert "téléphone" in rendu.content and operation in rendu.content, (
+                "le refus nomme l'opération et dit pourquoi, sans exception levée"
+            )
+        assert mac_temoin == [], f"{operation} a touché la fenêtre du Mac"
+
+    @pytest.mark.parametrize("operation", ["ouvrir_fenetre", "", "screen"])
+    def test_ce_que_la_liste_n_autorise_pas_est_refuse_au_telephone(
+        self, magasin, mac_temoin, plafond_de_la_phase_6, operation
+    ):
+        """§5 : la garde est une liste d'AUTORISATION. Une opération du Mac
+        ajoutée demain à _executer (ici un nom inventé, la chaîne vide,
+        « screen ») doit tomber sur le refus du téléphone, pas sur l'erreur
+        générique : une liste de refus qui ne nommerait que navigate et
+        current_view laissait passer les 92 tests (revue du 28/09/2026)."""
+        from diapason.core.origine_telephone import (
+            MOTIF_OPERATION_REFUSEE,
+            marquer_le_telephone,
+        )
+
+        with marquer_le_telephone():
+            rendus = {
+                "diapason_app": [
+                    par_l_executeur(operation),
+                    DiapasonAppTool().execute(operation=operation, params={}),
+                ],
+                "diapason_app_delete": [
+                    DiapasonAppDeleteTool().execute(operation=operation, params={}),
+                ],
+            }
+        for nom, rendus_de_l_outil in rendus.items():
+            for rendu in rendus_de_l_outil:
+                assert not rendu.success, f"« {operation} » a répondu au téléphone"
+                assert rendu.content == MOTIF_OPERATION_REFUSEE.format(
+                    operation=operation, nom=nom
+                ), (
+                    f"« {operation} » hors de la liste doit être refusée PARCE QUE "
+                    f"le téléphone la demande, pas en erreur générique : "
+                    f"{rendu.content!r}"
+                )
+        assert mac_temoin == [], "la fenêtre du Mac a été touchée depuis le téléphone"
+
+    def test_les_donnees_restent_permises_si_le_plafond_ouvre_l_outil(
+        self, magasin, mac_temoin, plafond_de_la_phase_6
+    ):
+        """§100 : le refus du Mac ne doit pas emporter les données — écrire,
+        relire, décrire et supprimer répondent au téléphone."""
+        from diapason.core.origine_telephone import marquer_le_telephone
+
+        with marquer_le_telephone():
+            creee = par_l_executeur("create_note", {"body": {"title": "Du téléphone"}})
+            assert creee.success, creee.content
+            note = json.loads(creee.content)["note"]
+            relue = par_l_executeur("get_note", {"noteId": note["id"]})
+            decrite = par_l_executeur("describe", name="create_note")
+            catalogue = par_l_executeur("catalogue")
+            assert relue.success and decrite.success and catalogue.success, (
+                "lecture refusée au téléphone"
+            )
+            supprimee = par_l_executeur("delete_note", {"noteId": note["id"]})
+        assert json.loads(relue.content)["note"]["title"] == "Du téléphone"
+        assert json.loads(decrite.content)["operation"] == "create_note"
+        assert "pages" not in json.loads(catalogue.content), (
+            "le catalogue du téléphone n'offre pas les pages qu'il refuse d'ouvrir"
+        )
+        assert supprimee.success and magasin.list_notes() == [], "suppression réelle"
+        assert mac_temoin == [], "aucune donnée ne passe par la fenêtre du Mac"
+
+    def test_la_voix_du_telephone_suit_le_meme_refus(
+        self, magasin, mac_temoin, plafond_de_la_phase_6, monkeypatch
+    ):
+        """La voix filtre ses schémas par NOM (outils_vocaux_du_telephone) :
+        une fois diapason_app au plafond, seul l'outil peut refuser navigate."""
+        from diapason.core.origine_telephone import marquer_le_telephone
+        from diapason.speech.realtime import tools as voix
+
+        monkeypatch.setattr(voix, "_executeurs", {})
+        assert "diapason_app" in voix.outils_vocaux_du_telephone(None), (
+            "le filtre vocal suit le plafond, nom par nom"
+        )
+        with marquer_le_telephone():
+            navigation = voix.execute_voice_tool(
+                "diapason_app",
+                {"operation": "navigate", "params": {"page": "finances"}},
+                ["diapason_app"],
+            )
+            ecriture = voix.execute_voice_tool(
+                "diapason_app",
+                {"operation": "create_note", "params": {"body": {"title": "Voix"}}},
+                ["diapason_app"],
+            )
+        assert navigation["ok"] is False and "téléphone" in navigation["content"]
+        assert mac_temoin == [], "la voix du téléphone a piloté la fenêtre du Mac"
+        assert ecriture["ok"] is True, ecriture
+        assert [n["title"] for n in magasin.list_notes()] == ["Voix"]
+
+    def test_la_discussion_du_telephone_suit_le_meme_refus(
+        self, magasin, mac_temoin, plafond_de_la_phase_6
+    ):
+        """La Discussion retire au téléphone les schémas par NOM
+        (_trousse_de_l_origine) : diapason_app y passerait, navigate non."""
+        from diapason.core.origine_telephone import marquer_le_telephone
+        from diapason.server.routes import _trousse_de_l_origine
+
+        outil = DiapasonAppTool()
+        executeur = ToolExecutor([outil], autoload_capability_policy=False)
+        with marquer_le_telephone():
+            outils, executeur = _trousse_de_l_origine(([outil], executeur))
+            rendu = executeur.execute(
+                ToolCall(
+                    id="essai",
+                    name="diapason_app",
+                    arguments=json.dumps({"operation": "current_view"}),
+                )
+            )
+        assert [o.spec.name for o in outils] == ["diapason_app"], (
+            "le plafond simulé laisse passer le nom"
+        )
+        assert not rendu.success and "téléphone" in rendu.content
+        assert mac_temoin == [], "la Discussion du téléphone a lu la fenêtre du Mac"
+
+    def test_la_discussion_du_telephone_ne_voit_pas_les_operations_du_mac(
+        self, plafond_de_la_phase_6
+    ):
+        """§5 : le téléphone se voit refuser navigate et current_view ; son
+        modèle ne doit pas les trouver dans le schéma que TrousseChat lui
+        envoie, ni la consigne de prendre une page « from catalogue » dans un
+        catalogue qui, au téléphone, n'en liste plus (revue du 28/09/2026)."""
+        from diapason.core.origine_telephone import marquer_le_telephone
+        from diapason.core.types import Message, Role
+        from diapason.server.routes import _trousse_de_l_origine
+        from diapason.server.trousse_chat import TrousseChat
+
+        outils = [DiapasonAppTool(), DiapasonAppDeleteTool()]
+        tooling = (outils, ToolExecutor(outils, autoload_capability_policy=False))
+        demande = [Message(role=Role.USER, content="Ajoute une note : pain")]
+        with marquer_le_telephone():
+            vus, _ = _trousse_de_l_origine(tooling)
+        telephone = _par_nom(TrousseChat(vus, demande).specs)
+        bureau = _par_nom(TrousseChat(_trousse_de_l_origine(tooling)[0], demande).specs)
+
+        _sans_le_mac(telephone["diapason_app"])
+        _avec_le_mac(bureau["diapason_app"])
+        assert telephone["diapason_app_delete"] == bureau["diapason_app_delete"], (
+            "les suppressions sont toutes permises : leur schéma ne change pas"
+        )
+
+    def test_une_description_reecrite_ne_rend_pas_le_mac_au_telephone(
+        self, monkeypatch
+    ):
+        """§5 : descriptions.toml (recherche de spec M1) peut réécrire la
+        description ; une réécriture qui nomme navigate ou current_view ne
+        doit pas les rendre au téléphone. Retirer seulement les deux phrases
+        d'origine, mot pour mot, les y laisserait."""
+        from diapason.tools import description_loader
+
+        reecrite = (
+            "Edit Diapason data. Pages open with navigate. "
+            "Call current_view to see the page. Read before edits."
+        )
+        monkeypatch.setattr(
+            description_loader,
+            "get_tool_description_override",
+            lambda nom: reecrite if nom == "diapason_app" else None,
+        )
+        vue = DiapasonAppTool().schema_du_telephone()["function"]["description"]
+        assert vue == "Edit Diapason data. Read before edits.", (
+            f"la réécriture promet encore le Mac au téléphone : {vue!r}"
+        )
+        assert (
+            DiapasonAppTool().to_openai_function()["function"]["description"]
+            == reecrite
+        ), "le bureau garde la réécriture entière"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("du_telephone", [True, False])
+    async def test_la_voix_du_telephone_ne_voit_pas_les_operations_du_mac(
+        self, plafond_de_la_phase_6, monkeypatch, du_telephone
+    ):
+        """§5 : la séance vocale lit la marque du téléphone à sa construction,
+        puis chauffe son préfixe avec les schémas : ceux du téléphone sans
+        navigate ni current_view, ceux du bureau intacts (préfixe en cache)."""
+        from contextlib import nullcontext
+
+        from diapason.core.origine_telephone import marquer_le_telephone
+        from diapason.speech.realtime import local_voice
+
+        chauffes: list[list[dict]] = []
+
+        async def chauffer(_modele, _systeme, outils, _historique=None):
+            chauffes.append(outils)
+
+        monkeypatch.setattr(local_voice, "_prewarm_prefix", chauffer)
+        monkeypatch.setattr(local_voice, "ollama_reachable", lambda: True)
+        with marquer_le_telephone() if du_telephone else nullcontext():
+            seance = local_voice.LocalVoiceSession(stt=lambda _: "", tts=lambda _: b"")
+        try:
+            await seance.connect()
+            assert (await seance._queue.get()).kind == "ready", "séance non prête"
+        finally:
+            await seance.close()
+
+        (schemas,) = chauffes
+        vus = _par_nom(schemas)
+        assert "diapason_app" in vus, "le plafond simulé ouvre diapason_app à la voix"
+        if du_telephone:
+            _sans_le_mac(vus["diapason_app"])
+        else:
+            _avec_le_mac(vus["diapason_app"])
+
+    @pytest.mark.parametrize(("operation", "params"), _LE_MAC)
+    def test_au_bureau_rien_ne_change(self, magasin, mac_temoin, operation, params):
+        """§82 : le refus du téléphone n'ôte rien au bureau."""
+        rendu = par_l_executeur(operation, params)
+        assert rendu.success, rendu.content
+        assert mac_temoin == [operation], f"{operation} n'a pas atteint la fenêtre"
+        catalogue = par_l_executeur("catalogue")
+        assert "finances" in json.loads(catalogue.content)["pages"], (
+            "le bureau garde les pages que navigate ouvre"
+        )
+
+
 class TestActions:
     def test_note_creee_modifiee_relue_et_supprimee(self, magasin):
         """§100 : même note et même contenu dans l'écran et l'outil."""

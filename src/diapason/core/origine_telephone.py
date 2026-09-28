@@ -41,6 +41,7 @@ from contextvars import ContextVar
 __all__ = [
     "OUTILS_DU_TELEPHONE",
     "MOTIF_OUTIL_REFUSE",
+    "MOTIF_OPERATION_REFUSEE",
     "depuis_le_telephone",
     "marquer_le_telephone",
     "outil_permis_au_telephone",
@@ -60,6 +61,13 @@ _DEPUIS_LE_TELEPHONE: ContextVar[bool] = ContextVar(
 # notes_write, reminders_write et calendar_add (qui passent par les apps du
 # Mac), mesh_devices et mesh_send (le plan de contrôle du maillage, déjà
 # refusé en route). La phase 6 les rouvrira un par un.
+#
+# diapason_app et diapason_app_delete n'y sont pas non plus. Le jour où la
+# phase 6 les y mettra pour leurs données, les opérations navigate et
+# current_view de diapason_app (piloter la fenêtre du Mac, lire ce qu'elle
+# affiche) resteront refusées : l'outil le décide lui-même, opération par
+# opération (tools/diapason_app.py, revue de sécurité du 28/09/2026), et son
+# schéma vu du téléphone (BaseTool.schema_du_telephone) ne les offre pas.
 OUTILS_DU_TELEPHONE: frozenset[str] = frozenset(
     {
         "current_time",
@@ -85,6 +93,16 @@ MOTIF_OUTIL_REFUSE = (
     "L'outil « {nom} » agit sur le Mac ou lit son écran : il n'est pas "
     "permis depuis le téléphone (phase 6 du plan mobile). Dis-le à "
     "l'utilisateur au lieu d'inventer un résultat."
+)
+
+# Le même refus, un cran plus fin : pour un outil permis au téléphone qui
+# porte sous un seul nom des données ET une action sur le Mac.
+MOTIF_OPERATION_REFUSEE = (
+    "L'opération « {operation} » de l'outil « {nom} » n'est pas permise "
+    "depuis le téléphone : seules les opérations sur les données de Diapason "
+    "le sont, rien qui pilote la fenêtre du Mac ou lise ce qu'elle affiche "
+    "(phase 6 du plan mobile). Dis-le à l'utilisateur au lieu d'inventer un "
+    "résultat."
 )
 
 
