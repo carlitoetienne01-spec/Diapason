@@ -504,6 +504,113 @@ class TestLaRaisonDeFinDuFlux:
             "une exception ne doit pas se lire comme un client parti"
         )
 
+    def _ligne(self, caplog) -> str:
+        return next(
+            r.getMessage()
+            for r in caplog.records
+            if r.name == self._JOURNAL and "chat_performance" in r.getMessage()
+        )
+
+    @pytest.mark.asyncio
+    async def test_une_erreur_dite_avant_done_n_est_pas_une_reponse_complete(
+        self, caplog
+    ):
+        """Revue du 28/09/2026 : un générateur qui rattrape l'exception,
+        émet « Error during generation » puis [DONE] s'écrivait
+        « completed=True end=done » — une panne lue comme un succès (§100)."""
+        from diapason.telemetry.chat_latency import record_stream_error
+
+        caplog.set_level("INFO", logger=self._JOURNAL)
+
+        async def source():
+            yield 'data: {"choices":[{"delta":{"content":"Bon"}}]}\n\n'
+            record_stream_error(httpx.ReadError("Ollama est tombé"))
+            yield (
+                'data: {"choices":[{"delta":{"content":"Error"},'
+                '"finish_reason":"stop"}]}\n\n'
+            )
+            yield "data: [DONE]\n\n"
+
+        sortie = [t async for t in measured_sse(source(), ChatLatency())]
+        assert sortie[-1] == "data: [DONE]\n\n", "le flux lui-même ne change pas"
+        assert self._fin(caplog) == "error:ReadError"
+        assert "completed=False" in self._ligne(caplog), (
+            "une génération tombée en route n'est pas une réponse complète"
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("chemin", ["court", "outils_auto", "outils_client"])
+    async def test_ollama_qui_tombe_en_route_se_lit_dans_le_journal(
+        self, chemin, caplog, monkeypatch
+    ):
+        """Le vrai chemin : routes._handle_stream (et _handle_stream_tools)
+        rattrape l'exception d'Ollama. Le client reçoit toujours « Error during
+        generation » puis [DONE] ; le journal, lui, ne dit plus « done »."""
+        from diapason.core.events import EventBus
+        from diapason.security.guardrails import GuardrailsEngine
+        from diapason.server.models import ChatCompletionRequest
+        from diapason.telemetry.chat_latency import measure_response
+        from diapason.telemetry.instrumented_engine import InstrumentedEngine
+
+        caplog.set_level("INFO", logger=self._JOURNAL)
+        monkeypatch.setattr(
+            routes, "_ensure_identity_prompt", lambda messages, *a, **kw: messages
+        )
+
+        class Reponse(httpx.AsyncByteStream):
+            async def __aiter__(self):
+                yield (json.dumps({"message": {"content": "Début"}}) + "\n").encode()
+                raise httpx.ReadError("Ollama est tombé")
+
+            async def aclose(self):
+                pass
+
+        moteur = OllamaEngine(host="http://local-test")
+        moteur._async_transport = httpx.MockTransport(
+            lambda _: httpx.Response(200, stream=Reponse())
+        )
+        enveloppe = InstrumentedEngine(GuardrailsEngine(moteur), EventBus())
+        req = ChatCompletionRequest(
+            model="local",
+            messages=[ChatMessage(role="user", content="Explique les saisons.")],
+            stream=True,
+        )
+        try:
+            if chemin == "outils_client":
+                req.tools = [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "lecture",
+                            "parameters": {"type": "object"},
+                        },
+                    }
+                ]
+                reponse = await routes._handle_stream_tools(enveloppe, "local", req)
+            else:
+                reponse = await routes._handle_stream(
+                    enveloppe,
+                    "local",
+                    req,
+                    tooling=([], None) if chemin == "outils_auto" else None,
+                )
+            reponse = measure_response(reponse, ChatLatency())
+            corps = ""
+            async with asyncio.timeout(5):
+                async for frame in reponse.body_iterator:
+                    corps += frame if isinstance(frame, str) else frame.decode()
+        finally:
+            moteur.close()
+        assert "Error during generation" in corps and corps.endswith(
+            "data: [DONE]\n\n"
+        ), "le flux envoyé au client ne change pas"
+        # Le moteur traduit la ReadError d'httpx : c'est ce type-là que la
+        # route rattrape, et que la ligne nomme.
+        assert self._fin(caplog) == "error:EngineConnectionError", (
+            "Ollama tombé en route ne doit pas s'écrire « end=done »"
+        )
+        assert "completed=False" in self._ligne(caplog)
+
 
 class TestFermetureDuFluxComplet:
     """§100 : fermer une réponse SSE doit atteindre la connexion du moteur."""

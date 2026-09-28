@@ -46,7 +46,11 @@ from diapason.server.reponses_longues import (
 from diapason.server.suite import avec_rappel
 from diapason.server.tour_leger import Routage, choisir_le_modele
 from diapason.server.visuels_chat import instruire_visuels
-from diapason.telemetry.chat_latency import ChatLatency, measure_response
+from diapason.telemetry.chat_latency import (
+    ChatLatency,
+    measure_response,
+    record_stream_error,
+)
 
 router = APIRouter()
 
@@ -1267,6 +1271,9 @@ async def _handle_stream_tools(
                 exc,
                 exc_info=True,
             )
+            # 28/09/2026 : sans cette note, chat_performance lisait le [DONE]
+            # qui suit et écrivait « end=done » — une panne en succès.
+            record_stream_error(exc)
             error_chunk = ChatCompletionChunk(
                 id=chunk_id,
                 model=model,
@@ -1589,6 +1596,9 @@ async def _handle_stream(
                 exc,
                 exc_info=True,
             )
+            # 28/09/2026 : sans cette note, chat_performance lisait le [DONE]
+            # qui suit et écrivait « end=done » — une panne en succès.
+            record_stream_error(exc)
             error_chunk = ChatCompletionChunk(
                 id=chunk_id,
                 model=model,

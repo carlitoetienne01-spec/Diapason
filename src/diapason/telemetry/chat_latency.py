@@ -34,6 +34,10 @@ class ChatLatency:
         # Rempli quand un tour léger a été rerouté : le journal doit dire
         # quel modèle a vraiment répondu, pas celui du sélecteur.
         self.routage: dict[str, Any] | None = None
+        # The exception a server generator caught and turned into an
+        # "Error during generation" chunk followed by [DONE] — see
+        # record_stream_error.
+        self.stream_error: str | None = None
 
     def elapsed_ms(self) -> float:
         return round((self.clock() - self.started) * 1000, 3)
@@ -66,6 +70,21 @@ def record_queue_wait(wait_ms: float) -> None:
         measure.phases["inferenceQueueMs"] = round(
             measure.phases.get("inferenceQueueMs", 0) + wait_ms, 3
         )
+
+
+def record_stream_error(exc: BaseException) -> None:
+    """Note that the response generator caught *exc* and carried on.
+
+    28/09/2026 (review): routes._handle_stream and _handle_stream_tools catch
+    every exception, emit "Error during generation: …" with finish_reason
+    stop, then ``data: [DONE]``. measured_sse only saw the [DONE] and wrote
+    ``completed=True end=done``: Ollama dying mid-reply read exactly like a
+    normal answer in serve.err.log — a false SUCCESS (§100). The frames sent
+    to the client do not change; only the log line learns the truth.
+    """
+    measure = _current.get()
+    if measure is not None and measure.stream_error is None:
+        measure.stream_error = type(exc).__name__
 
 
 def mark_model_text() -> None:
@@ -125,7 +144,9 @@ async def measured_sse(
     # (the source stopped without [DONE]), client_gone:cancelled (the
     # response task was cancelled — client disconnect or shutdown),
     # client_gone:closed (the reader stopped iterating — a failed send, the
-    # tailnet gateway cutting a closed session), or error:<Type>.
+    # tailnet gateway cutting a closed session), or error:<Type> (the source
+    # raised, or caught an exception and said so in an error chunk before
+    # [DONE] — record_stream_error).
     end = "aborted"
     try:
         # The server generators yield complete SSE frames. Close them on
@@ -156,6 +177,11 @@ async def measured_sse(
                         completed = True
                     yield frame
         end = "done" if completed else "no_done"
+        if measure.stream_error is not None:
+            # A generation that failed and said so is not a completed reply,
+            # whatever [DONE] followed it.
+            end = f"error:{measure.stream_error}"
+            completed = False
     except asyncio.CancelledError:
         end = "client_gone:cancelled"
         raise
