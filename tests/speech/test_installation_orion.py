@@ -876,6 +876,83 @@ class TestUnModeleLieEstRefuseSansRienToucher:
         )
 
 
+class TestLeTemoinNeSuitJamaisUnLien:
+    """28/09/2026 : installed.json lié s'écrivait À TRAVERS son lien.
+
+    Plus rien ne passait par un lien sous model/ ; le témoin, à côté, si :
+    write_text() écrasait le fichier visé, ou le créait hors du dossier du
+    moteur quand le lien pendait — et moteur_installe() l'y trouvait.
+    """
+
+    PRECIEUX = b'{"a moi": "precieux"}'
+
+    @pytest.mark.parametrize("lien", ["vers-un-fichier", "pendant"])
+    def test_le_temoin_remplace_son_lien_sans_toucher_a_sa_cible(
+        self, banc, tmp_path, lien
+    ):
+        """§5 — ce que le témoin désignait n'est pas au moteur.
+
+        Lien vers un fichier : la relance (témoin présent, rien à
+        retélécharger) réécrivait ce fichier avec les empreintes. Lien
+        pendant : la première installation le créait hors de voices/qwen3.
+        """
+        exterieur = tmp_path / "ailleurs/installed.json"
+        exterieur.parent.mkdir()
+        if lien == "vers-un-fichier":
+            _ecrire(banc.source, CONTENUS)
+            banc.lancer("--model-source", str(banc.source))
+            exterieur.write_bytes(self.PRECIEUX)
+            banc.temoin.unlink()
+        banc.temoin.symlink_to(exterieur)
+
+        banc.lancer()
+
+        if lien == "vers-un-fichier":
+            assert exterieur.read_bytes() == self.PRECIEUX, (
+                "le fichier visé par le lien ne doit pas être réécrit"
+            )
+        else:
+            assert not os.path.lexists(exterieur), (
+                "aucun témoin ne doit être créé hors du dossier du moteur"
+            )
+        assert not banc.temoin.is_symlink(), "le témoin doit remplacer le lien"
+        temoin = json.loads(banc.temoin.read_text(encoding="utf-8"))
+        assert temoin["sha256"] == banc.installeur.EMPREINTES, (
+            "le témoin doit porter les empreintes vérifiées"
+        )
+        assert moteur_installe(), "le modèle vérifié rend la voix disponible"
+        assert sorted(p.name for p in banc.racine.iterdir()) == [
+            "installed.json",
+            "model",
+            "runtime",
+        ], "aucun fichier provisoire ne doit rester à côté du témoin"
+
+    def test_un_disque_plein_a_l_ecriture_du_temoin_ne_laisse_rien(
+        self, banc, monkeypatch
+    ):
+        """§5 — un échec d'écriture ne laisse ni témoin ni fichier provisoire.
+
+        Le témoin s'écrit sous un nom neuf, puis prend sa place : un disque
+        plein en route laisserait sinon un fichier de plus à chaque relance.
+        """
+
+        def disque_plein(*_arguments, **_options):
+            raise OSError(28, "No space left on device")
+
+        monkeypatch.setattr(
+            banc.installeur, "json", types.SimpleNamespace(dump=disque_plein)
+        )
+
+        with pytest.raises(OSError, match="No space left"):
+            banc.lancer()
+
+        assert not banc.temoin.exists(), "aucun témoin sur une écriture échouée"
+        assert not moteur_installe(), "la voix ne doit pas se dire disponible"
+        assert sorted(p.name for p in banc.racine.iterdir()) == ["model", "runtime"], (
+            "le fichier provisoire doit partir avec l'échec"
+        )
+
+
 class TestUnFichierRefuseEstRetelecharge:
     def test_le_vrai_hub_ne_ressert_plus_un_fichier_refuse(self, tmp_path, monkeypatch):
         """§5 — refuser un fichier sans le retirer bloquait l'installation.

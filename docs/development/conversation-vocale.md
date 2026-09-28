@@ -145,7 +145,11 @@ lien : avant de télécharger ou de copier, le script retire chaque lien de
 `model/` et le dit ; un lien impossible à retirer est nommé, rien n'est
 écrit, et ce qu'il y a derrière reste intact (28 septembre 2026 ; avant, la
 relance effaçait le fichier extérieur refusé, puis le téléchargement
-réécrivait encore le codec derrière un `speech_tokenizer` lié).
+réécrivait encore le codec derrière un `speech_tokenizer` lié). Le témoin
+non plus ne s'écrit jamais à travers un lien : `installed.json` naît sous un
+nom neuf à côté, puis prend la place de l'ancien, lien compris, sans rien
+écrire dans sa cible (avant, la relance écrasait le fichier visé, et un lien
+pendant créait le témoin hors de `voices/qwen3`).
 
 `model/` lui-même, ou un dossier au-dessus (`voices/qwen3`, `voices`), ne
 doit pas être un lien : tout ce qui précède le suivrait, et un `model/` lié
@@ -535,7 +539,9 @@ sa cible) avant tout téléchargement et toute copie : sans métadonnées dans
 `model/`, le hub recopiait son cache dans le fichier de l'utilisateur
 derrière un `weights.safetensors` lié, que la vérification déclarait ensuite
 conforme. Même règle que pour Orion si `model/`, `whisper-mlx` ou `speech`
-est lui-même un lien : refus avant toute écriture.
+est lui-même un lien : refus avant toute écriture. Le témoin s'écrit comme
+celui d'Orion, sous un nom neuf qui prend ensuite sa place : un
+`installed.json` lié est remplacé, jamais écrit à travers.
 Le processus reçoit uniquement le PCM déjà filtré par un tube local,
 applique les mêmes seuils anti-hallucination et ne journalise aucun mot.
 La dictée, le modèle de réponse, son contexte et les voix A/B sont inchangés.

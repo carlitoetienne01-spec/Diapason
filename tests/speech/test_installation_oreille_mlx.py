@@ -404,6 +404,73 @@ class TestUnModeleLieEstRefuseSansRienToucher:
         )
 
 
+class TestLeTemoinNeSuitJamaisUnLien:
+    """28/09/2026 : la voix Orion écrivait son témoin À TRAVERS un lien.
+
+    L'oreille ne le faisait pas, mais seulement parce que chaque branche
+    retirait le témoin avant de le réécrire : la règle tenait à l'ordre des
+    appels. Elle tient désormais à l'écriture elle-même, éprouvée seule.
+    """
+
+    PRECIEUX = b'{"a moi": "precieux"}'
+
+    @pytest.mark.parametrize("lien", ["vers-un-fichier", "pendant"])
+    def test_le_temoin_remplace_son_lien_sans_toucher_a_sa_cible(self, tmp_path, lien):
+        """§5 — write_text() réécrivait la cible, ou la créait hors du dossier."""
+        installeur = _installeur()
+        racine = tmp_path / "whisper-mlx"
+        racine.mkdir()
+        temoin = racine / "installed.json"
+        exterieur = tmp_path / "ailleurs/installed.json"
+        exterieur.parent.mkdir()
+        if lien == "vers-un-fichier":
+            exterieur.write_bytes(self.PRECIEUX)
+        temoin.symlink_to(exterieur)
+
+        installeur._ecrire_temoin(temoin)
+
+        if lien == "vers-un-fichier":
+            assert exterieur.read_bytes() == self.PRECIEUX, (
+                "le fichier visé par le lien ne doit pas être réécrit"
+            )
+        else:
+            assert not os.path.lexists(exterieur), (
+                "aucun témoin ne doit être créé hors du dossier de l'oreille"
+            )
+        assert not temoin.is_symlink(), "le témoin doit remplacer le lien"
+        assert json.loads(temoin.read_text(encoding="utf-8"))["sha256"] == (
+            installeur.EMPREINTES
+        ), "le témoin doit porter les empreintes vérifiées"
+        assert [p.name for p in racine.iterdir()] == ["installed.json"], (
+            "aucun fichier provisoire ne doit rester à côté du témoin"
+        )
+
+    def test_un_disque_plein_a_l_ecriture_du_temoin_ne_laisse_rien(
+        self, banc, monkeypatch
+    ):
+        """§5 — un échec d'écriture ne laisse ni témoin ni fichier provisoire.
+
+        Le témoin s'écrit sous un nom neuf, puis prend sa place : un disque
+        plein en route laisserait sinon un fichier de plus à chaque relance.
+        """
+
+        def disque_plein(*_arguments, **_options):
+            raise OSError(28, "No space left on device")
+
+        monkeypatch.setattr(
+            banc.installeur, "json", types.SimpleNamespace(dump=disque_plein)
+        )
+
+        with pytest.raises(OSError, match="No space left"):
+            banc.lancer()
+
+        assert not banc.temoin.exists(), "aucun témoin sur une écriture échouée"
+        assert not moteur_installe(), "l'oreille ne doit pas se dire disponible"
+        assert sorted(p.name for p in banc.racine.iterdir()) == ["model", "runtime"], (
+            "le fichier provisoire doit partir avec l'échec"
+        )
+
+
 class TestLaCopieLocaleDeLOreille:
     def test_une_copie_saine_remplace_un_poids_en_lecture_seule(self, banc):
         """§5 — copy2 par-dessus un poids en r--r--r-- levait PermissionError.

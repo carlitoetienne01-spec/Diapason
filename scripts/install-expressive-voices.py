@@ -11,6 +11,7 @@ import platform
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 MODELE = "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-4bit"
@@ -307,6 +308,30 @@ def copier(source: Path, modele: Path, temoin: Path) -> None:
         shutil.copy2(source / nom, cible)
 
 
+def _ecrire_temoin(temoin: Path) -> None:
+    # 28/09/2026 : temoin.write_text() suivait un installed.json lié. La
+    # relance (témoin présent, rien à télécharger) écrasait le fichier visé
+    # par ce JSON, et un lien pendant faisait CRÉER le témoin hors du
+    # dossier du moteur, où moteur_installe() le trouvait ensuite. Le témoin
+    # s'écrit donc sous un nom neuf à côté (mkstemp ouvre en O_EXCL, qui ne
+    # suit aucun lien), puis os.replace() prend sa place : rename(2)
+    # remplace le lien lui-même, jamais sa cible.
+    descripteur, provisoire = tempfile.mkstemp(
+        prefix=".installed-", suffix=".json", dir=temoin.parent
+    )
+    try:
+        with os.fdopen(descripteur, "w", encoding="utf-8") as fichier:
+            json.dump(
+                {"model": MODELE, "revision": REVISION, "sha256": EMPREINTES}, fichier
+            )
+        os.replace(provisoire, temoin)
+    except BaseException:
+        # Disque plein, ou installed.json devenu un dossier : le fichier
+        # provisoire ne doit pas s'accumuler d'une relance à l'autre.
+        Path(provisoire).unlink(missing_ok=True)
+        raise
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -355,10 +380,7 @@ def main() -> None:
         )
         subprocess.run([str(python), "-c", script], check=True)
     verifier(modele, temoin)
-    temoin.write_text(
-        json.dumps({"model": MODELE, "revision": REVISION, "sha256": EMPREINTES}),
-        encoding="utf-8",
-    )
+    _ecrire_temoin(temoin)
     print("Moteur installé et vérifié. La voix par défaut n’a pas été modifiée.")
 
 
