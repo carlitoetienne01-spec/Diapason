@@ -66,12 +66,33 @@ def _patch_engine(engine):
     )
 
 
+def _default_config():
+    """Patch ``load_config`` with the code's defaults, never the machine's.
+
+    28/09/2026: these tests read ``~/.diapason/config.toml``, whose
+    ``default_agent = "orchestrator"`` asked for an agent this bench never
+    registers ("Unknown agent: orchestrator") — green on a blank runner, red
+    on the Mac that actually runs the CI.
+    """
+    from diapason.core.config import DiapasonConfig
+
+    return mock.patch.object(_ask_mod, "load_config", return_value=DiapasonConfig())
+
+
 class TestAskModelResolution:
     def test_default_model_from_config(self) -> None:
         """When no -m flag, uses config.intelligence.default_model."""
         engine = _mock_engine()
         patches = _patch_engine(engine)
-        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5]:
+        with (
+            patches[0],
+            patches[1],
+            patches[2],
+            patches[3],
+            patches[4],
+            patches[5],
+            _default_config(),
+        ):
             result = CliRunner().invoke(cli, ["ask", "Hello"])
         assert result.exit_code == 0
         assert "Hello!" in result.output
@@ -80,7 +101,15 @@ class TestAskModelResolution:
         """The -m flag directly selects a model, bypassing fallback chain."""
         engine = _mock_engine()
         patches = _patch_engine(engine)
-        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5]:
+        with (
+            patches[0],
+            patches[1],
+            patches[2],
+            patches[3],
+            patches[4],
+            patches[5],
+            _default_config(),
+        ):
             result = CliRunner().invoke(
                 cli,
                 ["ask", "-m", "test-model", "Hello"],
