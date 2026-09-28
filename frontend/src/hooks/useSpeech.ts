@@ -36,6 +36,8 @@ export function useSpeech() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
+  // Le numéro de la dernière demande du micro ; un relâcher l'incrémente.
+  const demandeRef = useRef(0);
 
   // Check if speech backend is available on mount
   useEffect(() => {
@@ -67,6 +69,7 @@ export function useSpeech() {
   const startRecording = useCallback(async (): Promise<void> => {
     setError(null);
     setMicro(null);
+    const demande = ++demandeRef.current;
 
     let stream: MediaStream;
     try {
@@ -76,6 +79,19 @@ export function useSpeech() {
     } catch (err) {
       setState('idle');
       await signalerEchecMicro(err, 'avantLeFlux');
+      return;
+    }
+
+    // 28/09/2026 (audit du micro au téléphone) : l'invite d'Android
+    // apparaît sous le doigt qui tient le bouton. Le doigt se lève pour
+    // répondre, `stopRecording` ne trouvait encore aucun enregistreur et
+    // son refus était avalé ; l'accord arrivait ensuite et démarrait un
+    // MediaRecorder que plus rien n'arrêtait — voyant vert compris,
+    // jusqu'au toucher suivant (§78). Relâché avant l'accord : le flux se
+    // referme aussitôt, rien n'enregistre.
+    if (demande !== demandeRef.current) {
+      stream.getTracks().forEach((piste) => piste.stop());
+      setState('idle');
       return;
     }
 
@@ -112,6 +128,8 @@ export function useSpeech() {
     return new Promise((resolve, reject) => {
       const recorder = mediaRecorderRef.current;
       if (!recorder || recorder.state !== 'recording') {
+        // Une demande encore en attente (l'invite d'Android) est annulée.
+        demandeRef.current += 1;
         reject(new Error('Not recording'));
         return;
       }

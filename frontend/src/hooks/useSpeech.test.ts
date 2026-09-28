@@ -119,3 +119,42 @@ describe('§5 — la dictée dit pourquoi le micro ne s’ouvre pas', () => {
     expect(banc.natif).toHaveBeenCalledWith('micro', { action: 'reglages' });
   });
 });
+
+/**
+ * 28/09/2026, audit du micro au téléphone : l'invite d'Android apparaît sous
+ * le doigt qui tient la dictée. Le relâcher arrivait AVANT l'accord, ne
+ * trouvait aucun enregistreur, et l'accord tardif démarrait un MediaRecorder
+ * que rien n'arrêtait (§78 : le voyant vert doit dire la vérité).
+ */
+describe('§78 — relâcher pendant l’invite d’Android n’allume pas le micro', () => {
+  it('l’accord qui arrive après le relâcher referme le flux sans enregistrer', async () => {
+    let accorder!: (s: ReturnType<typeof flux>) => void;
+    banc.micro.mockReturnValue(new Promise((r) => { accorder = r; }));
+    const construit = vi.fn();
+    vi.stubGlobal('MediaRecorder', class extends Enregistreur {
+      constructor(s: unknown) { super(s); construit(); }
+    });
+    const depart = rendu().startRecording();
+    await expect(rendu().stopRecording(), 'le doigt se lève pour répondre à Android').rejects.toThrow('Not recording');
+    const stream = flux(); accorder(stream); await depart;
+    expect(stream.getTracks()[0].stop, 'le micro accordé trop tard reste allumé').toHaveBeenCalledOnce();
+    expect(construit, 'aucun enregistreur après le relâcher').not.toHaveBeenCalled();
+    expect(rendu().state).toBe('idle');
+  });
+
+  it('tenu jusqu’à l’accord, le micro enregistre comme avant', async () => {
+    await rendu().startRecording();
+    expect(rendu().state).toBe('recording');
+    expect(rendu().isRecording).toBe(true);
+  });
+
+  it('une nouvelle pression après un relâcher annulé enregistre de nouveau', async () => {
+    let accorder!: (s: ReturnType<typeof flux>) => void;
+    banc.micro.mockReturnValueOnce(new Promise((r) => { accorder = r; }));
+    const premiere = rendu().startRecording();
+    await rendu().stopRecording().catch(() => undefined);
+    accorder(flux()); await premiere;
+    await rendu().startRecording();
+    expect(rendu().state, 'l’annulation ne vaut que pour la demande relâchée').toBe('recording');
+  });
+});
