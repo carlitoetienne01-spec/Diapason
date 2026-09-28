@@ -7,7 +7,7 @@
     "maxGeneratedTokens": 32,
     "temperature": 0,
     "seed": 42,
-    "history": "Anglais, 24 messages, contenu non conservé dans ce rapport",
+    "history": "une conversation réelle de quelques dizaines de messages ; titre, comptes et contenu non conservés dans ce rapport",
     "identity": "identité configurée incluse",
     "tools": "non inclus dans la comparaison directe",
     "interpretation": "Comparer le deuxième appel de chaque placement : contexte déjà préparé, seconde de la date modifiée ; premier appel après changement de disposition encore coûteux."

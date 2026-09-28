@@ -325,11 +325,11 @@ def observation(resultat: Any) -> str:
     trouvée(s). » se dit bien à voix haute, et ne dit rien à un modèle à qui on
     demande LESQUELLES. Les données, elles, vivent dans ``metadata`` — que le
     modèle ne recevait pas. C'est ce qui rendait les outils Succès inutiles
-    même une fois branchés : l'assistant appelait le bon outil, obtenait les
-    quatre-vingt-cinq tâches, et n'en voyait que le nombre.
+    même une fois branchés : l'assistant appelait le bon outil, obtenait des
+    dizaines de tâches, et n'en voyait que le nombre.
 
     On ne corrige PAS le ``content`` des outils : le chemin vocal le prononce
-    tel quel, et « 85 tâches trouvées » y est la bonne phrase. C'est ici, au
+    tel quel, et « N tâches trouvées » y est la bonne phrase. C'est ici, au
     seul endroit qui s'adresse au modèle, que les données sont jointes.
     """
     contenu = str(getattr(resultat, "content", "") or "")

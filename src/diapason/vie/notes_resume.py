@@ -11,7 +11,8 @@ from threading import Lock
 from typing import Any, Mapping
 
 # Même estimation textuelle que notePages.ts, jamais le nombre mesuré par
-# l'éditeur. 19/09/2026 : les cartables chargeaient 1,1 Mo de HTML pour cela.
+# l'éditeur. 19/09/2026 : les cartables chargeaient plus d'un Mo de HTML pour
+# cela.
 _CAPACITES = {
     "a4": 2800,
     "letter": 2800,
@@ -27,7 +28,7 @@ _CAPACITES = {
 _SAUT = re.compile(
     r"""<hr[^>]*class=["'][^"']*(?:vie|succes)-page-break[^"']*["'][^>]*>""", re.I
 )
-# 19/09/2026 : reparcourir 1,1 Mo de HTML coûtait 23 ms par lecture, même
+# 19/09/2026 : reparcourir plus d'un Mo de HTML coûtait 23 ms par lecture, même
 # sans frappe. Une empreinte du CONTENU évite un cache périmé si deux écritures
 # partagent une date. 256 entrées : quelques dizaines de Ko, aucun HTML retenu.
 _CACHE_MAX = 256

@@ -59,7 +59,7 @@ class VieTasksTool(MagasinParesseux, BaseTool):
                 "ID or by title; an ambiguous title is refused with the candidates "
                 "— ask the user which one, never guess. "
                 # Sans cette phrase, un modèle 9b appelle list sans date et
-                # reçoit les quatre-vingt-cinq tâches d'un coup — dont il ne
+                # reçoit des dizaines de tâches d'un coup — dont il ne
                 # voit qu'un extrait, et sur lequel il répond de travers. La
                 # question posée est presque toujours datée (« aujourd'hui »,
                 # « demain », « cette semaine ») : le dire ici coûte une ligne

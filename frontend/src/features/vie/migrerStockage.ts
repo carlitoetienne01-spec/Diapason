@@ -8,10 +8,11 @@
  * - sans copie, les préférences des pages (mode de vue, filtres, pages,
  *   arbres dépliés) repartaient à zéro, et les rappels d'habitude déjà
  *   envoyés aujourd'hui se renvoyaient ;
- * - sans suppression, les 1 692 006 octets d'anciens caches (mesurés le
- *   25/09/2026) restaient à côté du budget de 4,2 Mo du cache renommé, au-delà
- *   des 5 Mo que WebKit accorde à l'origine. `saveSettings`, qui écrit sans
- *   `try`, aurait alors perdu les réglages d'apparence.
+ * - sans suppression, les anciens caches d'un foyer réel (près de 2 Mo,
+ *   mesurés le 25/09/2026) restaient à côté du budget de 4,2 Mo du cache
+ *   renommé, au-delà des 5 Mo que WebKit accorde à l'origine.
+ *   `saveSettings`, qui écrit sans `try`, aurait alors perdu les réglages
+ *   d'apparence.
  *
  * Le stockage est cloisonné par origine (`tauri://localhost` pour la fenêtre,
  * `http://127.0.0.1:8000` pour le mini-panneau) : la migration s'exécute à

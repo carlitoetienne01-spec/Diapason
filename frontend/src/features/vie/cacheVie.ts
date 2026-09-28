@@ -62,35 +62,39 @@ export const EMPREINTE_BUNDLE: string = typeof __BUILD_STAMP__ === 'string' ? __
 /**
  * `diapason-succes-cache:` jusqu'au 25/09/2026 : les entrées sous l'ancien
  * préfixe sont supprimées à l'amorçage par `migrerStockage` — laissées là,
- * leurs 1,7 Mo s'ajoutaient au budget ci-dessous et dépassaient le quota.
+ * celles d'un foyer réel (de l'ordre de 2 Mo) s'ajoutaient au budget
+ * ci-dessous et dépassaient le quota.
  */
 export const PREFIXE_STOCKAGE = 'diapason-vie-cache:';
 
 /**
  * Les tailles se comptent en OCTETS UTF-16, deux par unité de code : WebKit
  * (la fenêtre Tauri et le mini-panneau) range une chaîne sur 16 bits dès
- * qu'UN caractère dépasse U+00FF, et les vraies réponses en ont — 1 439
+ * qu'UN caractère dépasse U+00FF, et les vraies réponses en ont — des
  * tirets cadratins dans les tâches, des flèches et des emoji dans les notes
- * (mesuré le 18 sept. 2026). Compter 1 octet par caractère, comme avant la
- * revue du cache, laissait croire que deux entrées de 1,5 M de caractères
- * tenaient dans les 5 Mo par origine : à 2 octets ce sont 6 Mo, et
- * `purgerLesAutres` faisait alors s'évincer tâches et notes en alternance.
+ * (relevé le 18 sept. 2026 ; un seul suffit). Compter 1 octet par
+ * caractère, comme avant la revue du cache, laissait croire que deux
+ * entrées de 1,5 M de caractères tenaient dans les 5 Mo par origine : à 2
+ * octets ce sont 6 Mo, et `purgerLesAutres` faisait alors s'évincer tâches
+ * et notes en alternance.
  */
 export const OCTETS_PAR_UNITE = 2;
 
 /**
  * Au-delà, l'entrée reste en mémoire seule. 2,4 Mo, soit 1,2 M d'unités :
- * la plus grosse réponse mesurée le 18 sept. 2026 (les notes, 927 654
- * unités, 1,86 Mo) tient avec 29 % de marge, et deux entrées à ce plafond
- * (4,8 Mo) ne passent PAS le budget global — c'est lui qui arbitre.
+ * la plus grosse réponse d'un foyer réel mesurée le 18 sept. 2026 (les
+ * notes, moins de 2 Mo) y tient avec au moins 20 % de marge, et deux
+ * entrées à ce plafond (4,8 Mo) ne passent PAS le budget global — c'est
+ * lui qui arbitre.
  */
 export const PLAFOND_OCTETS = 2_400_000;
 
 /**
  * Le budget de TOUTES nos entrées, mesuré en octets UTF-16 et comparé avant
  * d'écrire. 4,2 Mo sur les 5 Mo (5 242 880 octets) que WebKit accorde à
- * l'origine : tâches (1,62 Mo) + notes (1,86 Mo) + les petites listes
- * (≈ 30 Ko) y tiennent, et il reste ≈ 1 Mo aux autres modules — réglages
+ * l'origine : les tâches et les notes d'un foyer réel (moins de 2 Mo
+ * chacune le 18 sept. 2026) et les petites listes (quelques dizaines de
+ * Ko) y tiennent, et il reste ≈ 1 Mo aux autres modules — réglages
  * (≈ 400 octets), préférences d'interface (3 Ko), statistiques de dictée —
  * dont `saveSettings` écrit sans `try/catch` : un quota plein leur ferait
  * perdre le réglage en mémoire même. Une écriture qui dépasserait le budget

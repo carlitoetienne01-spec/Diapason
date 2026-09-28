@@ -3,10 +3,10 @@
  * vitest.
  *
  * Demande de Carlito, 17 sept. 2026 : « Pourquoi les tâches terminées sont
- * dans la même page en bas ? Je veux une autre façon de les gérer. » Les 36
- * terminées traînaient sous les 690 ouvertes, barrées, sans date de
- * complétion visible, et une sélection multiple n'existait pas : vider un
- * mois de tâches faites, c'était 36 confirmations.
+ * dans la même page en bas ? Je veux une autre façon de les gérer. » Des
+ * dizaines de terminées traînaient sous des centaines d'ouvertes, barrées,
+ * sans date de complétion visible, et une sélection multiple n'existait pas :
+ * vider un mois de tâches faites, c'était une confirmation par tâche.
  *
  * Ici : l'ordre (les plus récentes d'abord), le regroupement par jour de
  * complétion, le libellé du jour, la sélection par plage et le bilan d'une

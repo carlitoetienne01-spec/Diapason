@@ -466,12 +466,12 @@ Ne changent pas dans ce commit : `succes.db`, `succes-photos`, les tables, `/v1/
 - la trame `succes_tasks,mesh_send` ne donne que `vie_tasks` ;
 - le test-fusible de l'étape 2 reste vert.
 
-~~**8. « Les réglages des pages Succès auraient été oubliés, et 1,7 Mo de cache orphelin aurait rempli le quota ».**~~ *Commité le 25/09/2026 (`890f745`).* Les trois clés sont renommées dans le même commit que la fonction pure `migrerStockage(store)`, appelée à l'amorçage, donc une fois par origine (`tauri://localhost` et `http://127.0.0.1:8000`) :
+~~**8. « Les réglages des pages Succès auraient été oubliés, et près de 2 Mo de cache orphelin auraient rempli le quota ».**~~ *Commité le 25/09/2026 (`890f745`).* Les trois clés sont renommées dans le même commit que la fonction pure `migrerStockage(store)`, appelée à l'amorçage, donc une fois par origine (`tauri://localhost` et `http://127.0.0.1:8000`) :
 - `diapason-succes-ui-prefs` (`uiPrefs.ts:8`) et `diapason-succes-habit-reminder-fired` (`habitReminders.ts:12`) sont copiées vers leur nouveau nom si celui-ci est absent, puis retirées ;
 - toutes les clés `diapason-succes-cache:*` (`cacheSucces.ts:61`) sont **supprimées**.
 
 La classe `succes-page-break` reste lue (`notePages.ts:29`, `notes_resume.py:25`).
-*Risque silencieux :* le budget de 4,2 Mo du nouveau cache s'ajoute à 1 692 006 octets d'anciens caches et dépasse les 5 Mo de WebKit. `saveSettings`, qui n'est pas protégé par un `try`, perd alors les réglages d'apparence. Sans la copie, les rappels d'habitude du jour repartent.
+*Risque silencieux :* le budget de 4,2 Mo du nouveau cache s'ajoute aux anciens caches d'un foyer réel (près de 2 Mo ; la taille exacte n'est pas reproduite ici) et dépasse les 5 Mo de WebKit. `saveSettings`, qui n'est pas protégé par un `try`, perd alors les réglages d'apparence. Sans la copie, les rappels d'habitude du jour repartent.
 *Preuve :* vitest avec un faux `Storage` :
 - les préférences sont recopiées à l'identique ;
 - un second passage ne change rien ;

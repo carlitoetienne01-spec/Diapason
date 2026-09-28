@@ -3,8 +3,9 @@
  * vérifiable sous vitest.
  *
  * Expertise de la page Tâches, 17 sept. 2026 (défaut 6) : chaque coche
- * relançait `load()` sur les 702 tâches — la case restait figée quelques
- * centaines de ms, et cinq sous-tâches cochées faisaient cinq rechargements.
+ * relançait `load()` sur une liste de plusieurs centaines de tâches — la
+ * case restait figée quelques centaines de ms, et cinq sous-tâches cochées
+ * faisaient cinq rechargements.
  * Sous 100 ms (Nielsen), l'interface semble répondre au doigt.
  *
  * Le contrat, §100 : l'état peint au clic n'est qu'un intérim. La ligne que

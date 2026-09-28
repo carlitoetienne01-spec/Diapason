@@ -11,7 +11,8 @@ export const STORAGE_KEY = 'diapason-vie-ui-prefs';
 
 /**
  * `done` : l'onglet Terminées, à part de la Liste depuis le 17 sept. 2026 —
- * les 36 tâches faites traînaient sous les 690 ouvertes, barrées.
+ * quelques dizaines de tâches faites traînaient, barrées, sous des centaines
+ * d'ouvertes.
  */
 export type VieTasksViewMode = 'list' | 'week' | 'month' | 'done';
 const MODES: readonly VieTasksViewMode[] = ['list', 'week', 'month', 'done'];
