@@ -142,6 +142,14 @@ def test_messages_compose_intent_fr():
     assert "salut" in intent.body.lower()
 
 
+def test_le_a_du_destinataire_est_conserve():
+    from diapason.desktop.smart_intents import KIND_MESSAGES_COMPOSE, parse_smart_intent
+
+    intent = parse_smart_intent("text Alice saying bonjour")
+    assert intent.kind == KIND_MESSAGES_COMPOSE, "la commande explicite reste reconnue"
+    assert intent.to == "alice", "ne pas manger la première lettre"
+
+
 def test_email_intent_en():
     from diapason.desktop.smart_intents import KIND_MAIL_COMPOSE, parse_smart_intent
 

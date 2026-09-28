@@ -265,6 +265,26 @@ def test_voice_exposes_routine_workspace_but_not_sensitive_delete() -> None:
     assert "vie_delete_item" not in tool_ids
 
 
+class TestRelireLaNoteEnregistree:
+    """§100 — l'assistant doit vérifier ce qui existe, pas réciter sa demande."""
+
+    def test_la_relecture_retrouve_la_derniere_version(self, tmp_path):
+        store = VieWorkspaceStore(tmp_path / "notes.db")
+        outil = VieWorkspaceTool(store)
+        note = store.create_note({"title": "Diagnostic", "content": "Avant"})
+        store.update_note(note["id"], {"content": "Après modification"})
+        resultat = outil.execute(action="read_note", item_id=note["id"])
+        assert resultat.success, "la relecture doit être disponible dans l'outil"
+        assert resultat.metadata["note"]["content"] == "Après modification", (
+            "relire la base, pas le contenu de la création"
+        )
+
+    def test_une_note_absente_ne_devient_pas_un_succes(self, tmp_path):
+        outil = VieWorkspaceTool(VieWorkspaceStore(tmp_path / "notes.db"))
+        resultat = outil.execute(action="read_note", item_id="inexistante")
+        assert not resultat.success, "la lecture absente doit échouer explicitement"
+
+
 class TestLesTroisAxesDeMiseEnPage:
     """« Mise en page » de Word a trois menus ; nous en avions un seul.
 

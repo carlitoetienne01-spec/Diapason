@@ -273,7 +273,11 @@ class WebSearchTool(BaseTool):
                     "recency": {
                         "type": "string",
                         "enum": ["day", "week", "month", "year"],
-                        "description": "Only results from the last day/week/month/year",
+                        "description": (
+                            "Optional: only results from the last day/week/month/year. "
+                            "Omit for official sites, tutorials and timeless topics; "
+                            "a date filter can hide their relevant pages."
+                        ),
                     },
                     "news": {
                         "type": "boolean",

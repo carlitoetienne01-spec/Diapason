@@ -269,6 +269,49 @@ class TestOllamaGenerateControlToken:
 @requires_respx
 class TestOllamaStreamFullControlToken:
     @pytest.mark.asyncio
+    async def test_deux_appels_sur_deux_trames_restent_deux_outils(self, engine):
+        """§100 — deux lectures ne deviennent pas un nom et un JSON invalides."""
+        from diapason.server.agentic_stream import _fusionner_fragments
+
+        body = "\n".join(
+            json.dumps(
+                {
+                    "message": {
+                        "tool_calls": [
+                            {
+                                "function": {
+                                    "name": "web_read",
+                                    "arguments": {"url": url},
+                                }
+                            }
+                        ]
+                    },
+                    "done": i == 1,
+                }
+            )
+            for i, url in enumerate(["https://example.org/a", "https://example.org/b"])
+        )
+        with respx.mock:
+            respx.post("http://testhost:11434/api/chat").mock(
+                return_value=httpx.Response(200, text=body)
+            )
+            appels = {}
+            async for morceau in engine.stream_full(
+                [Message(role=Role.USER, content="Lis ces deux pages")],
+                model="qwen3.5:9b",
+                tools=[{"type": "function", "function": {"name": "web_read"}}],
+            ):
+                _fusionner_fragments(appels, morceau.tool_calls or [])
+        assert len(appels) == 2, "chaque appel natif possède son index"
+        assert [a["function"]["name"] for a in appels.values()] == ["web_read"] * 2
+        assert [
+            json.loads(a["function"]["arguments"])["url"] for a in appels.values()
+        ] == [
+            "https://example.org/a",
+            "https://example.org/b",
+        ], "les arguments restent des objets distincts valides"
+
+    @pytest.mark.asyncio
     async def test_stream_full_drops_control_token_tool_call(
         self, engine: OllamaEngine
     ) -> None:

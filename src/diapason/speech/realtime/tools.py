@@ -17,6 +17,7 @@ DEFAULT_VOICE_TOOL_IDS: tuple[str, ...] = (
     # figurer (« dans combien de jours », « c'était quand ») restait hors
     # d'atteinte. Et surtout : à la voix, « retiens que… » n'écrivait nulle
     # part, exactement le défaut corrigé pour le chat le même jour.
+    "calculator",
     "current_time",
     "memory_manage",
     "user_profile_manage",
@@ -110,6 +111,7 @@ FAST_ACK_TOOL_IDS = frozenset(
 )
 
 _TOOL_MODULES: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
+    ("diapason.tools.calculator", (("calculator", "CalculatorTool"),)),
     (
         "diapason.tools.gestes_spatiaux",
         (("geste_deposer", "GesteDeposerTool"),),

@@ -6,6 +6,19 @@ from diapason.actions.models import ActionRisk
 from diapason.actions.router import FastActionRouter
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Relis la note Diapason « Jeux ». Réponds avec son texte actuel.",
+        "Donne le texte actuel",
+        "Explique ce message important",
+    ],
+)
+def test_une_demande_de_texte_ne_prepare_pas_de_message(text):
+    """§100 — le raccourci ne doit pas chercher un faux destinataire."""
+    assert FastActionRouter().route(text) is None, "laisser la discussion au modèle"
+
+
 @pytest.fixture
 def router():
     return FastActionRouter()

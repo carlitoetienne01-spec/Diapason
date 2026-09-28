@@ -583,6 +583,7 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
                     self._raise_stream_http_error(resp.status_code, resp.text)
 
                 finish_reason: str | None = None
+                next_tool_index = 0
                 self._scheduler.remember_model(str(payload["model"]))
                 async for line in resp.aiter_lines():
                     if not line.strip():
@@ -621,7 +622,11 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
                                 if isinstance(raw_args, dict)
                                 else str(raw_args)
                             )
-                            i = len(fragments)
+                            # 2026-09-27: native calls are complete, but can
+                            # arrive in separate chunks. Resetting index to 0
+                            # merged two web_read calls into web_readweb_read.
+                            i = next_tool_index
+                            next_tool_index += 1
                             fragments.append(
                                 {
                                     "index": i,

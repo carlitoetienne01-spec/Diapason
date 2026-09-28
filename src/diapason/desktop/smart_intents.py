@@ -502,9 +502,13 @@ def parse_smart_intent(command: str) -> SmartIntent:
         re.IGNORECASE,
     )
     if not msg_m:
-        msg_m = re.search(
-            r"(?:message|text|texte|imessage)\s+(?:à|a|to\s+)?(?P<to>\S+)"
-            r"(?:\s+(?:disant|saying|pour dire|:)\s+(?P<body>.+))?$",
+        # 27/09/2026 : « donne son texte actuel » cherchait le contact
+        # « ctuel » : search attrapait un nom au milieu de la phrase, et
+        # le a optionnel mangeait le début du destinataire. Seule une
+        # commande initiale avec un corps explicite est un brouillon.
+        msg_m = re.match(
+            r"(?:message|text|imessage)\s+(?:(?:à|a|to)\s+)?(?P<to>\S+)"
+            r"\s+(?:disant|saying|pour dire|:)\s+(?P<body>.+)$",
             low,
             re.IGNORECASE,
         )

@@ -58,7 +58,9 @@ class VieWorkspaceTool(MagasinParesseux, BaseTool):
             name="vie_workspace",
             description=(
                 "Manage private local Diapason projects, habits and notes. Supports "
-                "overview, list/create/update, and habit check-ins. Deletion and bulk "
+                "overview, list/create/update, read_note by item_id, "
+                "and habit check-ins. "
+                "Deletion and bulk "
                 "changes are deliberately unavailable. Use exact IDs returned by lists."
             ),
             parameters={
@@ -77,6 +79,7 @@ class VieWorkspaceTool(MagasinParesseux, BaseTool):
                             "update_habit",
                             "toggle_habit",
                             "list_notes",
+                            "read_note",
                             "create_note",
                             "update_note",
                         ],
@@ -198,6 +201,9 @@ class VieWorkspaceTool(MagasinParesseux, BaseTool):
             )
             state = "terminée" if habit["done"] else "rouverte"
             return {"message": f"Habitude {state} : {habit['name']}", "habit": habit}
+        if action == "read_note":
+            note = self._store.get_note(self._required_id(params))
+            return {"message": f"Note relue : {note['title']}", "note": note}
         if action == "list_notes":
             items = self._store.list_notes(search=str(params.get("search") or ""))
             return {"message": f"{len(items)} note(s) trouvée(s).", "notes": items}
