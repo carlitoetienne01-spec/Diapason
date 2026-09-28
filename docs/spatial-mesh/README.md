@@ -102,7 +102,7 @@ propres routes, son propre seau de limitation.
 | **L'émetteur** | `mesh/envoi_fichier.py` |
 | **Le chemin de bureau** — dialogue natif, un fichier préparé puis attrapé, sélecteur d'appareils au poing et progression réelle | `presse_papiers_spatial.py`, `gestes_routes.py`, `useModeGestes.ts`, `VoyantGestes.tsx` |
 | **Le banc réel** — 2 Mo en trois morceaux entre deux processus, plus deux tentatives d'intrusion refusées | `tests/mesh/test_banc_deux_processus.py` |
-| **Le banc physique Mac ↔ Windows** — le 28 août 2026, le même fichier `NOTICE` de 479 octets a traversé dans les deux sens entre `MacBookAir-de-Carlito` et `SUCCES` ; l'empreinte SHA-256 reçue (`0b8c2b5250940ddbb954b74c0dbac1e4e28b7a86f1934a3c9796d5549b591f60`) est identique à la source | Deux installations Diapason 1.0.0, ports Mesh LAN 8001. Ce banc précédait la réception automatique ; le transport reste prouvé, la nouvelle expérience physique attend le déploiement de ce lot sur les deux machines. |
+| **Le banc physique Mac ↔ Windows** — le 28 août 2026, le même fichier `NOTICE` de 479 octets a traversé dans les deux sens entre le Mac et le PC Windows du propriétaire (leurs noms de machine ne sont pas reproduits ici) ; l'empreinte SHA-256 reçue (`0b8c2b5250940ddbb954b74c0dbac1e4e28b7a86f1934a3c9796d5549b591f60`) est identique à la source | Deux installations Diapason 1.0.0, ports Mesh LAN 8001. Ce banc précédait la réception automatique ; le transport reste prouvé, la nouvelle expérience physique attend le déploiement de ce lot sur les deux machines. |
 
 ### Les décisions, et pourquoi
 

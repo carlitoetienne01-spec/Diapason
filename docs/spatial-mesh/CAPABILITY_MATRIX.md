@@ -80,8 +80,8 @@ l'application. Le modèle n'a donc accès qu'à **quatre** de ces cinq verbes.
 
 | Fonction demandée | macOS | Windows | Android | iOS/iPadOS | Web | Note |
 |---|:--:|:--:|:--:|:--:|:--:|---|
-| **Jumelage** | ✅ | ✅ | ✅ | ⚠️ | ❌ | Le vrai PC Windows `SUCCES` et le Mac sont appairés, chacun avec l'identité et la clé publique actuelles de l'autre. Android : constaté, 2 appareils en base. |
-| **Présence** | ✅ | ✅ | ✅ | ⚠️ | ❌ | Le 28 août, le Mac voyait `SUCCES` `ONLINE` à `192.168.0.198:8001`. Présence dérivée d'un horodatage, pas d'une connexion tenue. |
+| **Jumelage** | ✅ | ✅ | ✅ | ⚠️ | ❌ | Le vrai PC Windows et le Mac sont appairés, chacun avec l'identité et la clé publique actuelles de l'autre. Android : constaté, 2 appareils en base. |
+| **Présence** | ✅ | ✅ | ✅ | ⚠️ | ❌ | Le 28 août, le Mac voyait le PC Windows `ONLINE` à `192.168.0.198:8001`. Présence dérivée d'un horodatage, pas d'une connexion tenue. |
 | **Handoff interne** (`success://`, `vie://`) | ✅ | ⚠️ | ✅ | ⚠️ | ❌ | Windows déclare les verbes requis, mais aucun handoff de ressource n'a encore été vérifié sur le PC physique. 25/09/2026 : `vie://` est accepté **dans le code** des trois récepteurs (Python, fenêtre, Dart — `f74f5a9`, `352e18c`), **pas encore installé** : le bureau l'aura après `install-desktop.sh`, le téléphone après `tool/flutter_avec_secrets.sh`. D'ici là, le récepteur Python relancé répondrait « Écran ouvert » à un `vie://` que la fenêtre installée refuse en silence : les émetteurs écrivent donc encore `success://` (étape 14a du plan, conditionnée à ces deux reconstructions). Une route inconnue rend `UNSUPPORTED`, plus « Écran ouvert ». |
 | **Chiffrement** | ⚠️ | ⚠️ | ⚠️ | — | — | **Fichiers : bout en bout**, éprouvé Mac ↔ Windows (X25519 éphémère + AES-256-GCM, `mesh/coffre.py`). **Commandes : signées, en clair** (Ed25519). La distinction est délibérée — voir §4. |
 | **Hors-ligne** | ✅ | — | ✅ | — | — | File avec deux politiques ; jamais de faux succès. |
@@ -102,25 +102,25 @@ l'application. Le modèle n'a donc accès qu'à **quatre** de ces cinq verbes.
 
 ## 3. L'état réel de la flotte
 
-Lu par l'API locale du Mac le 28 août 2026 à 1 h 59.
+Lu par l'API locale du Mac le 28 août 2026 (les heures ne sont pas reproduites ici).
 
 | Appareil | Plateforme | Transport | Confiance | Dernier contact (heure locale) |
 |---|---|---|---|---|
 | Cette machine | macOS / laptop | — | soi (jamais dans son propre registre) | permanent |
-| `SUCCES` | Windows / laptop | `lan` (`192.168.0.198:8001`) | TRUSTED, `SCELLE`, ONLINE | **28 août 2026, 1 h 59** |
-| « Mon téléphone » | Android / phone | `pull` | TRUSTED, OFFLINE | 18 août 2026, 15 h 29 |
+| Le PC Windows (nom de machine non reproduit) | Windows / laptop | `lan` (`192.168.0.198:8001`) | TRUSTED, `SCELLE`, ONLINE | **28 août 2026** |
+| « Mon téléphone » | Android / phone | `pull` | TRUSTED, OFFLINE | 18 août 2026 |
 
 **16 commandes émises : 11 SUCCESS, 3 EXPIRED, 2 OFFLINE.**
 
 Trois précisions que la version précédente taisait :
 
-- L'ancien « PC du bureau » de banc a été remplacé par `SUCCES`, le vrai PC
+- L'ancien « PC du bureau » de banc a été remplacé par le vrai PC
   Windows. Son adresse LAN, sa présence et son application Diapason 1.0.0 ont
   été constatées depuis le Mac.
 - L'historique des commandes précède ce PC physique : ses anciens SUCCESS ne
-  prouvent donc aucun handoff vers `SUCCES`. C'est pourquoi la case Windows du
+  prouvent donc aucun handoff vers ce PC. C'est pourquoi la case Windows du
   handoff reste ⚠️ malgré les capacités qu'il déclare.
-- Deux `app.show_resource` créées le 25 août à 5 h ont **expiré** — le banc du
+- Deux `app.show_resource` créées le 25 août ont **expiré** — le banc du
   handoff. Le maillage n'a donc pas dormi sept jours sans rien tenter ; il a
   tenté, et personne n'écoutait.
 
