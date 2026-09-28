@@ -1,5 +1,6 @@
 import type { ResearchEvent, SSEEvent } from '../types';
 import { getBase, authHeaders } from './api';
+import { lireLeCorps } from './coupureDuFlux';
 
 export interface ChatRequest {
   model: string;
@@ -48,7 +49,9 @@ export async function* streamChat(
 
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      // 28/09/2026 : un corps interrompu après les en-têtes devient une
+      // CoupureDuFlux (lib/coupureDuFlux.ts) — plus « Erreur : network error ».
+      const { done, value } = await lireLeCorps(reader);
       if (done) break;
 
       recevoir?.(value);
@@ -108,7 +111,7 @@ export async function* streamResearch(
 
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      const { done, value } = await lireLeCorps(reader);
       if (done) break;
 
       recevoir?.(value);

@@ -202,6 +202,15 @@ export interface ChatMessage {
     sourcesDatedAt?: string;
     disagreement?: { answer: string; sources: string[] };
   };
+  // 28/09/2026 : la réponse est incomplète parce que la CONNEXION a lâché
+  // (réseau, veille du téléphone, serveur redémarré), pas parce que le
+  // serveur a refusé. `detail` est le nom brut de l'erreur ; la phrase est
+  // choisie à l'affichage (lib/coupureDuFlux.ts). Clés anglaises sur le fil.
+  connectionLost?: {
+    detail: string;
+    during: 'request' | 'response';
+    overTailnet: boolean;
+  };
 }
 
 export interface Conversation {

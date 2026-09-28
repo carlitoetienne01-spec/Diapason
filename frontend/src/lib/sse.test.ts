@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { streamChat, streamResearch } from './sse';
+import { CoupureDuFlux, lireCoupure } from './coupureDuFlux';
 
 vi.mock('./api', () => ({ getBase: () => 'http://test.invalid', authHeaders: (v: unknown) => v }));
 afterEach(() => vi.unstubAllGlobals());
@@ -59,5 +60,45 @@ describe('réception et fermeture du flux', () => {
     for await (const event of streamResearch('test')) resultats.push(event);
     expect(resultats).toEqual([{ type: 'done' }]);
     expect(annuler).toHaveBeenCalledTimes(1);
+  });
+});
+
+// 28/09/2026 : les en-têtes 200 arrivés, `reader.read()` échoue au milieu du
+// corps (TypeError « network error » de la WebView Chromium). La bulle disait
+// « Erreur : network error » ; le flux lève désormais une CoupureDuFlux.
+function corpsQuiCasse(avant: string, erreur: unknown) {
+  const encodeur = new TextEncoder();
+  let envoye = false;
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (!envoye) { envoye = true; controller.enqueue(encodeur.encode(avant)); return; }
+      controller.error(erreur);
+    },
+  });
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, body }));
+}
+describe('un corps qui casse après les en-têtes', () => {
+  it('le chat lève une CoupureDuFlux, après avoir rendu ce qui était arrivé', async () => {
+    corpsQuiCasse('data: {"choices":[{"delta":{"content":"Début"}}]}\n\n', new TypeError('network error'));
+    const recus: string[] = [];
+    const erreur = await (async () => { for await (const ev of streamChat(request)) recus.push(ev.data); })()
+      .catch((e: unknown) => e);
+    expect(recus, 'le texte déjà reçu n’est pas perdu').toHaveLength(1);
+    expect(erreur, 'une coupure, plus « Erreur : network error »').toBeInstanceOf(CoupureDuFlux);
+    expect(lireCoupure(erreur, true)).toEqual({ detail: 'TypeError: network error', during: 'response', overTailnet: true });
+  });
+  it('la recherche approfondie aussi', async () => {
+    corpsQuiCasse('data: {"type":"synthesis","text":"Début"}\n\n', new TypeError('Load failed'));
+    const erreur = await (async () => { for await (const _ of streamResearch('test')) { /* lire */ } })()
+      .catch((e: unknown) => e);
+    expect(erreur).toBeInstanceOf(CoupureDuFlux);
+    expect((erreur as CoupureDuFlux).brut).toBe('TypeError: Load failed');
+  });
+  it('un arrêt demandé pendant la lecture reste un AbortError', async () => {
+    const arret = Object.assign(new Error('aborted'), { name: 'AbortError' });
+    corpsQuiCasse('data: {"choices":[{"delta":{"content":"Début"}}]}\n\n', arret);
+    const erreur = await (async () => { for await (const _ of streamChat(request)) { /* lire */ } })()
+      .catch((e: unknown) => e);
+    expect(erreur, 'le bouton Arrêter garde « (Génération interrompue) »').toBe(arret);
   });
 });

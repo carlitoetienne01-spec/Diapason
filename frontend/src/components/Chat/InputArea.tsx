@@ -9,6 +9,7 @@ import { useAppStore, generateId, completerAudioMessage, viderSauvegardeConversa
 import { creerCadenceFlux } from '../../lib/cadenceFlux';
 import { EVENEMENT_REPONSES_CHAT, lireQuestions, preparerEnvoiQuestions, texteQuestions, type EnvoiReponses } from '../../lib/questionsChat';
 import { streamChat, streamResearch } from '../../lib/sse';
+import { EVENEMENT_RENVOYER, issueDuFlux, preparerRenvoi, texteFinal, type ConnexionPerdue, type DemandeDeRenvoi } from '../../lib/coupureDuFlux';
 import { fusionnerLesSources, historiqueDeRecherche, remplacerLesSources } from './historiqueDeRecherche';
 import {
   DOCUMENTS_MAX,
@@ -593,11 +594,18 @@ export function InputArea() {
 
   // `override` exists for dictation: the last words are transcribed after the
   // microphone closes, so the auto-send path has fresher text than `input`.
-  const sendMessage = useCallback(async (override?: string, envoi?: EnvoiReponses, options?: { verifyOnline?: boolean; garderBrouillon?: boolean }) => {
+  const sendMessage = useCallback(async (override?: string, envoi?: EnvoiReponses, options?: { verifyOnline?: boolean; garderBrouillon?: boolean; renvoi?: string }) => {
+    // 28/09/2026 : « Renvoyer » sous une réponse coupée par le réseau rejoue
+    // la MÊME question, déjà dans le fil, sans la recopier ni toucher au
+    // brouillon ou aux pièces du compositeur (lib/coupureDuFlux.ts).
+    const renvoi = options?.renvoi
+      ? preparerRenvoi(useAppStore.getState().messages, options.renvoi)
+      : null;
+    if (options?.renvoi && !renvoi) return;
     // 21/09/2026 : « Vérifier en ligne » passe par le chat ordinaire, jamais
     // par la recherche profonde — c'est une question, pas un dossier.
-    const recherche = deepResearch && !envoi && !options?.verifyOnline;
-    const content = (override ?? input).trim();
+    const recherche = renvoi ? renvoi.recherche : deepResearch && !envoi && !options?.verifyOnline;
+    const content = renvoi ? renvoi.question.content : (override ?? input).trim();
     if (!content || useAppStore.getState().streamState.isStreaming) return;
     if (!selectedModel) {
       toast.error(t('chat.input.pickModel'));
@@ -607,7 +615,7 @@ export function InputArea() {
     if (envoi) {
       const actuel = useAppStore.getState();
       if (actuel.activeId !== envoi.conversationId || !preparerEnvoiQuestions(actuel.messages, envoi)) return;
-    } else if (!options?.garderBrouillon) {
+    } else if (!options?.garderBrouillon && !renvoi) {
       // Revue du 21/09 : « Vérifier en ligne » effaçait le brouillon en cours ;
       // la dictée, elle, passe par ce vidage (elle pose son texte dans le champ).
       setInput('');
@@ -621,28 +629,31 @@ export function InputArea() {
       convId = createConversation(selectedModel);
     }
 
-    // 22/09/2026 : les images partent avec CE message et sont retirées du
-    // composeur aussitôt — les garder ferait qu'un second envoi les
-    // renverrait sans que rien ne le dise.
-    const imagesDuTour = pieces;
-    const documentsDuTour = documents;
-    const userMsg: ChatMessage = {
-      id: generateId(),
-      role: 'user',
-      content,
-      timestamp: Date.now(),
-      ...(imagesDuTour.length > 0 ? { images: pourLeFil(imagesDuTour) } : {}),
-      ...(documentsDuTour.length > 0
-        ? { documents: documentsPourLeFil(documentsDuTour) }
-        : {}),
-      ...(envoi ? { questionReply: envoi.reply } : {}),
-    };
-    addMessage(convId, userMsg);
-    if (imagesDuTour.length > 0) setPieces([]);
-    if (documentsDuTour.length > 0) setDocuments([]);
+    if (!renvoi) {
+      // 22/09/2026 : les images partent avec CE message et sont retirées du
+      // composeur aussitôt — les garder ferait qu'un second envoi les
+      // renverrait sans que rien ne le dise.
+      const imagesDuTour = pieces;
+      const documentsDuTour = documents;
+      const userMsg: ChatMessage = {
+        id: generateId(),
+        role: 'user',
+        content,
+        timestamp: Date.now(),
+        ...(imagesDuTour.length > 0 ? { images: pourLeFil(imagesDuTour) } : {}),
+        ...(documentsDuTour.length > 0
+          ? { documents: documentsPourLeFil(documentsDuTour) }
+          : {}),
+        ...(envoi ? { questionReply: envoi.reply } : {}),
+      };
+      addMessage(convId, userMsg);
+      if (imagesDuTour.length > 0) setPieces([]);
+      if (documentsDuTour.length > 0) setDocuments([]);
+    }
 
-    // Build API messages before adding assistant placeholder
-    const currentMessages = useAppStore.getState().messages;
+    // Build API messages before adding assistant placeholder. Un renvoi
+    // relit le fil jusqu'à sa question : la réponse coupée n'y entre pas.
+    const currentMessages = renvoi ? renvoi.historique : useAppStore.getState().messages;
     const apiMessages = messagesPourLApi(currentMessages, (m) => {
       const cadrage = m.role === 'assistant' ? lireQuestions(m.questions) : null;
       return cadrage ? texteQuestions(cadrage) : m.content;
@@ -677,6 +688,7 @@ export function InputArea() {
     let modeleServeur: string | undefined;
     let routageServeur: RoutageServeur | undefined;
     let verification: ChatMessage['verification'];
+    let coupure: ConnexionPerdue | null = null;
     const toolCalls: ToolCallInfo[] = [];
     const researchTraces: ResearchSearchTrace[] = [];
     const researchSourcesByRef = new Map<number, ResearchSource>();
@@ -868,7 +880,7 @@ export function InputArea() {
           action_mode: 'auto',
           // Le tour qui reçoit les réponses réalise la demande ; il ne rouvre
           // pas un questionnaire identique sous l'effet du rappel d'interface.
-          interactiveQuestions: !envoi,
+          interactiveQuestions: !envoi && !renvoi?.question.questionReply,
           visuals: true,
           ...(options?.verifyOnline ? { verifyOnline: true } : {}),
         },
@@ -969,17 +981,20 @@ export function InputArea() {
       }
       }
     } catch (err: any) {
-      reception.status = err.name === 'AbortError' ? 'interrupted' : 'error';
-      if (err.name === 'AbortError') {
-        // User cancelled or model switch — keep whatever was accumulated
-        if (!accumulatedContent) accumulatedContent = t('chat.input.generationStopped');
-      } else {
-        const errMsg = err?.message || String(err);
-        accumulatedContent =
-          accumulatedContent || t('chat.input.error', { message: errMsg });
+      // User cancelled or model switch — keep whatever was accumulated.
+      // 28/09/2026 : une coupure du réseau garde le texte reçu tel quel ; la
+      // phrase et « Renvoyer » viennent de `connectionLost`, à l'affichage
+      // (lib/coupureDuFlux.ts) — plus « Erreur : network error ».
+      const issue = issueDuFlux(err, accumulatedContent, serviParLeTailnet(), t);
+      reception.status = issue.statut;
+      accumulatedContent = issue.texte;
+      coupure = issue.coupure;
+      if (issue.statut === 'error') {
         useAppStore.getState().addLogEntry({
           timestamp: Date.now(), level: 'error', category: 'chat',
-          message: `Stream error: ${errMsg}`,
+          message: coupure
+            ? `Connection lost (${coupure.during}): ${coupure.detail}`
+            : `Stream error: ${err?.message || String(err)}`,
         });
       }
       // If we tore out mid-research, make sure the live System panel
@@ -989,9 +1004,7 @@ export function InputArea() {
       reception.endedAtMs = Date.now();
       if (reception.status === 'open') reception.status = 'closed';
       cloreAppels(toolCalls);
-      if (!accumulatedContent) {
-        accumulatedContent = t('chat.input.noResponse');
-      }
+      accumulatedContent = texteFinal(accumulatedContent, coupure, t);
       const totalMs = Date.now() - startTime;
       const engineLabel = lightningMeta
         ? 'lightning'
@@ -1026,6 +1039,7 @@ export function InputArea() {
         questions,
         verification,
         reception,
+        coupure ?? undefined,
       );
       clearInterval(timer);
       if (timerRef.current === timer) timerRef.current = null;
@@ -1105,6 +1119,20 @@ export function InputArea() {
     window.addEventListener(EVENEMENT_VERIFIER_EN_LIGNE, verifier);
     return () => window.removeEventListener(EVENEMENT_VERIFIER_EN_LIGNE, verifier);
   }, [sendMessage, t]);
+
+  // Le bouton « Renvoyer » d'une réponse coupée (28/09/2026) : la même
+  // question, sans doublon dans le fil. Jamais déclenché seul — un tour coupé
+  // a pu exécuter des outils, le rejouer est une décision de la personne.
+  useEffect(() => {
+    const renvoyer = (event: Event) => {
+      const demande = (event as CustomEvent<DemandeDeRenvoi>).detail;
+      const actuel = useAppStore.getState();
+      if (!demande || actuel.streamState.isStreaming || actuel.activeId !== demande.conversationId) return;
+      void sendMessage(undefined, undefined, { renvoi: demande.messageId, garderBrouillon: true });
+    };
+    window.addEventListener(EVENEMENT_RENVOYER, renvoyer);
+    return () => window.removeEventListener(EVENEMENT_RENVOYER, renvoyer);
+  }, [sendMessage]);
 
   // Falling silent ends the turn: once dictation has been quiet for this long,
   // the message goes on its own. Pressing Enter or the send button beats the
