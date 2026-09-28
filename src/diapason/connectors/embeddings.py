@@ -94,14 +94,23 @@ class OllamaEmbedder:
         """Embed a single string. Returns float32 bytes or ``None`` on failure."""
         if not text or not text.strip():
             return None
+        from diapason.engine.scheduling import scheduler_for
+
         try:
-            resp = requests.post(
-                f"{self._host}/api/embeddings",
-                json={"model": self._model, "prompt": text},
-                timeout=self._timeout,
-            )
-            resp.raise_for_status()
-            payload = resp.json()
+            # 27/09/2026 : les sondes de quatre synchronisations partaient
+            # pendant la voix, hors de sa priorité, puis perdaient leurs
+            # vecteurs au délai HTTP de 30 s. Attendre AVANT la requête ne
+            # transforme plus une conversation longue en échec d'indexation.
+            # La recherche interactive reste admise. Ne jamais substituer
+            # le modèle résident de dialogue au modèle d'embeddings demandé.
+            with scheduler_for(self._host).slot(self._model):
+                resp = requests.post(
+                    f"{self._host}/api/embeddings",
+                    json={"model": self._model, "prompt": text},
+                    timeout=self._timeout,
+                )
+                resp.raise_for_status()
+                payload = resp.json()
         except requests.RequestException as exc:
             logger.warning("OllamaEmbedder.embed: request failed (%s)", exc)
             return None

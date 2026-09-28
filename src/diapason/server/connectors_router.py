@@ -312,11 +312,16 @@ def create_connectors_router():
                 from diapason.connectors.pipeline import IngestionPipeline
                 from diapason.connectors.store import KnowledgeStore
                 from diapason.connectors.sync_engine import SyncEngine
+                from diapason.engine.scheduling import background_work
 
-                store = KnowledgeStore()
-                pipeline = IngestionPipeline(store=store, embedder=_make_embedder())
-                engine = SyncEngine(pipeline=pipeline)
-                engine.sync(instance)
+                # 27/09/2026 : ce Thread ne reprend aucun ContextVar de
+                # l'appelant. Même la sonde « ping » doit être classée ici,
+                # sinon l'indexation contourne la priorité de toute la voix.
+                with background_work():
+                    store = KnowledgeStore()
+                    pipeline = IngestionPipeline(store=store, embedder=_make_embedder())
+                    engine = SyncEngine(pipeline=pipeline)
+                    engine.sync(instance)
                 logger.info("Sync completed for %s", connector_id)
                 _sync_state[connector_id] = {
                     "state": "complete",
