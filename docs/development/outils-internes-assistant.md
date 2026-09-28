@@ -35,6 +35,12 @@ portaient que cinq actions, alors que l'interface en proposait beaucoup plus.
 Le catalogue n'accorde aucun accès aux identifiants, aux clés, à
 l'administration réseau ou aux mutations de réglages. Le plafond du téléphone
 reste inchangé : les nouveaux outils du Mac y sont refusés par défaut.
+Ce plafond se décide nom par nom, alors que `diapason_app` porte aussi
+`navigate` et `current_view`, qui pilotent et lisent la fenêtre du Mac.
+Depuis le 28 septembre 2026, l'outil les refuse lui-même au téléphone,
+en résultat d'outil : si la phase 6 ouvre `diapason_app` pour ses données,
+ces deux opérations ne suivent pas sans décision. Le catalogue rendu au
+téléphone ne liste pas non plus les pages que `navigate` ouvrirait.
 Les conversations, le web, les documents et les autres fonctions conservent
 leurs outils déjà présents.
 
