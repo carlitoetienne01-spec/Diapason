@@ -7,7 +7,12 @@ import re
 
 import pytest
 
-from diapason.security.scanner import PIIScanner, SecretScanner, _scan_python
+from diapason.security.scanner import (
+    PIIScanner,
+    SecretScanner,
+    _redact_python,
+    _scan_python,
+)
 from diapason.security.types import ThreatLevel
 from tests.security.test_guardrails_reserve import motifs_rust, tout_unicode
 
@@ -207,14 +212,28 @@ def _trouves_du_repli(scanner, texte: str) -> list[tuple[str, str]]:
 
 
 def _ecarts(scanner, textes: list[str]) -> list[str]:
+    # Le repli trouve par _scan_python et masque par _redact_python, deux
+    # boucles qui compilent chacune ses motifs. 28/09/2026 : un re.IGNORECASE
+    # rendu au seul _redact_python laissait toute la suite verte — il masquait
+    # « RISK-ASSESSMENT-FRAMEWORK-2026 » que scan() déclarait propre. Les deux
+    # moitiés se comparent donc à l'extension.
     if scanner._rust_impl is None:
         pytest.skip("extension absente : seul le repli s'applique, rien à comparer")
-    return [
-        f"{texte!r} : l'extension trouve {_trouves(scanner, texte)}, "
-        f"le repli {_trouves_du_repli(scanner, texte)}"
-        for texte in textes
-        if _trouves(scanner, texte) != _trouves_du_repli(scanner, texte)
-    ]
+    ecarts = []
+    for texte in textes:
+        trouves, du_repli = _trouves(scanner, texte), _trouves_du_repli(scanner, texte)
+        if trouves != du_repli:
+            ecarts.append(
+                f"{texte!r} : l'extension trouve {trouves}, le repli {du_repli}"
+            )
+            continue
+        masque = scanner.redact(texte)
+        masque_du_repli = _redact_python(texte, type(scanner).PATTERNS)
+        if masque != masque_du_repli:
+            ecarts.append(
+                f"{texte!r} : l'extension rend {masque!r}, le repli {masque_du_repli!r}"
+            )
+    return ecarts
 
 
 # Un témoin par motif, dans la casse de son format. Les valeurs ont des
@@ -330,11 +349,20 @@ class TestLaCasseEstDecideeMotifParMotif:
     def test_un_jeton_recasse_ailleurs_qu_en_tete_n_est_plus_une_cle(
         self, chemin, texte
     ):
-        """§5 : un (?i) complet masquait de la prose pour une clé détruite."""
-        trouves = self._scanner(SecretScanner, chemin).scan(texte).findings
+        """§5 : un (?i) complet masquait de la prose pour une clé détruite.
+
+        scan() et redact() sont deux chemins dans le repli : un IGNORECASE
+        rendu au seul redact() masquait ce que scan() déclarait propre.
+        """
+        scanner = self._scanner(SecretScanner, chemin)
+        trouves = scanner.scan(texte).findings
         assert not trouves, (
             f"{texte!r} masqué par le {chemin} ({trouves[0].pattern_name}) : ni "
             "la casse de son format, ni une majuscule de début de phrase"
+        )
+        assert scanner.redact(texte) == texte, (
+            f"{texte!r} sort {scanner.redact(texte)!r} du masque du {chemin}, que "
+            "scan() déclare propre"
         )
 
 
