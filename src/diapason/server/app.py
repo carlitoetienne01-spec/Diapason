@@ -436,6 +436,9 @@ def create_app(
                     task.cancel()
                 with suppress(asyncio.CancelledError):
                     await task
+            from diapason.speech.realtime.reserve_orion import fermer_reserve_orion
+
+            await fermer_reserve_orion()
             bridge = getattr(application.state, "analytics_bridge", None)
             if bridge is not None:
                 try:

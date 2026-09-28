@@ -142,7 +142,7 @@ def create_config_router() -> APIRouter:
             "routines.",
         )
         # Exact keys, not prefixes: "agent." would open max_turns, tools…
-        allowed_keys = ("agent.tool_approval",)
+        allowed_keys = ("agent.tool_approval", "speech.realtime.voice")
         key = (body.key or "").strip()
         if key not in allowed_keys and not any(
             key.startswith(p) for p in allowed_prefixes
@@ -150,6 +150,11 @@ def create_config_router() -> APIRouter:
             raise HTTPException(400, f"Key not writable via API: {key}")
         if key == "agent.tool_approval" and body.value not in ("auto", "ask"):
             raise HTTPException(400, "agent.tool_approval must be 'auto' or 'ask'")
+        if key == "speech.realtime.voice":
+            from diapason.speech.realtime.voix_expressive import voix_disponibles
+
+            if body.value not in voix_disponibles():
+                raise HTTPException(400, "Cette voix locale n’est pas installée.")
         try:
             typed = set_config_value(key, body.value)
         except ValueError as exc:
