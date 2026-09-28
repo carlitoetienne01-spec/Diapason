@@ -130,11 +130,12 @@ témoin, et la voix cesse de se dire disponible.
 Le dossier `model/` doit être exactement la table : mlx-audio charge tout
 `*.safetensors` de `model/` et de `speech_tokenizer/`, et AutoTokenizer tout
 nom qu'il reconnaît. Un fichier hors table est refusé comme un poids altéré ;
-seule la tenue de `huggingface_hub` (`model/.cache/huggingface/`) est
-tolérée. Tout fichier refusé est retiré, pour que la relance le retélécharge
-au lieu de se le voir resservir par le hub. `--model-source` recopie même sur
-une installation existante, après avoir vérifié la source : une copie fausse
-ne remplace rien.
+seules sont tolérées la tenue de `huggingface_hub`
+(`model/.cache/huggingface/`) et, à la racine de `model/`, `README.md` et
+`.gitattributes`. Tout fichier refusé est retiré, pour que la relance le
+retélécharge au lieu de se le voir resservir par le hub. `--model-source`
+recopie même sur une installation existante, après avoir vérifié la source :
+une copie fausse ne remplace rien.
 
 Un lien symbolique sous `model/`, de fichier ou de dossier, est refusé lui
 aussi : le glob du chargeur suivrait un `speech_tokenizer` lié hors de la
@@ -143,9 +144,12 @@ ni aucune copie ne passe à travers un lien : un lien impossible à retirer est
 nommé, et ce qu'il y a derrière reste intact (28 septembre 2026 ; avant, la
 relance effaçait le fichier extérieur refusé).
 
-Une installation faite avant le 28 septembre 2026 contient encore
-`README.md` et `.gitattributes` : sa première relance les refuse et les
-retire, la seconde (avec réseau) réécrit le témoin.
+`README.md` et `.gitattributes` sont les deux noms que l'ancienne version
+du script posait, et qu'une installation faite avant le 28 septembre 2026
+contient encore ; aucun chargeur ne les ouvre. Les refuser rendait Orion
+indisponible dès la relance, jusqu'à une seconde avec réseau : ils passent
+désormais, et eux seuls — un autre nom que rien ne lit (`notes.txt`,
+`speech_tokenizer/README.md`) reste refusé.
 
 Dans **Parler**, le sélecteur propose B, A et la voix classique. Le choix
 passe par la configuration du serveur et reste identique entre les fenêtres.

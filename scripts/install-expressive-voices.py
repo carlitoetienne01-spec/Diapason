@@ -25,7 +25,8 @@ REVISION = "37e955a1deb861c088ae5f3a67043185f3d1a60c"
 # concordaient. Douze, pas trois : ce sont les motifs que mlx-audio lui-même
 # télécharge (*.json, *.safetensors, *.txt). Son chargeur prend TOUT
 # *.safetensors du dossier et AutoTokenizer lit vocab.json et merges.txt.
-# README.md et .gitattributes, que rien ne lit, ne sont plus téléchargés.
+# README.md et .gitattributes, que rien ne lit, ne sont plus téléchargés
+# (ni refusés à la racine d'une installation ancienne, voir plus bas).
 EMPREINTES = {
     "config.json": "36477d07e2ac89f79c1410a9782ed69860fbfcc871edea1728624389072e25fd",
     "generation_config.json": (
@@ -64,6 +65,21 @@ EMPREINTES = {
 # révision, verrous, téléchargements partiels) : ni mlx-audio ni transformers
 # ne lisent sous .cache/.
 TENUE_DU_HUB = ".cache/huggingface/"
+
+# 28/09/2026 : les deux seuls noms hors table que l'ancienne version de ce
+# script a posés dans les installations existantes (snapshot_download sans
+# allow_patterns, ou copytree d'une copie entière : les quatorze fichiers du
+# dépôt). Le modèle installé sur le Mac de Carlito les porte. Les refuser
+# rendait Orion indisponible dès la relance, jusqu'à une seconde AVEC réseau,
+# pour deux fichiers qu'aucun chargeur n'ouvre : mlx-audio 0.5.6 lit
+# config.json, generation_config.json, speech_tokenizer/config.json et globe
+# *.safetensors (*.npz à défaut) ; AutoTokenizer (transformers 5.17) ouvre
+# ses noms de vocabulaire et ne confronte la liste du dossier qu'à
+# tekken.json, tokenizer.model*, tiktoken.model et *.model. Ces deux-là, à
+# la racine, et pas d'autres : aucun autre nom hors table n'a d'installation
+# à ménager, et une exception par motif (*.md, *.txt) couvrirait tôt ou tard
+# un fichier qu'un chargeur lit — merges.txt en est un.
+RESTES_DE_L_ANCIEN_SCRIPT = frozenset({"README.md", ".gitattributes"})
 
 
 def _empreinte(chemin: Path) -> str | None:
@@ -108,7 +124,8 @@ def _hors_table(modele: Path) -> list[str]:
     # AutoTokenizer tout nom qu'il reconnaît dans model/. Un
     # intrus.safetensors posé à côté des poids passait la relance, qui
     # réécrivait le témoin « installé et vérifié ». Le dossier doit donc être
-    # la table, à la tenue du hub près. Les liens sont refusés par _liens().
+    # la table, à la tenue du hub et aux restes de l'ancien script près. Les
+    # liens sont refusés par _liens().
     if not modele.is_dir():
         return []
     return sorted(
@@ -116,6 +133,7 @@ def _hors_table(modele: Path) -> list[str]:
         for chemin in modele.rglob("*")
         if not chemin.is_symlink() and not chemin.is_dir()
         if (nom := chemin.relative_to(modele).as_posix()) not in EMPREINTES
+        and nom not in RESTES_DE_L_ANCIEN_SCRIPT
         and not nom.startswith(TENUE_DU_HUB)
     )
 

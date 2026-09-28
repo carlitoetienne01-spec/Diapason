@@ -268,11 +268,11 @@ class TestCeQueLeChargeurLirait:
         "intrus",
         [
             ("intrus.safetensors", "speech_tokenizer/intrus.safetensors"),
-            # Ce que l'ancienne version du script tirait, et qui dort encore
-            # dans le modèle installé sur le Mac de Carlito.
-            (".gitattributes", "README.md"),
+            # Un nom que rien ne lit reste refusé : l'exception des restes de
+            # l'ancien script vaut pour leurs deux noms, à la racine seulement.
+            ("notes.txt", "speech_tokenizer/README.md"),
         ],
-        ids=["poids-intrus", "restes-de-l-ancien-script"],
+        ids=["poids-intrus", "noms-que-rien-ne-lit"],
     )
     def test_un_fichier_hors_table_est_refuse_a_la_relance_puis_retire(
         self, banc, intrus
@@ -300,6 +300,34 @@ class TestCeQueLeChargeurLirait:
         )
         banc.lancer()
         assert moteur_installe(), "la relance conseillée doit suffire à réparer"
+
+    def test_les_restes_de_l_ancien_script_a_la_racine_passent_la_relance(self, banc):
+        """§5 — refuser deux fichiers qu'aucun chargeur n'ouvre rendait Orion muet.
+
+        L'ancienne version du script a posé README.md et .gitattributes dans
+        le modèle installé sur le Mac de Carlito : leur refus faisait tomber
+        le témoin dès la relance, et la voix restait indisponible jusqu'à une
+        seconde relance, avec réseau.
+        """
+        _ecrire(banc.source, CONTENUS)
+        banc.lancer("--model-source", str(banc.source))
+        restes = {
+            "README.md": b"# carte du modele",
+            ".gitattributes": b"*.safetensors filter=lfs diff=lfs merge=lfs -text",
+        }
+        _ecrire(banc.modele, restes)
+
+        banc.lancer()
+
+        assert moteur_installe(), "la voix doit rester disponible à la relance"
+        temoin = json.loads(banc.temoin.read_text(encoding="utf-8"))
+        assert temoin["sha256"] == banc.installeur.EMPREINTES, (
+            "le témoin réécrit doit porter les empreintes vérifiées"
+        )
+        for nom, octets in restes.items():
+            assert (banc.modele / nom).read_bytes() == octets, (
+                f"{nom} : un reste toléré ne doit pas être retiré"
+            )
 
     def test_un_intrus_impossible_a_retirer_est_nomme_sans_se_dire_retire(
         self, banc, verrouiller
