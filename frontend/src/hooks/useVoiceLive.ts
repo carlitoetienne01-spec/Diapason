@@ -12,9 +12,22 @@ import {
 } from '../lib/voiceLive';
 import { refreshLocalApiKey } from '../lib/api';
 import { serviParLeTailnet } from '../lib/tailnet';
+import { demanderAuTelephone } from '../lib/natif';
 import { LectureVocale } from '../lib/lectureVocale';
 import { creerCaptureVocale, type CaptureVocale } from '../lib/captureVocale';
 import { cleEtatVocal } from '../lib/etatVocal';
+import {
+  classerEchecMicro,
+  doitLireEtatAndroid,
+  lireEtatDuMicro,
+  messageApresLesReglages,
+  messageDuMicro,
+  ouvrirLesReglagesDuMicro,
+  type AvisDesReglages,
+  type ClasseEchecMicro,
+  type DemanderMicro,
+  type MessageDuMicro,
+} from '../lib/echecMicro';
 // Le même lecteur et le même badge qu'au chat : deux calculs du même niveau
 // finiraient par diverger, et c'est celui qu'on oublierait qui mentirait.
 import {
@@ -53,6 +66,26 @@ export interface ToolEventLine {
   numResults?: number;
 }
 
+/** Ce qu'un échec du micro affiche sous sa phrase, au téléphone. */
+export interface MicroEnEchec {
+  /** « NotReadableError · Could not start audio source » ; au téléphone seulement. */
+  technique: string | null;
+  /** Le bouton « Ouvrir les réglages » (verbe `micro/reglages`). */
+  reglages: boolean;
+  /** Les réglages ne se sont pas ouverts : ce que la coquille en dit. */
+  avis: AvisDesReglages | null;
+}
+
+type EchecMicroCourant = {
+  code: string;
+  classe: ClasseEchecMicro;
+  technique: string;
+  auTelephone: boolean;
+  reglages: boolean;
+};
+
+const demanderMicro: DemanderMicro = (verbe, donnees) => demanderAuTelephone(verbe, donnees);
+
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
   let binary = '';
@@ -66,6 +99,13 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 export function useVoiceLive() {
   const [state, setState] = useState<VoiceLiveState>('idle');
   const [error, setError] = useState<string | null>(null);
+  // 28/09/2026 : le détail d'un échec du micro est lié à SON code. Une autre
+  // erreur posée ensuite (la garde, une fermeture du Mac) n'hérite ni du nom
+  // technique ni du bouton des réglages.
+  const [echecMicro, setEchecMicro] = useState<EchecMicroCourant | null>(null);
+  const [avisReglages, setAvisReglages] = useState<AvisDesReglages | null>(null);
+  const echecMicroRef = useRef<EchecMicroCourant | null>(null);
+  const retourDesReglagesRef = useRef<(() => void) | null>(null);
   const [health, setHealth] = useState<VoiceLiveHealth | null>(null);
   const [checkingService, setCheckingService] = useState(true);
   const [serviceError, setServiceError] = useState<string | null>(null);
@@ -175,6 +215,31 @@ export function useVoiceLive() {
     lectureRef.current?.arreter();
   }, []);
 
+  const retirerRetourDesReglages = useCallback(() => {
+    if (!retourDesReglagesRef.current) return;
+    document.removeEventListener('visibilitychange', retourDesReglagesRef.current);
+    retourDesReglagesRef.current = null;
+  }, []);
+
+  const afficherEchecMicro = useCallback(
+    (echec: Omit<EchecMicroCourant, 'code' | 'reglages'>, message: MessageDuMicro) => {
+      const courant: EchecMicroCourant = { ...echec, code: message.code, reglages: message.reglages };
+      echecMicroRef.current = courant;
+      setEchecMicro(courant);
+      setAvisReglages(null);
+      setError(message.code);
+      return courant;
+    },
+    [],
+  );
+
+  const oublierEchecMicro = useCallback(() => {
+    echecMicroRef.current = null;
+    setEchecMicro(null);
+    setAvisReglages(null);
+    retirerRetourDesReglages();
+  }, [retirerRetourDesReglages]);
+
   const enqueuePcm = useCallback((b64: string, sampleRate: number) => {
     lectureRef.current?.ajouter(b64, sampleRate);
   }, []);
@@ -202,6 +267,7 @@ export function useVoiceLive() {
     setConversationSeule(false);
     generationRef.current++;
     demarrageRef.current = false;
+    retirerRetourDesReglages();
     const ws = wsRef.current;
     wsRef.current = null;
     try {
@@ -212,7 +278,7 @@ export function useVoiceLive() {
     stopPlayback();
     setState('idle');
     setStatusLabel('Idle');
-  }, [cleanupCapture, stopPlayback]);
+  }, [cleanupCapture, retirerRetourDesReglages, stopPlayback]);
 
   const interrupt = useCallback(() => {
     if (fermetureRef.current) { fermetureRef.current.finir(); return; }
@@ -239,6 +305,7 @@ export function useVoiceLive() {
       setState('connecting');
       setStatusLabel('Connecting…');
       setError(null);
+      oublierEchecMicro();
       setTranscripts([]);
       setToolEvents([]);
       setVerification(undefined);
@@ -349,6 +416,7 @@ export function useVoiceLive() {
           }),
         );
 
+        let fluxObtenu = false;
         try {
           const stream = await navigator.mediaDevices.getUserMedia({
             audio: {
@@ -357,6 +425,7 @@ export function useVoiceLive() {
               channelCount: 1,
             },
           });
+          fluxObtenu = true;
           // Une permission micro peut rester ouverte après « Terminer ».
           // Son résultat tardif ne doit jamais rallumer une session fermée.
           if (!actuelle() || fermetureRef.current) {
@@ -394,14 +463,36 @@ export function useVoiceLive() {
           if (ctx.state === 'suspended') await ctx.resume();
         } catch (err) {
           if (!actuelle()) return;
-          console.error('[voice-live] microphone initialization failed', err);
+          // 28/09/2026 : toute exception de ce bloc devenait
+          // « microphone-denied » — au téléphone, les Réglages Système du
+          // Mac pour un NotReadableError que la WebView lève faute de
+          // MODIFY_AUDIO_SETTINGS. L'étape d'abord (un AudioContext qui
+          // lève n'est pas un refus), le nom ensuite.
+          const echec = classerEchecMicro(err, fluxObtenu ? 'apresLeFlux' : 'avantLeFlux');
+          console.error('[voice-live] microphone initialization failed', {
+            classe: echec.classe,
+            technique: echec.technique,
+          }, err);
           socketFailed = true;
           cleanupCapture();
           stopPlayback();
-          setError('microphone-denied');
+          const auTelephone = serviParLeTailnet();
+          const lireEtat = auTelephone && doitLireEtatAndroid(echec.classe);
+          const echecCourant = { classe: echec.classe, technique: echec.technique, auTelephone };
+          const provisoire = afficherEchecMicro(echecCourant, messageDuMicro({
+            classe: echec.classe, auTelephone, etat: lireEtat ? 'enAttente' : 'inconnu',
+          }));
           setState('error');
           setStatusLabel('Error');
           ws.close();
+          if (!lireEtat) return;
+          // Une seule demande, ici : la barre de la Discussion et l'orbe
+          // partagent ce hook (ContexteVoix).
+          const etat = await lireEtatDuMicro(demanderMicro);
+          // Une séance relancée entre-temps (ou un autre fournisseur choisi)
+          // a oublié cet échec : une réponse tardive ne réécrit pas sa phrase.
+          if (echecMicroRef.current !== provisoire) return;
+          afficherEchecMicro(echecCourant, messageDuMicro({ classe: echec.classe, auTelephone, etat }));
         }
       };
 
@@ -607,14 +698,47 @@ export function useVoiceLive() {
         }
       };
     },
-    [checkService, cleanupCapture, enqueuePcm, provider, stop, stopPlayback],
+    [afficherEchecMicro, checkService, cleanupCapture, enqueuePcm, oublierEchecMicro, provider, stop, stopPlayback],
   );
 
   const chooseProvider = useCallback((next: VoiceLiveProvider) => {
     setProvider(next);
     setError(null);
+    oublierEchecMicro();
     void checkService(true);
-  }, [checkService]);
+  }, [checkService, oublierEchecMicro]);
+
+  /**
+   * Le bouton « Ouvrir les réglages » (au téléphone seulement : il n'existe
+   * qu'avec un état rendu par la coquille). Au retour des Paramètres
+   * d'Android, on relit l'état pour mettre la phrase à jour — JAMAIS on ne
+   * relance la séance ni un getUserMedia (§78) : « Parler » reste un toucher
+   * de la personne.
+   */
+  const ouvrirReglagesMicro = useCallback(async () => {
+    const echec = echecMicroRef.current;
+    if (!echec?.reglages) return;
+    const toujoursLeMeme = () => echecMicroRef.current === echec;
+    setAvisReglages(null);
+    retirerRetourDesReglages();
+    // Posé AVANT la demande : la réponse de la coquille peut n'arriver
+    // qu'une fois la page revenue, et un écouteur posé après elle
+    // manquerait le retour.
+    const surVisibilite = () => {
+      if (document.visibilityState !== 'visible') return;
+      retirerRetourDesReglages();
+      if (!toujoursLeMeme()) return;
+      void lireEtatDuMicro(demanderMicro).then((etat) => {
+        if (toujoursLeMeme()) afficherEchecMicro(echec, messageApresLesReglages(echec.classe, etat));
+      });
+    };
+    retourDesReglagesRef.current = surVisibilite;
+    document.addEventListener('visibilitychange', surVisibilite);
+    const avis = await ouvrirLesReglagesDuMicro(demanderMicro);
+    if (!avis || !toujoursLeMeme()) return;
+    retirerRetourDesReglages();
+    setAvisReglages(avis);
+  }, [afficherEchecMicro, retirerRetourDesReglages]);
 
   const mettreMicroEnPause = useCallback((pause: boolean) => {
     if (fermetureRef.current) return;
@@ -662,9 +786,20 @@ export function useVoiceLive() {
             : 'local-not-ready'
       : null;
 
+  const micro: MicroEnEchec | null = echecMicro && error === echecMicro.code
+    ? {
+        // Au bureau, rien ne change hors de la phrase de la classe.
+        technique: echecMicro.auTelephone ? echecMicro.technique : null,
+        reglages: echecMicro.reglages,
+        avis: avisReglages,
+      }
+    : null;
+
   return {
     state,
     error: error || serviceError || readinessError,
+    micro,
+    ouvrirReglagesMicro,
     available: !!health?.available,
     serviceReady: canStartVoiceSession(health, provider),
     checkingService,

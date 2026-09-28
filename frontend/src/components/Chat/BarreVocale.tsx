@@ -4,7 +4,8 @@ import type { useConversationVocale } from '../../hooks/useConversationVocale';
 import { useVoixPartagee } from '../../hooks/contexteVoix';
 import { useTranslation } from '../../i18n/useTranslation';
 import { cleEtatVocal } from '../../lib/etatVocal';
-import { ERREURS_VOCALES } from '../../lib/erreursVocales';
+import { cleErreurVocale } from '../../lib/erreursVocales';
+import { DetailDuMicro } from './DetailDuMicro';
 import { niveauOndeVocale } from '../../lib/niveauOndeVocale';
 import { deconnecterBrancheAudio } from '../../lib/connexionAudio';
 
@@ -57,8 +58,7 @@ export function BarreVocale({ voix, onClavier }: { voix: ReturnType<typeof useCo
     : voix.state === 'connecting' ? t('talk.resonance.connecting')
     : voix.state === 'speaking' ? t('talk.resonance.speaking')
     : etape ? t(etape) : voix.isActive ? t('talk.resonance.listening') : t('composer.voiceEnded');
-  const erreur = voix.error && (voix.error in ERREURS_VOCALES
-    ? t(ERREURS_VOCALES[voix.error as keyof typeof ERREURS_VOCALES]) : t('talk.sessionFailed'));
+  const erreur = voix.error && t(cleErreurVocale(voix.error));
   return <div className="barre-vocale" data-state={voix.state}>
     <div className="barre-vocale-ligne">
       {voix.state === 'connecting' ? <Loader2 size={16} className="animate-spin motion-reduce:animate-none shrink-0" />
@@ -79,6 +79,7 @@ export function BarreVocale({ voix, onClavier }: { voix: ReturnType<typeof useCo
     </div>
     {voix.conversationSeule && <p className="mt-1 text-xs">{t('talk.conversation.start')}</p>}
     {erreur && <p role="alert" className="mt-2 text-xs" style={{ color: 'var(--color-error)' }}>{erreur}</p>}
+    {erreur && <DetailDuMicro micro={voix.micro} onOuvrirReglages={() => void voix.ouvrirReglagesMicro()} />}
   </div>;
 }
 

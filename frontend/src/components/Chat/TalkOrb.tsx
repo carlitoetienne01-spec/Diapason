@@ -1,9 +1,10 @@
-import { ERREURS_VOCALES as ERREURS } from '../../lib/erreursVocales';
+import { cleErreurVocale } from '../../lib/erreursVocales';
 import { Suspense, lazy, useEffect, useId, useRef, useState } from 'react';
 import { AudioLines, Check, Copy, Info, Mic, Monitor, Square, X } from 'lucide-react';
 import '@fontsource-variable/geist';
 import { useTranslation } from '../../i18n/useTranslation';
-import type { VoiceLiveProvider, VoiceLiveState, TranscriptLine, ToolEventLine } from '../../hooks/useVoiceLive';
+import type { MicroEnEchec, VoiceLiveProvider, VoiceLiveState, TranscriptLine, ToolEventLine } from '../../hooks/useVoiceLive';
+import { DetailDuMicro } from './DetailDuMicro';
 import { useAppStore } from '../../lib/store';
 import { useSurfaceVitree } from './useSurfaceVitree';
 import { badgeDeVerification, type Verification } from './notesDeVerification';
@@ -25,6 +26,9 @@ interface TalkOrbProps {
   statusLabel: string;
   conversationSeule?: boolean;
   error: string | null;
+  /** Le détail d'un micro qui ne s'est pas ouvert, et le bouton des réglages d'Android. */
+  micro?: MicroEnEchec | null;
+  onOuvrirReglagesMicro?: () => void;
   serviceReady: boolean;
   checkingService: boolean;
   provider: VoiceLiveProvider;
@@ -68,7 +72,7 @@ export function TalkOrb({
   open, state, statusLabel, error, serviceReady, checkingService, provider,
   transcripts, toolEvents = [], verification, screenSharing = false, audioSource = null,
   micSource = null, onStart, onStop, onInterrupt, onClose,
-  conversationSeule = false, onStartConversation,
+  conversationSeule = false, onStartConversation, micro = null, onOuvrirReglagesMicro,
 }: TalkOrbProps) {
   const { t } = useTranslation();
   const titreId = useId();
@@ -215,8 +219,10 @@ export function TalkOrb({
             {t('talk.conversation.start')}
           </button>}
           {error && <p className="resonance-erreur" role="alert">
-            {error in ERREURS ? t(ERREURS[error as keyof typeof ERREURS]) : error}
+            {t(cleErreurVocale(error))}
           </p>}
+          {error && onOuvrirReglagesMicro && <DetailDuMicro micro={micro} onOuvrirReglages={onOuvrirReglagesMicro}
+            classeBouton="resonance-terminer text-sm" />}
         </section>
         {fil.length > 0 && <section className="resonance-conversation" aria-label={t('talk.resonance.transcript')}>
           <div className="resonance-fil-titre">{t('talk.resonance.transcript')}</div>

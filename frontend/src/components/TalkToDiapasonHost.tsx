@@ -166,6 +166,8 @@ export function TalkToDiapasonHost({ children }: { children: React.ReactNode }) 
       statusLabel={voice.statusLabel}
       conversationSeule={voice.conversationSeule}
       error={voice.error}
+      micro={voice.micro}
+      onOuvrirReglagesMicro={() => void voice.ouvrirReglagesMicro()}
       serviceReady={voice.serviceReady}
       checkingService={voice.checkingService}
       provider={voice.provider}
