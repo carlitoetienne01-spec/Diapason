@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import platform
 import shutil
 import subprocess
@@ -59,19 +60,118 @@ EMPREINTES = {
 }
 
 
+# Ce que huggingface_hub écrit lui-même dans local_dir (métadonnées de
+# révision, verrous, téléchargements partiels) : ni mlx-audio ni transformers
+# ne lisent sous .cache/.
+TENUE_DU_HUB = ".cache/huggingface/"
+
+
+def _empreinte(chemin: Path) -> str | None:
+    try:
+        with chemin.open("rb") as fichier:
+            return hashlib.file_digest(fichier, "sha256").hexdigest()
+    except OSError:
+        # 28/09/2026 : seule FileNotFoundError était captée. Un poids en
+        # chmod 000 levait PermissionError hors de verifier(), qui laissait
+        # l'ancien témoin dire « installé » sur un fichier illisible.
+        return None
+
+
+def _non_conformes(dossier: Path) -> list[str]:
+    return [
+        nom
+        for nom, attendu in EMPREINTES.items()
+        if _empreinte(dossier / nom) != attendu
+    ]
+
+
+def _hors_table(modele: Path) -> list[str]:
+    # 28/09/2026 : seuls les douze noms étaient vérifiés, or mlx-audio charge
+    # TOUT *.safetensors de model/ et de speech_tokenizer/ (glob), et
+    # AutoTokenizer tout nom qu'il reconnaît dans model/. Un
+    # intrus.safetensors posé à côté des poids passait la relance, qui
+    # réécrivait le témoin « installé et vérifié ». Le dossier doit donc être
+    # la table, à la tenue du hub près.
+    if not modele.is_dir():
+        return []
+    return sorted(
+        nom
+        for chemin in modele.rglob("*")
+        if chemin.is_symlink() or not chemin.is_dir()
+        if (nom := chemin.relative_to(modele).as_posix()) not in EMPREINTES
+        and not nom.startswith(TENUE_DU_HUB)
+    )
+
+
+def _retirer(chemin: Path) -> None:
+    try:
+        if chemin.is_dir() and not chemin.is_symlink():
+            shutil.rmtree(chemin)
+        else:
+            chemin.unlink(missing_ok=True)
+    except OSError:
+        pass  # verifier() nomme ce qui reste, et demande de le retirer
+
+
 def verifier(modele: Path, temoin: Path) -> None:
-    for nom, attendu in EMPREINTES.items():
-        try:
-            with (modele / nom).open("rb") as fichier:
-                obtenu = hashlib.file_digest(fichier, "sha256").hexdigest()
-        except FileNotFoundError:
-            obtenu = None
-        if obtenu != attendu:
-            # Relancer sur une installation existante re-vérifie ses poids.
-            # Laisser l'ancien témoin ferait dire « installé » à
-            # moteur_installe() sur un fichier qu'on vient de refuser (§5).
-            temoin.unlink(missing_ok=True)
-            raise RuntimeError(f"Empreinte du fichier {nom} invalide")
+    refuses = _non_conformes(modele)
+    en_trop = _hors_table(modele)
+    if not refuses and not en_trop:
+        return
+    # Relancer sur une installation existante re-vérifie ses poids.
+    # Laisser l'ancien témoin ferait dire « installé » à moteur_installe()
+    # sur un fichier qu'on vient de refuser (§5).
+    temoin.unlink(missing_ok=True)
+    # 28/09/2026 : un fichier refusé restait en place, et huggingface_hub le
+    # resservait sans rien retélécharger — ses métadonnées de local_dir
+    # portent la bonne révision. Chaque relance refusait le même fichier.
+    # Le retirer oblige la relance à le retélécharger (ou à le recopier).
+    for nom in (*refuses, *en_trop):
+        _retirer(modele / nom)
+    raisons = []
+    if refuses:
+        raisons.append(
+            "empreinte invalide ou fichier absent/illisible : " + ", ".join(refuses)
+        )
+    if en_trop:
+        raisons.append(
+            "hors de la table d'empreintes, le chargeur les lirait sans "
+            "vérification : " + ", ".join(en_trop)
+        )
+    restants = [n for n in (*refuses, *en_trop) if os.path.lexists(modele / n)]
+    suite = (
+        f"Impossible de retirer {', '.join(restants)} : supprimez-les, puis "
+        "relancez le script."
+        if restants
+        else "Ces fichiers ont été retirés : relancez le script pour les "
+        "retélécharger (ou --model-source avec une copie saine)."
+    )
+    raise RuntimeError(f"Modèle refusé — {' ; '.join(raisons)}. {suite}")
+
+
+def copier(source: Path, modele: Path, temoin: Path) -> None:
+    # 28/09/2026 : --model-source n'était lu que sans témoin, et réparer une
+    # installation refusée demandait deux lancements. Copier par-dessus une
+    # installation existante exige alors que la source soit vérifiée AVANT
+    # qu'un seul fichier ne soit remplacé : une mauvaise source n'abîme pas
+    # des poids sains.
+    refuses = _non_conformes(source)
+    if refuses:
+        raise RuntimeError(
+            "Copie source refusée, rien n'a été remplacé — empreinte invalide "
+            "ou fichier absent/illisible : " + ", ".join(refuses)
+        )
+    # Une copie interrompue laisserait un modèle à moitié remplacé sous un
+    # témoin qui dirait le contraire.
+    temoin.unlink(missing_ok=True)
+    for nom in EMPREINTES:
+        cible = modele / nom
+        cible.parent.mkdir(parents=True, exist_ok=True)
+        # Les poids installés sont en lecture seule (r--r--r--, constaté le
+        # 28/09/2026) : copy2 par-dessus lève PermissionError, et un fichier
+        # refusé ne pouvait plus être remplacé depuis une copie saine.
+        _retirer(cible)
+        shutil.copy2(source / nom, cible)
 
 
 def main() -> None:
@@ -108,26 +208,17 @@ def main() -> None:
         ],
         check=True,
     )
-    if not temoin.exists():
-        if args.model_source:
-            for nom in EMPREINTES:
-                cible = modele / nom
-                cible.parent.mkdir(parents=True, exist_ok=True)
-                # Les poids installés sont en lecture seule (r--r--r--,
-                # constaté le 28/09/2026) : copy2 par-dessus lève
-                # PermissionError, et un fichier refusé ne pouvait plus être
-                # remplacé depuis une copie saine.
-                cible.unlink(missing_ok=True)
-                shutil.copy2(args.model_source / nom, cible)
-        else:
-            script = (
-                "import os; os.environ['HF_HUB_DISABLE_IMPLICIT_TOKEN']='1'; "
-                "from huggingface_hub import snapshot_download; "
-                f"snapshot_download({MODELE!r}, revision={REVISION!r}, "
-                f"local_dir={str(modele)!r}, "
-                f"allow_patterns={list(EMPREINTES)!r})"
-            )
-            subprocess.run([str(python), "-c", script], check=True)
+    if args.model_source:
+        copier(args.model_source, modele, temoin)
+    elif not temoin.exists():
+        script = (
+            "import os; os.environ['HF_HUB_DISABLE_IMPLICIT_TOKEN']='1'; "
+            "from huggingface_hub import snapshot_download; "
+            f"snapshot_download({MODELE!r}, revision={REVISION!r}, "
+            f"local_dir={str(modele)!r}, "
+            f"allow_patterns={list(EMPREINTES)!r})"
+        )
+        subprocess.run([str(python), "-c", script], check=True)
     verifier(modele, temoin)
     temoin.write_text(
         json.dumps({"model": MODELE, "revision": REVISION, "sha256": EMPREINTES}),

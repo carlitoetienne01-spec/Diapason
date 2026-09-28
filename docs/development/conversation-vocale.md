@@ -127,6 +127,19 @@ l'oreille MLX : seuls ceux-là sont téléchargés ou copiés, et le témoin
 sur une installation existante re-vérifie ses poids ; un refus retire le
 témoin, et la voix cesse de se dire disponible.
 
+Le dossier `model/` doit être exactement la table : mlx-audio charge tout
+`*.safetensors` de `model/` et de `speech_tokenizer/`, et AutoTokenizer tout
+nom qu'il reconnaît. Un fichier hors table est refusé comme un poids altéré ;
+seule la tenue de `huggingface_hub` (`model/.cache/huggingface/`) est
+tolérée. Tout fichier refusé est retiré, pour que la relance le retélécharge
+au lieu de se le voir resservir par le hub. `--model-source` recopie même sur
+une installation existante, après avoir vérifié la source : une copie fausse
+ne remplace rien.
+
+Une installation faite avant le 28 septembre 2026 contient encore
+`README.md` et `.gitattributes` : sa première relance les refuse et les
+retire, la seconde (avec réseau) réécrit le témoin.
+
 Dans **Parler**, le sélecteur propose B, A et la voix classique. Le choix
 passe par la configuration du serveur et reste identique entre les fenêtres.
 Il se fait avant la séance : une séance en cours conserve le timbre avec
