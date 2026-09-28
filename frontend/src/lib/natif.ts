@@ -51,7 +51,9 @@ import { traduire } from '../i18n/translate';
  * permission_handler SANS rien demander à Android, et permis sous le cadenas :
  * il ne révèle rien. `reglages` ouvre la fiche de l'app dans les Paramètres
  * d'Android, sur le toucher du bouton seulement, et ne change aucune
- * permission ; sous le cadenas, la coquille répond par une phrase. Une
+ * permission ; sous le cadenas elle répond le code `verrouille`, et
+ * `reglagesNonOuverts` quand Android refuse d'ouvrir la fiche (des codes
+ * depuis mobile 392cc27, que la page traduit — plus des phrases). Une
  * autre action : `actionInconnue`. Une coquille antérieure répond
  * `verbeInconnu` — la page donne alors les instructions en texte, sans
  * bouton (lib/echecMicro.ts).
