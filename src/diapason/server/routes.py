@@ -68,6 +68,8 @@ _TROUSSE_ASSISTANT: tuple[str, ...] = (
     "vie_workspace",
     "vie_continuity",
     "vie_finances",
+    "diapason_app",
+    "diapason_app_delete",
     "vie_delete_task",
     "vie_delete_item",
     # memory_manage écrit dans ~/.diapason/MEMORY.md, que le constructeur de

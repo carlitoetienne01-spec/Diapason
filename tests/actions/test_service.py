@@ -44,6 +44,19 @@ def test_disabled_setting_stops_fast_path():
     assert result.handled is False
 
 
+def test_la_confirmation_de_page_remonte_de_l_interface(monkeypatch):
+    """§100 : la navigation interne attend déjà l'accusé réel d'affichage."""
+    plan = ActionPlan(kind="voice.app_page", target="finances", confidence=1.0)
+    monkeypatch.setattr(
+        "diapason.desktop.voice_commands.execute_voice_action",
+        lambda _: {"success": True, "verified": True, "detail": "Page affichée"},
+    )
+    resultat = LightningActionService(DiapasonConfig(), router=StubRouter(plan)).handle(
+        "x"
+    )
+    assert resultat.success and resultat.verified, "ne pas perdre la preuve reçue"
+
+
 def test_generated_content_is_written_without_enter(monkeypatch):
     plan = ActionPlan(
         kind="app.generate_and_type",

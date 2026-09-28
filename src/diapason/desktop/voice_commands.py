@@ -121,6 +121,20 @@ def parse_voice_command(text: str) -> VoiceAction:
     if not raw:
         return VoiceAction(kind="none", raw=raw)
 
+    from diapason.tools.consultation_rapide import compte_demande
+
+    compte = compte_demande(raw)
+    if compte:
+        return VoiceAction(kind="app_task_count", extra=compte, raw=raw)
+
+    # 28/09/2026 : « ouvre la page Finances de Diapason » relançait
+    # l'app via une correspondance approximative, sans changer de page.
+    from diapason.tools.navigation_app import page_demandee
+
+    page = page_demandee(raw)
+    if page:
+        return VoiceAction(kind="app_page", target=page, raw=raw)
+
     # Diapason-style rich intents first (YouTube / Spotify / Amazon / …)
     try:
         from diapason.desktop.smart_intents import KIND_NONE, parse_smart_intent
@@ -282,7 +296,14 @@ def is_explicit_voice_command(text: str) -> bool:
     raw = (text or "").strip()
     if raw.lower().strip(".!?") in _APP_ALIASES:
         return False
-    return bool(_OPEN_RE.match(raw) or _BROWSE_RE.match(raw) or _SEARCH_RE.match(raw))
+    from diapason.tools.consultation_rapide import compte_demande
+
+    return bool(
+        compte_demande(raw)
+        or _OPEN_RE.match(raw)
+        or _BROWSE_RE.match(raw)
+        or _SEARCH_RE.match(raw)
+    )
 
 
 def execute_voice_action(action: VoiceAction) -> dict[str, Any]:
@@ -304,6 +325,46 @@ def execute_voice_action(action: VoiceAction) -> dict[str, Any]:
             ),
         }
     import diapason.tools  # noqa: F401
+
+    if action.kind in {"app_page", "app_task_count"}:
+        import json
+
+        from diapason.core.types import ToolCall
+        from diapason.tools._stubs import ToolExecutor
+        from diapason.tools.diapason_app import DiapasonAppTool
+        from diapason.tools.vie_tasks import VieTasksTool
+
+        outil = DiapasonAppTool() if action.kind == "app_page" else VieTasksTool()
+        arguments = (
+            {"operation": "navigate", "params": {"page": action.target}}
+            if action.kind == "app_page"
+            else dict(action.extra or {})
+        )
+        result = ToolExecutor([outil]).execute(
+            ToolCall(
+                id="navigation-locale",
+                name=outil.tool_id,
+                arguments=json.dumps(arguments),
+            )
+        )
+        detail = result.content
+        if result.success:
+            from diapason.tools.consultation_rapide import rendre_compte
+
+            detail = (
+                "La page demandée est affichée."
+                if action.kind == "app_page"
+                else rendre_compte(result.metadata)
+            )
+        return {
+            "handled": True,
+            "kind": action.kind,
+            "target": action.target,
+            "success": result.success,
+            "verified": result.success,
+            "detail": detail,
+        }
+
     from diapason.tools.desktop_tools import (
         OpenAnythingTool,
         OpenUriTool,

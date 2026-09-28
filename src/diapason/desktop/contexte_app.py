@@ -60,6 +60,9 @@ _ECRANS = {
     "/data-sources": (None, "les Sources de données"),
     "/agents": (None, "les Agents"),
     "/settings": (None, "les Réglages"),
+    "/get-started": (None, "la Prise en main"),
+    "/vie/sync": (None, "la Synchronisation"),
+    "/logs": (None, "les Journaux"),
     "/dashboard": (None, "le Tableau de bord"),
     "/": (None, "la conversation"),
 }

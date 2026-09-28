@@ -191,6 +191,11 @@ except ImportError:
     pass
 
 try:
+    import diapason.tools.diapason_app  # noqa: F401
+except ImportError:
+    pass
+
+try:
     import diapason.tools.mesh_tools  # noqa: F401
 except ImportError:
     pass

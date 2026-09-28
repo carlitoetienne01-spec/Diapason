@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
 import { toast } from 'sonner';
 
 import { fetchMeshInbox } from '../features/mesh/api';
 import { playFileArrivalChime } from '../features/mesh/fileArrival';
 import { resolveSuccessRoute } from '../features/mesh/routes';
+import { cheminLocal } from '../features/mesh/navigationLocale';
+import { publierLaVue } from '../features/mesh/contexte-vue';
 import type { MeshFileReceived, MeshInboxEntry } from '../features/mesh/types';
 import { useTranslation } from '../i18n/useTranslation';
 import { isTauri } from '../lib/api';
@@ -28,9 +30,19 @@ type VisibleReceipt = MeshFileReceived & { eventId: string };
 export function MeshHost() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [cibleLocale, setCibleLocale] = useState<string | null>(null);
   const addLogEntry = useAppStore((s) => s.addLogEntry);
   const setPendingMeshSelection = useAppStore((s) => s.setPendingMeshSelection);
   const [receivedFiles, setReceivedFiles] = useState<VisibleReceipt[]>([]);
+  useEffect(() => {
+    if (cibleLocale && location.pathname === cibleLocale) {
+      // L'accusé porte sur la route effectivement rendue, même si elle était
+      // déjà ouverte et que le cliché précédent a expiré côté serveur.
+      void publierLaVue(location.pathname, null, true);
+      setCibleLocale(null);
+    }
+  }, [cibleLocale, location.pathname]);
   const dismissReceivedFile = useCallback((eventId: string) => {
     setReceivedFiles((current) =>
       current.filter((item) => item.eventId !== eventId),
@@ -81,7 +93,10 @@ export function MeshHost() {
         return;
       }
 
-      const target = resolveSuccessRoute(entry.route ?? '');
+      const localPath = entry.appPath ? cheminLocal(entry.appPath, entry.expiresAtMs) : null;
+      const target = entry.appPath
+        ? (localPath ? { path: localPath, selection: undefined } : null)
+        : resolveSuccessRoute(entry.route ?? '');
       if (!target) {
         // Doing nothing is the honest response to a route this version does
         // not know: navigating somewhere approximate would look like the
@@ -98,6 +113,7 @@ export function MeshHost() {
       // Set before navigating: the target page reads the selection on mount,
       // and the mount happens inside navigate().
       if (target.selection) setPendingMeshSelection(target.selection);
+      if (localPath) setCibleLocale(localPath);
       navigate(target.path);
 
       // Focus on every routed entry, not only on the ones that ask for it.

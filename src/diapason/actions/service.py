@@ -188,7 +188,7 @@ class LightningActionService:
             )
             success = bool(result.get("success"))
             detail = str(result.get("detail") or "")
-            verified = False
+            verified = success and bool(result.get("verified"))
             if (
                 success
                 and voice_kind == "focus_app"

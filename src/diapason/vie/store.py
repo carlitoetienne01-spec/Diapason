@@ -828,6 +828,10 @@ class VieStore:
         scheduled_date: str | None = None,
         include_done: bool = True,
         search: str = "",
+        start_date: str | None = None,
+        end_date: str | None = None,
+        project_id: str | None = None,
+        done_only: bool = False,
     ) -> list[dict[str, Any]]:
         clauses = ["deleted_at_ms IS NULL"]
         params: list[Any] = []
@@ -836,6 +840,17 @@ class VieStore:
             params.append(_validate_iso_date(scheduled_date))
         if not include_done:
             clauses.append("done = 0")
+        if done_only:
+            clauses.append("done = 1")
+        if start_date is not None:
+            clauses.append("scheduled_date >= ?")
+            params.append(_validate_iso_date(start_date))
+        if end_date is not None:
+            clauses.append("scheduled_date <= ?")
+            params.append(_validate_iso_date(end_date))
+        if project_id is not None:
+            clauses.append("project_id = ?")
+            params.append(project_id)
         if search.strip():
             clauses.append("lower(title) LIKE ?")
             params.append(f"%{search.strip().lower()}%")

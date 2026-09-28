@@ -119,6 +119,8 @@ export interface MeshInboxEntry {
   originDeviceId: string;
   receivedAtMs: number;
   route?: string;
+  appPath?: string;
+  expiresAtMs?: number;
   focus?: boolean;
   resourceType?: string;
   resourceId?: string;

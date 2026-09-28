@@ -56,13 +56,19 @@ MAX_CHARGEMENTS = 2
 # Ces indices préchargent ; ils n'autorisent ni n'interdisent rien. Une phrase
 # inconnue garde le catalogue et les suites conservent leurs appels antérieurs.
 _GROUPES = (
-    (r"\b(taches?|tasks?|sous.taches?)\b", ("vie_tasks", "current_time")),
+    (
+        r"\b(taches?|tasks?|sous.taches?)\b",
+        ("vie_tasks", "diapason_app", "diapason_app_delete", "current_time"),
+    ),
     (
         r"\b(projets?|projects?|habitudes?|habits?|notes?|carnets?)\b",
-        ("vie_workspace",),
+        ("vie_workspace", "diapason_app", "diapason_app_delete"),
     ),
     (r"\b(routines?|citations?|bilan)\b", ("vie_continuity",)),
-    (r"\b(finances?|budgets?|depenses?|revenus?|comptes?)\b", ("vie_finances",)),
+    (
+        r"\b(finances?|budgets?|depenses?|revenus?|comptes?)\b",
+        ("vie_finances", "diapason_app", "diapason_app_delete"),
+    ),
     (
         r"\b(agenda|calendrier|calendar|rendez.vous)\b",
         ("calendar_query", "current_time"),
@@ -121,6 +127,7 @@ _LECTURES = frozenset(
         "vie_workspace",
         "vie_continuity",
         "vie_finances",
+        "diapason_app",
         "calendar_query",
         "web_search",
         "web_read",

@@ -112,6 +112,10 @@ class FastActionRouter:
         for pattern in (_OPEN_AND_TYPE, _TYPE_IN_APP):
             match = pattern.match(raw)
             if match:
+                from diapason.tools.navigation_app import page_demandee
+
+                if page_demandee("ouvre " + match.group("app")):
+                    return None
                 app = _resolve_app(match.group("app"))
                 body = _clean(match.group("text"))
                 if not app or not body or _unsafe_type_target(app):

@@ -26,6 +26,7 @@ let dernierEnvoi = '';
 export async function publierLaVue(
   path: string,
   ressource?: RessourceVue | null,
+  forcer = false,
 ): Promise<void> {
   const corps = {
     path,
@@ -36,7 +37,7 @@ export async function publierLaVue(
   // Ne pas répéter le même cliché : la sélection se recalcule à chaque
   // rendu, et le serveur n'a rien à apprendre d'un état inchangé.
   const empreinte = JSON.stringify(corps);
-  if (empreinte === dernierEnvoi) return;
+  if (!forcer && empreinte === dernierEnvoi) return;
   dernierEnvoi = empreinte;
   try {
     await apiFetch('/v1/context/view', {

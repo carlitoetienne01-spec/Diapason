@@ -9,6 +9,7 @@ from diapason.core.types import ToolResult
 from diapason.tools._stubs import BaseTool, ToolSpec
 from diapason.tools._vie_magasin import MagasinParesseux
 from diapason.vie.dates import normalize_time, resolve_date_expression
+from diapason.vie.periodes import plage_de_consultation
 from diapason.vie.reseau import cle_titre
 from diapason.vie.store import VieError, VieStore
 from diapason.vie.workspace import VieWorkspaceStore
@@ -45,7 +46,8 @@ class VieTasksTool(MagasinParesseux, BaseTool):
             description=(
                 "Manage the user's private Diapason tasks on this Mac. Supports "
                 "listing, creating, completing/reopening, rescheduling, and adding "
-                "or toggling subtasks. Never claims remote sync. Deletion and bulk "
+                "or toggling subtasks. For create/list in a project, pass project_id "
+                "or project (name). Never claims remote sync. Deletion and bulk "
                 "changes are not allowed. "
                 # Le réseau (18 sept. 2026) : sans ces quatre actions, la
                 # souris était l'unique chemin pour relier deux tâches ou
@@ -62,10 +64,11 @@ class VieTasksTool(MagasinParesseux, BaseTool):
                 # question posée est presque toujours datée (« aujourd'hui »,
                 # « demain », « cette semaine ») : le dire ici coûte une ligne
                 # et change la réponse.
-                "When listing, ALWAYS pass `date` if the question is about a "
-                "day — 'aujourd'hui', 'demain', '2026-08-22'. Listing without a "
-                "date returns every task ever created, which is rarely what was "
-                "asked."
+                "Use count for totals, list for titles, read for full details. "
+                "For a day pass date; for a week/month/year pass period and an "
+                "anchor date; for any interval pass startDate AND endDate. "
+                "A week covers Monday through Sunday. Never count all tasks "
+                "for a dated question. Totals are exact, list pages use offset."
             ),
             parameters={
                 "type": "object",
@@ -75,6 +78,8 @@ class VieTasksTool(MagasinParesseux, BaseTool):
                         "type": "string",
                         "enum": [
                             "list",
+                            "count",
+                            "read",
                             "create",
                             "complete",
                             "reopen",
@@ -90,12 +95,12 @@ class VieTasksTool(MagasinParesseux, BaseTool):
                     "task_id": {"type": "string"},
                     "project_id": {
                         "type": "string",
-                        "description": "Exact project ID (network actions).",
+                        "description": "Project ID for create/list or network actions.",
                     },
                     "project": {
                         "type": "string",
                         "maxLength": 120,
-                        "description": "Project name, e.g. AgriCulture (network).",
+                        "description": "Project name (create/list or network actions).",
                     },
                     "task": {
                         "type": "string",
@@ -117,6 +122,25 @@ class VieTasksTool(MagasinParesseux, BaseTool):
                         "type": "string",
                         "description": "Exact or spoken date, e.g. 2026-08-14, demain.",
                     },
+                    "period": {
+                        "type": "string",
+                        "enum": ["day", "week", "month", "year"],
+                    },
+                    "startDate": {
+                        "type": "string",
+                        "description": "Inclusive start, paired with endDate.",
+                    },
+                    "endDate": {
+                        "type": "string",
+                        "description": "Inclusive range end.",
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": ["all", "pending", "completed"],
+                    },
+                    "search": {"type": "string", "maxLength": 200},
+                    "offset": {"type": "integer", "minimum": 0},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 12},
                     "time": {"type": "string", "description": "Optional HH:mm."},
                     "priority": {
                         "type": "string",
@@ -137,21 +161,99 @@ class VieTasksTool(MagasinParesseux, BaseTool):
     def execute(self, **params: Any) -> ToolResult:
         action = str(params.get("action") or "")
         try:
-            if action == "list":
-                scheduled = self._resolve_optional_date(params.get("date"))
+            if action in {"list", "count"}:
+                debut, fin = plage_de_consultation(
+                    str(params.get("date") or ""),
+                    str(params.get("period") or ""),
+                    str(params.get("startDate") or ""),
+                    str(params.get("endDate") or ""),
+                )
+                projet = (
+                    self._resoudre_projet(params)
+                    if params.get("project_id") or params.get("project")
+                    else None
+                )
                 tasks = self._store.list_tasks(
-                    scheduled_date=scheduled,
-                    include_done=bool(params.get("done", True)),
+                    start_date=debut,
+                    end_date=fin,
+                    project_id=projet["id"] if projet is not None else None,
+                    include_done=params.get("status") != "pending"
+                    and bool(params.get("done", True)),
+                    done_only=params.get("status") == "completed",
+                    search=str(params.get("search") or ""),
+                )
+                terminees = sum(bool(t["done"]) for t in tasks)
+                offset, limite = (
+                    int(params.get("offset", 0)),
+                    int(params.get("limit", 10)),
+                )
+                if offset < 0 or not 1 <= limite <= 12:
+                    raise VieError(
+                        "La page contient de 1 à 12 tâches ; offset doit être positif."
+                    )
+                # 27/09/2026 : le modèle comptait les 727 tâches de toutes
+                # les années. Le total porte sur la période AVANT pagination.
+                page = tasks[offset : offset + limite] if action == "list" else []
+                resumes = [
+                    {
+                        k: t[k]
+                        for k in (
+                            "id",
+                            "title",
+                            "date",
+                            "time",
+                            "done",
+                            "priority",
+                            "projectId",
+                        )
+                    }
+                    for t in page
+                ]
+                suivant = (
+                    offset + len(page)
+                    if page and offset + len(page) < len(tasks)
+                    else None
+                )
+                portee = (
+                    f"du {debut} au {fin} inclus"
+                    if debut
+                    else "toutes dates, y compris sans date"
                 )
                 return self._ok(
-                    f"{len(tasks)} tâche(s) trouvée(s).",
-                    {"tasks": tasks, "persistence": "local"},
+                    f"{len(tasks)} tâche(s) {portee} : {terminees} terminée(s), "
+                    f"{len(tasks) - terminees} non terminée(s). "
+                    + (
+                        f"{len(page)} affichée(s) ; page suivante : offset={suivant}."
+                        if suivant is not None
+                        else ""
+                    ),
+                    {
+                        "count": len(tasks),
+                        "completedCount": terminees,
+                        "pendingCount": len(tasks) - terminees,
+                        "startDate": debut,
+                        "endDate": fin,
+                        "nextOffset": suivant,
+                        "tasks": resumes,
+                        "persistence": "local",
+                    },
                 )
+            if action == "read":
+                task = self._store.get_task(str(params.get("task_id") or ""))
+                return self._ok("Tâche lue : " + task["title"], {"task": task})
             if action == "create":
                 title = str(params.get("title") or "").strip()
                 if not title:
                     return self._fail("Le titre de la tâche est obligatoire.")
                 scheduled = self._resolve_optional_date(params.get("date"))
+                # 27/09/2026 : project_id figurait dans le schéma, mais
+                # create l'ignorait : le projet restait vide malgré le succès.
+                # Résoudre avant l'écriture refuse aussi une cible ambiguë.
+                projet = (
+                    self._resoudre_projet(params)
+                    if params.get("project_id") or params.get("project")
+                    else None
+                )
                 task = self._store.create_task(
                     {
                         "title": title,
@@ -159,6 +261,7 @@ class VieTasksTool(MagasinParesseux, BaseTool):
                         "time": normalize_time(str(params.get("time") or "")),
                         "priority": params.get("priority") or "medium",
                         "notes": params.get("notes") or "",
+                        "projectId": projet["id"] if projet is not None else "",
                     }
                 )
                 return self._ok(

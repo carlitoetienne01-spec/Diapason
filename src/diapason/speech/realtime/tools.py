@@ -59,6 +59,8 @@ DEFAULT_VOICE_TOOL_IDS: tuple[str, ...] = (
     "vie_workspace",
     "vie_continuity",
     "vie_finances",
+    "diapason_app",
+    "diapason_app_delete",
     # La suppression, demandée le 23 août 2026 — dans Diapason SEULEMENT.
     # Les trois outils déclarent requires_confirmation : l'ordre part à la
     # cloche d'approbation et attend le clic de l'utilisateur (45 s à la
@@ -196,6 +198,11 @@ _TOOL_MODULES: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
     (
         "diapason.tools.vie_finances",
         (("vie_finances", "VieFinancesTool"),),
+    ),
+    (
+        "diapason.tools.diapason_app",
+        (("diapason_app", "DiapasonAppTool"),
+         ("diapason_app_delete", "DiapasonAppDeleteTool")),
     ),
     (
         "diapason.tools.browser_tabs",
