@@ -17,7 +17,8 @@ from diapason.security.types import RedactionMode, ScanFinding, ScanResult, Thre
 pytestmark = pytest.mark.asyncio
 
 # Un exemplaire par motif : un nouveau scanner/motif exige de revoir les
-# frontières du flux ; une simple marge de 128 caractères ne suffit pas.
+# frontières du flux ; une simple marge fixe ne suffit pas (128 caractères
+# jusqu'au 27/09/2026, 48 depuis : test_guardrails_reserve.py la vérifie).
 SECRETS = {
     "openai_key": "sk-" + "a" * 401,
     "anthropic_key": "sk-ant-" + "b" * 402,
