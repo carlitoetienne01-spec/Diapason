@@ -904,7 +904,7 @@ Les approbations poussées, le partage et le verrou restent en phase 5.
 *Risque silencieux :* retirer `life_os_models` avant l'import rend les données du téléphone illisibles.
 *Preuve :* `flutter analyze` sans import mort, et `flutter test` vert.
 
-*28/09/2026 — les discussions ne quittaient jamais la WebView du téléphone : `convSync.ts` exigeait la clé locale, que le téléphone n'a pas et que la passerelle refuse ; zéro `GET`/`PUT /v1/conversations` venu du téléphone dans le journal complet. Il synchronise désormais par le cookie de session quand il est servi par le tailnet ; au premier tick, il tire les discussions du Mac et pousse les siennes (celles du 26/09 comprises) ; un 401 de la passerelle le fait taire jusqu'à la reprise sans rien vider. Voir [`conversations-sync.md`](conversations-sync.md), section du 28 septembre.*
+*28/09/2026 — les discussions ne quittaient jamais la WebView du téléphone : `convSync.ts` exigeait la clé locale, que le téléphone n'a pas et que la passerelle refuse ; zéro `GET`/`PUT /v1/conversations` venu du téléphone dans le journal complet. Il synchronise désormais par le cookie de session quand il est servi par le tailnet ; au premier tick, il tire les discussions du Mac et pousse les siennes (celles du 26/09 comprises) ; un 401 de la passerelle le fait taire sans rien vider, jusqu'au prochain chargement de la page (la coquille ne rouvre une session que par une navigation : démarrage à froid, ou retour passé 6 h). Voir [`conversations-sync.md`](conversations-sync.md), section du 28 septembre.*
 
 ---
 

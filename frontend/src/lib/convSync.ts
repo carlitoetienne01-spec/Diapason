@@ -336,10 +336,13 @@ export function serveurJoignable(cle: string, parLeTailnet: boolean): boolean {
  * Vrai si ce refus dit que la session d'appareil est morte (expirée,
  * fermée ou révoquée depuis le Mac) : un 401 servi par le tailnet.
  *
- * 28/09/2026 : la coquille rouvre une session au retour au premier plan, et
- * la page se recharge (diapason-mobile.md, phase 3). Rejouer le GET toutes
- * les 10 s d'ici là n'aurait produit que des 401 à la passerelle. Au Mac, un
- * 401 reste transitoire (la clé n'est pas encore injectée) et se réessaie au
+ * 28/09/2026 : une session morte ne revit qu'avec une NOUVELLE page. La
+ * coquille en rouvre une par une navigation — au démarrage à froid, sur le
+ * 401 du document, ou au retour au premier plan passé 6 h — et ce module
+ * repart alors de zéro ; avant 6 h, elle reprend le même cookie sans rien
+ * faire (diapason_mobile, `deciderOuverture`). Rejouer le GET toutes les
+ * 10 s d'ici là n'aurait produit que des 401 à la passerelle. Au Mac, un 401
+ * reste transitoire (la clé n'est pas encore injectée) et se réessaie au
  * tick suivant, comme avant.
  */
 export function sessionPerdue(status: number, parLeTailnet: boolean): boolean {
@@ -464,10 +467,11 @@ function signalerRetablissement(): void {
   }
 }
 
-// Vrai après un 401 servi par le tailnet (`sessionPerdue`) : les ticks se
-// taisent jusqu'à une reprise (focus, retour au premier plan, réseau). Rien
-// n'est vidé — la carte, le curseur, la file des suppressions et le
-// localStorage restent tels quels, et repartent avec la session suivante.
+// Vrai après un 401 servi par le tailnet (`sessionPerdue`) : les ticks et les
+// poussées se taisent ; chaque reprise (focus, retour au premier plan,
+// réseau) sonde UNE fois. Rien n'est vidé — la carte, le curseur, la file des
+// suppressions et le localStorage restent tels quels, et repartent avec la
+// page que la session suivante rechargera.
 let sessionEnAttente = false;
 
 function joignable(): boolean {
@@ -480,7 +484,7 @@ function noterRefus(status: number, requete: string): boolean {
     if (!sessionEnAttente) {
       sessionEnAttente = true;
       console.warn(
-        `[convSync] ${requete} → 401 : session d'appareil perdue, la synchronisation reprendra au retour de l'app`,
+        `[convSync] ${requete} → 401 : session d'appareil perdue, la synchronisation reprendra avec la prochaine session (page rechargée)`,
       );
     }
     return true;
@@ -777,9 +781,12 @@ export function demarrerSyncConversations(): void {
   });
 
   const reprendre = () => {
-    // Une reprise est le seul moment où une session d'appareil perdue a pu
-    // être rouverte sans recharger la page (reprise d'une session de moins
-    // de 6 h) : on réessaie, UNE fois par reprise, jamais au tick.
+    // Une session d'appareil perdue ne revit qu'au chargement d'une nouvelle
+    // page (voir `sessionPerdue`) : avant 6 h, la coquille reprend le même
+    // cookie mort sans rien faire. On sonde quand même UNE fois par reprise,
+    // jamais au tick — un 401 par retour — pour ne pas dépendre de ce détail
+    // de la coquille. (Corrigé le 28/09/2026 après revue : ce commentaire la
+    // disait « rouverte sans recharger la page », ce qui n'arrive jamais.)
     sessionEnAttente = false;
     viderSauvegardeConversations();
     void tirer().then(() => pousser());

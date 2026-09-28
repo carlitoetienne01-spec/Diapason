@@ -136,14 +136,24 @@ faites au téléphone partent en `DELETE`. Rien de neuf dans la règle de
 fusion : c'est la même union, commutative et idempotente.
 
 **Un 401 servi par le tailnet = session d'appareil perdue** (expirée à 12 h,
-fermée ou révoquée depuis le Mac) : `sessionPerdue(401, true)`. Le moteur le
-dit une fois dans la console, puis ses ticks et ses poussées se taisent
-jusqu'à la reprise suivante (`focus`, retour au premier plan, retour du
-réseau, réouverture du panneau) — la coquille rouvre une session à la reprise
-et la page se recharge. Il ne vide RIEN : `localStorage`, carte, curseur et
-file des suppressions restent tels quels et repartent avec la session
-suivante. Au Mac, un 401 reste transitoire (la clé n'est pas encore injectée)
-et se réessaie au tick, comme avant.
+fermée ou révoquée depuis le Mac) : `sessionPerdue(401, true)`, qu'il tombe
+sur le `GET`, un `PUT` ou un `DELETE`. Le moteur le dit une fois dans la
+console, puis ses ticks et ses poussées se taisent ; chaque reprise (`focus`,
+retour au premier plan, retour du réseau, réouverture du panneau) sonde UNE
+fois — un 401 par retour, jamais au tick. Il ne vide RIEN : `localStorage`,
+carte, curseur et file des suppressions restent tels quels, et rien n'est mis
+en quarantaine. Au Mac, un 401 reste transitoire (la clé n'est pas encore
+injectée) et se réessaie au tick, comme avant.
+
+**La synchronisation reste muette jusqu'au prochain chargement de la page.**
+Une session morte ne revit pas sous une page ouverte : la coquille en rouvre
+une par une NAVIGATION — au démarrage à froid, sur le 401 du document, ou au
+retour au premier plan passé 6 h — qui remet ce module à zéro ; avant 6 h,
+elle reprend le même cookie sans rien faire (`deciderOuverture`, dépôt
+`diapason_mobile`). Rien n'est perdu : les discussions restent dans la
+WebView et partent avec la page suivante. (Corrigé le 28/09/2026 après
+revue : ce paragraphe disait que la coquille rouvre une session « à la
+reprise », ce qu'elle ne fait qu'après 6 h.)
 
 **Une tombale refusée n'est pas jetée.** Un `DELETE` refusé pour de bon ne
 retire l'id de la file que si le serveur ne peut pas l'ADRESSER (404, 422 :
@@ -152,6 +162,7 @@ refusée » — garde la tombale en file, mise de côté pour la session : jeté
 la conversation supprimée revenait au tirage suivant.
 
 Tenu par `lib/convSync.telephone.test.ts` (le moteur entier sans clé : tirer,
-pousser, supprimer, curseur, 401 ; un 403 et un 404 sur le `DELETE`) et
-`lib/convSync.test.ts` (les fonctions pures). Onze mutations, onze tests qui
-échouent.
+pousser, supprimer, curseur ; un 401 sur le `GET`, puis page cachée sur le
+`DELETE` et sur le `PUT` ; un 403 et un 404 sur le `DELETE`) et
+`lib/convSync.test.ts` (les fonctions pures). Dix-sept mutations, dix-sept
+tests qui échouent.

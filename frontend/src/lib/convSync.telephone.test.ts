@@ -39,6 +39,11 @@ const magasin = (): ConversationStore => ({ version: 1, activeId: 'tel', convers
 const appels = (methode: string) =>
   reseau.mock.calls.filter(([, init]) => (init?.method ?? 'GET') === methode);
 
+function cacher(cachee: boolean) {
+  Object.defineProperty(document, 'hidden', { configurable: true, get: () => cachee });
+  document.dispatchEvent(new Event('visibilitychange'));
+}
+
 function repondre(get: () => ReturnType<typeof reponse>) {
   reseau.mockImplementation(async (_url: string, init?: RequestInit) => {
     if (init?.method === 'PUT') return reponse({ conversation: JSON.parse(String(init.body)) });
@@ -70,6 +75,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
   for (const [cible, nom, fn] of ecoutes.splice(0)) cible.removeEventListener(nom, fn);
   vi.clearAllTimers(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals();
 });
@@ -131,7 +137,7 @@ describe('au téléphone, la synchronisation passe par le cookie, sans clé', ()
 });
 
 describe('un 401 de la passerelle : session perdue, rien ne boucle ni ne se vide', () => {
-  it('se tait jusqu’à la reprise, garde tout, puis réessaie une fois', async () => {
+  it('se tait au tick, garde tout, et chaque reprise sonde une fois', async () => {
     stockage.set(sync.ETAT_SYNC_KEY, JSON.stringify({ curseur: 5, suppressions: ['vieille'], carte: { tel: 10 } }));
     reseau.mockResolvedValue(reponse({ detail: 'Aucune session d’appareil valide' }, 401));
     sync.demarrerSyncConversations();
@@ -153,7 +159,7 @@ describe('un 401 de la passerelle : session perdue, rien ne boucle ni ne se vide
     repondre(() => reponse({ conversations: [], deleted: [], seq: 6 }));
     window.dispatchEvent(new Event('focus'));
     await vi.advanceTimersByTimeAsync(0);
-    expect(appels('GET').length, 'la reprise réessaie').toBe(1);
+    expect(appels('GET').length, 'la reprise sonde une fois').toBe(1);
     expect(appels('DELETE').map(([url]) => url), 'la suppression en attente part enfin')
       .toEqual(['/v1/conversations/vieille']);
     expect(appels('PUT').map(([url]) => url), 'le renommage fait pendant la panne part aussi')
@@ -167,6 +173,70 @@ describe('un 401 de la passerelle : session perdue, rien ne boucle ni ne se vide
     await vi.advanceTimersByTimeAsync(0);
     await vi.advanceTimersByTimeAsync(20_000);
     expect(appels('GET').length, 'le démarrage puis deux ticks : trois GET').toBe(3);
+  });
+});
+
+describe('un 401 qui tombe sur la POUSSÉE, sans GET avant lui', () => {
+  // Revue du 28/09/2026 : la garantie n'était tenue que sur le GET. Or au
+  // téléphone une poussée part seule — page cachée (le tick n'appelle que
+  // pousser()), sortie de l'app (vider()), suppression (1,2 s) — et cinq
+  // mutations des branches PUT et DELETE (un DELETE par tick, la tombale
+  // jetée, la file, la carte et le curseur vidés, la mise en quarantaine)
+  // laissaient les 47 tests verts.
+
+  async function premierTickSain() {
+    repondre(() => reponse({ conversations: [], deleted: [], seq: 3 }));
+    sync.demarrerSyncConversations();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(appels('PUT').map(([url]) => url), 'le Mac reçoit la conversation du téléphone')
+      .toEqual(['/v1/conversations/tel']);
+    reseau.mockReset();
+    // Carlito ferme les sessions de l'appareil depuis le Mac : tout rend 401.
+    reseau.mockResolvedValue(reponse({ detail: 'Aucune session d’appareil valide' }, 401));
+  }
+
+  it('sur un DELETE : un seul envoi, la tombale reste, et elle part à la reprise sans résurrection', async () => {
+    await premierTickSain();
+    store.useAppStore.getState().deleteConversation('tel');
+    cacher(true);
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(appels('DELETE').length, 'six ticks cachés : un seul DELETE, pas un par tick').toBe(1);
+    expect(appels('GET').length, 'page cachée : aucun tirage').toBe(0);
+    expect(JSON.parse(stockage.get(sync.ETAT_SYNC_KEY)!), 'le 401 ne jette ni la tombale, ni la carte, ni le curseur')
+      .toEqual({ curseur: 3, suppressions: ['tel'], carte: {} });
+
+    // La page revient (session rouverte) ; le serveur détient encore « tel ».
+    reseau.mockReset();
+    repondre(() => reponse({ conversations: [duTelephone], deleted: [], seq: 5 }));
+    cacher(false);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(appels('DELETE').map(([url]) => url), 'la tombale n’a pas été mise de côté : elle part')
+      .toEqual(['/v1/conversations/tel']);
+    expect(store.loadConversations().conversations.tel, 'la conversation supprimée ne revient pas').toBeUndefined();
+    expect(JSON.parse(stockage.get(sync.ETAT_SYNC_KEY)!).suppressions, 'la file se vide quand le DELETE aboutit')
+      .toEqual([]);
+  });
+
+  it('sur un PUT : un seul envoi, la carte reste, et le renommage part à la reprise', async () => {
+    await premierTickSain();
+    store.useAppStore.getState().renameConversation('tel', 'Renommée puis rangée');
+    cacher(true);
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(appels('PUT').length, 'six ticks cachés : un seul PUT, pas un par tick').toBe(1);
+    expect(JSON.parse(stockage.get(sync.ETAT_SYNC_KEY)!), 'le 401 ne vide rien')
+      .toEqual({ curseur: 3, suppressions: [], carte: { tel: 10 } });
+    expect(store.loadConversations().conversations.tel?.title).toBe('Renommée puis rangée');
+
+    reseau.mockReset();
+    repondre(() => reponse({ conversations: [], deleted: [], seq: 5 }));
+    cacher(false);
+    await vi.advanceTimersByTimeAsync(0);
+    const puts = appels('PUT');
+    expect(puts.map(([url]) => url), 'le 401 n’a pas mis la conversation en quarantaine : elle part')
+      .toEqual(['/v1/conversations/tel']);
+    expect(JSON.parse(String(puts[0][1].body)).title).toBe('Renommée puis rangée');
   });
 });
 
