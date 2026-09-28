@@ -3,6 +3,7 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+import { MESSAGES } from '../../i18n/messages';
 
 /**
  * Le câblage de « Renvoyer » (28/09/2026), lu comme du texte — à la manière
@@ -101,5 +102,15 @@ describe('MessageBubble : l’avis de coupure', () => {
     expect(bouton, 'cible de 40 px au téléphone (règles du téléphone)').toMatch(/\bmobile:min-h-10\b/);
     expect(bouton, 'rien qui n’existe qu’au survol').not.toMatch(/opacity-0|\binvisible\b|\bhidden\b|hover:/);
     expect(avis, 'il n’existe que si le renvoi a un sens').toMatch(/\{renvoyable && \(\s*<button/);
+  });
+
+  it('son nom accessible contient son libellé visible, en français et en anglais (WCAG 2.5.3)', () => {
+    for (const langue of ['fr', 'en'] as const) {
+      const visible = MESSAGES[langue]['chat.coupure.renvoyer'].toLowerCase();
+      const nom = MESSAGES[langue]['chat.coupure.renvoyerAide'].toLowerCase();
+      expect(nom, `${langue} : « ${visible} » dit à la voix doit trouver le bouton`).toContain(visible);
+    }
+    expect(bouton).toContain("aria-label={t('chat.coupure.renvoyerAide')}");
+    expect(bouton).toContain("{t('chat.coupure.renvoyer')}");
   });
 });

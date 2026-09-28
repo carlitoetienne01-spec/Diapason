@@ -590,7 +590,7 @@ export const MESSAGES = {
     'chat.coupure.bureauEnvoi': 'The Diapason server could not be reached before any reply (stopped or restarting).',
     'chat.coupure.outils': 'Tools may already have acted before the drop: check before resending.',
     'chat.coupure.renvoyer': 'Resend',
-    'chat.coupure.renvoyerAide': 'Send the same message again',
+    'chat.coupure.renvoyerAide': 'Resend the same message',
     'chat.message.copy': 'Copy message',
     'chat.terminal.title': 'Tools',
     'chat.terminal.sourcesCount': 'Sources received: {count}',
