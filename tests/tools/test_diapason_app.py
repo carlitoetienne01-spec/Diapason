@@ -217,6 +217,42 @@ class TestLeTelephone:
             )
         assert mac_temoin == [], f"{operation} a touché la fenêtre du Mac"
 
+    @pytest.mark.parametrize("operation", ["ouvrir_fenetre", "", "screen"])
+    def test_ce_que_la_liste_n_autorise_pas_est_refuse_au_telephone(
+        self, magasin, mac_temoin, plafond_de_la_phase_6, operation
+    ):
+        """§5 : la garde est une liste d'AUTORISATION. Une opération du Mac
+        ajoutée demain à _executer (ici un nom inventé, la chaîne vide,
+        « screen ») doit tomber sur le refus du téléphone, pas sur l'erreur
+        générique : une liste de refus qui ne nommerait que navigate et
+        current_view laissait passer les 92 tests (revue du 28/09/2026)."""
+        from diapason.core.origine_telephone import (
+            MOTIF_OPERATION_REFUSEE,
+            marquer_le_telephone,
+        )
+
+        with marquer_le_telephone():
+            rendus = {
+                "diapason_app": [
+                    par_l_executeur(operation),
+                    DiapasonAppTool().execute(operation=operation, params={}),
+                ],
+                "diapason_app_delete": [
+                    DiapasonAppDeleteTool().execute(operation=operation, params={}),
+                ],
+            }
+        for nom, rendus_de_l_outil in rendus.items():
+            for rendu in rendus_de_l_outil:
+                assert not rendu.success, f"« {operation} » a répondu au téléphone"
+                assert rendu.content == MOTIF_OPERATION_REFUSEE.format(
+                    operation=operation, nom=nom
+                ), (
+                    f"« {operation} » hors de la liste doit être refusée PARCE QUE "
+                    f"le téléphone la demande, pas en erreur générique : "
+                    f"{rendu.content!r}"
+                )
+        assert mac_temoin == [], "la fenêtre du Mac a été touchée depuis le téléphone"
+
     def test_les_donnees_restent_permises_si_le_plafond_ouvre_l_outil(
         self, magasin, mac_temoin, plafond_de_la_phase_6
     ):
