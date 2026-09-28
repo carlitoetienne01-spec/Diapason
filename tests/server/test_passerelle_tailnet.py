@@ -899,6 +899,12 @@ class TestLaVoixDuTelephone:
         monkeypatch.setattr(
             local_voice, "local_voice_readiness", lambda *_a, **_k: (True, "ready")
         )
+        # 28/09/2026 : Orion est la seule voix (depart-vocal-et-expression.md) ;
+        # la santé dit la voix locale non configurée tant que son moteur manque.
+        # Le test supposait un Mac où Orion est installé sans le simuler.
+        monkeypatch.setattr(
+            "diapason.speech.realtime.voix_expressive.moteur_installe", lambda: True
+        )
         # Des clés présentes sur le Mac : le téléphone ne doit pas les voir
         # comme une voix qu'il peut démarrer.
         monkeypatch.setattr(
@@ -912,6 +918,25 @@ class TestLaVoixDuTelephone:
         assert sante["providers"]["openai"]["configured"] is False
         assert sante["providers"]["local"]["configured"] is True
         assert set(sante["tools"]) <= OUTILS_DU_TELEPHONE, sante["tools"]
+
+    def test_sans_le_moteur_d_orion_la_voix_locale_se_dit_non_configuree(
+        self, telephone, monkeypatch
+    ):
+        """§100 : sans le moteur de la seule voix, la santé ne promet rien au
+        téléphone et en dit la raison."""
+        from diapason.speech.realtime import local_voice
+
+        monkeypatch.setattr(
+            local_voice, "local_voice_readiness", lambda *_a, **_k: (True, "ready")
+        )
+        monkeypatch.setattr(
+            "diapason.speech.realtime.voix_expressive.moteur_installe", lambda: False
+        )
+        sante = telephone.get("/v1/voice/live/health").json()
+        assert sante["providers"]["local"] == {
+            "configured": False,
+            "reason": "missing-expressive-voice",
+        }, "un moteur absent ne se dit pas prêt"
 
 
 class TestLaDicteeDuTelephone:
