@@ -2,9 +2,9 @@
 
 26/09/2026, chantier de la fluidité (lot 1, le réseau). Le JSON de l'API
 partait brut au téléphone : 365 834 octets pour la liste des tâches au banc
-(825 Ko chez Carlito), relue par Tâches, Planificateur ET Projets, à
-10 Mbit/s en 4G. Comprimée, elle en pèse 31 292 en brotli et 35 291 en
-gzip (mesuré par la passerelle de banc le 26/09/2026).
+(plus du double sur un foyer réel), relue par Tâches, Planificateur ET
+Projets, à 10 Mbit/s en 4G. Comprimée, elle en pèse 31 292 en brotli et
+35 291 en gzip (mesuré par la passerelle de banc le 26/09/2026).
 
 Le défaut qu'elle ne doit jamais introduire : retarder un flux. Voir la
 docstring de ``CompressionDesReponses``.

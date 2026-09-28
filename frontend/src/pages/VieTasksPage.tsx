@@ -106,7 +106,7 @@ export function VieTasksPage() {
   // lancement. Sans lui, chaque retour sur la page — Tâches → Projets →
   // Tâches, chaque clic de module du mini-panneau — repartait d'un écran
   // vide avec « Chargement des tâches… » pendant que l'onglet disait déjà
-  // « Terminées 37 » (capture de Carlito, 18 sept. 2026).
+  // le compte des terminées (capture de Carlito, 18 sept. 2026).
   const [tasks, setTasks] = useState<VieTask[]>(() => lireCache<VieTask[]>(clesVie.taches()) ?? []);
   const [projects, setProjects] = useState<VieProject[]>(
     () => lireCache<VieProject[]>(clesVie.projets()) ?? [],

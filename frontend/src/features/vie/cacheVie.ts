@@ -5,11 +5,12 @@
  * Carlito, 18 sept. 2026 : « les tâches prennent beaucoup de temps pour se
  * recharger, je veux que le temps de rechargement partout soit instantané ».
  * La capture montrait « Chargement des tâches… » sur un écran vide pendant
- * que l'onglet disait déjà « Terminées 37 ». Le serveur, lui, répondait en
- * 20-40 ms pour /v1/vie/tasks?include_done=true (825 Ko), 3-8 ms pour les
- * projets, les notes (924 Ko), le planificateur, les habitudes, 46 ms pour
- * le tableau de bord. Le temps perdu était côté client : chaque page repart
- * d'un `useState([])` à chaque montage — Tâches → Projets → Tâches, ou
+ * que l'onglet affichait déjà le compte des terminées. Le serveur, lui,
+ * répondait en 20-40 ms pour /v1/vie/tasks?include_done=true (plusieurs
+ * centaines de Ko), 3-8 ms pour les projets, les notes (plusieurs centaines
+ * de Ko), le planificateur, les habitudes, 46 ms pour le tableau de bord.
+ * Le temps perdu était côté client : chaque page repart d'un
+ * `useState([])` à chaque montage — Tâches → Projets → Tâches, ou
  * chaque clic de module du mini-panneau —, retarde son premier `load()` de
  * 180 ms, et rien ne survit au relancement de l'application.
  *

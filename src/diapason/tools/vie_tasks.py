@@ -191,8 +191,9 @@ class VieTasksTool(MagasinParesseux, BaseTool):
                     raise VieError(
                         "La page contient de 1 à 12 tâches ; offset doit être positif."
                     )
-                # 27/09/2026 : le modèle comptait les 727 tâches de toutes
-                # les années. Le total porte sur la période AVANT pagination.
+                # 27/09/2026 : le modèle annonçait le total de toutes les
+                # années, pas celui de la période demandée. Le total porte sur
+                # la période AVANT pagination.
                 page = tasks[offset : offset + limite] if action == "list" else []
                 resumes = [
                     {

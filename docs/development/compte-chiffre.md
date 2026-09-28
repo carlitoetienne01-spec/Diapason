@@ -985,7 +985,7 @@ cycle():
 
 **Comparer-et-échanger sur `rev`.** `rev` figure dans l'AAD, et un conflit rend `current`. On converge en au plus deux allers-retours une fois les écritures arrêtées.
 
-**Pourquoi le serveur ne tient pas de journal.** Il ne garde qu'une ligne par objet, plus la précédente pendant 30 jours. `succes_operations`, 306 Mo sur 311, montre ce qu'un journal en ajout seul coûterait.
+**Pourquoi le serveur ne tient pas de journal.** Il ne garde qu'une ligne par objet, plus la précédente pendant 30 jours. `succes_operations`, qui fait presque toute la taille d'une base réelle, montre ce qu'un journal en ajout seul coûterait.
 
 **`generation` nouvelle.** Le curseur revient à 0 et l'appareil tire tout. Ce qui diffère ou manque au serveur repasse dans `sortants`. Les planchers ne bougent pas.
 

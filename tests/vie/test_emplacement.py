@@ -3,7 +3,7 @@
 25/09/2026, étapes 5 et 6 du plan de la phase 1b (docs/development/
 diapason-mobile.md) : le fichier, les photos, puis les 26 tables succes_*
 qui deviennent vie_*. Chaque test tourne dans un dossier de données
-temporaire : la vraie base de Carlito (311 Mo, 62 photos) ne se touche
+temporaire : la vraie base de Carlito et ses photos ne se touchent
 qu'au redémarrage du serveur, jamais depuis un test (voir la garde de
 tests/conftest.py).
 
@@ -388,7 +388,7 @@ class TestLesPhotos:
                 },
             )
             ids.append(photo["id"])
-        # Les 62 photos du 25/09/2026 : chemins ABSOLUS, comme avant ce jour.
+        # Les photos d'avant le 25/09/2026 : chemins ABSOLUS, comme alors.
         with closing(sqlite3.connect(donnees / NOM_BASE_HERITE)) as conn, conn:
             for ligne in conn.execute(
                 "SELECT id, file_path, thumb_path FROM vie_photos"
@@ -603,7 +603,8 @@ class TestLeRenommageDesTables:
 
     def test_le_schema_migre_est_celui_d_une_base_neuve(self, donnees, tmp_path):
         """Un index resté sous l'ancien nom aurait été recréé en double par le
-        schéma neuf — sur vie_operations, 306 Mo des 311 de la vraie base."""
+        schéma neuf — sur vie_operations, presque toute la taille d'une base
+        réelle."""
         _base_riche(donnees / NOM_BASE_HERITE)
         vieillir(donnees / NOM_BASE_HERITE)
         migrer_base_vie(donnees)

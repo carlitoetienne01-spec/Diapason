@@ -4,8 +4,9 @@
  * 26/09/2026, retour de Carlito sur l'APK d6052bde : « la navigation est
  * rapide maintenant mais je la veux plus smooth ». Chaque page remplaçait
  * l'autre d'une image à la suivante, et revenir sur les Tâches ramenait tout
- * en haut d'une liste de 726 tâches qu'on venait de descendre. Sa décision :
- * la page qui arrive glisse de ~12 px vers le haut en se révélant, ~180 ms.
+ * en haut d'une liste de plusieurs centaines de tâches qu'on venait de
+ * descendre. Sa décision : la page qui arrive glisse de ~12 px vers le haut
+ * en se révélant, ~180 ms.
  *
  * Ce module ne tient que les décisions, sans DOM : `useTransitionDesPages`
  * (Layout) les applique.

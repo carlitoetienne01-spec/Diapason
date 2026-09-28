@@ -356,7 +356,7 @@ Avant de rédiger les trois plans, j'ai revérifié dans le code et sur la machi
 - **`/v1/succes/import/legacy`.** VU : la route appelle `SuccesSyncStore.import_legacy_snapshot`. Les étages `store.py:1549`, `workspace.py:1957` et `continuity.py:933` s'y enchaînent. Les coches d'habitude ne sont importées que pour les clés présentes dans `habitLogsAt` (boucle `for key, value in logs_at.items()`, `workspace.py` vers la ligne 2089). Une note au titre vide est sautée sans être comptée (vers la ligne 2031). `succes_imports` compte 0 ligne.
   - **Le plantage des citations au démarrage est DÉDUIT, non exécuté.** Le constructeur `SuccesContinuityStore.__init__` appelle `materialize_continuity_archives()` (`continuity.py:98`), qui rejoue tous les imports. `_load_quote` exclut les lignes supprimées, puis `create_quote` fait un `INSERT` simple sur une clé primaire (`continuity.py:675`). `_transaction` relance l'`IntegrityError` telle quelle, et seule `SuccesError` est rattrapée. Une citation importée puis supprimée ferait donc lever l'erreur dans `get_store()` à chaque démarrage, et toutes les routes `/v1/succes` répondraient 500.
 - **Ce qui s'exécute sur le disque.** VU : Diapason est installé en mode éditable (`direct_url.json`). `com.diapason.tick` (toutes les 900 s), `com.diapason.briefing` et `com.diapason.consolidation` lancent `diapason.cli` depuis l'arbre de travail. Ils exécutent donc un commit dès qu'il est posé, alors que le serveur garde l'ancien code jusqu'à son `kickstart`.
-- **La base et les photos.** VU : `succes.db` pèse 311 570 432 octets, sans `-wal` au moment de l'inspection. Les 62 photos ont toutes un `file_path` absolu qui contient `/succes-photos/`. `succes_sync_peers` compte 0 ligne. `tests/contract/succes_api_surface.json` liste 100 routes, alors que CLAUDE.md §1 en annonce 73. `~/.diapason/lacite/synchroniser.py:21` appelle `http://127.0.0.1:8000/v1/succes`.
+- **La base et les photos.** VU : `succes.db` pèse quelques centaines de Mo (la taille exacte n'est pas reproduite ici), sans `-wal` au moment de l'inspection. Toutes les photos ont un `file_path` absolu qui contient `/succes-photos/`. `succes_sync_peers` compte 0 ligne. `tests/contract/succes_api_surface.json` liste 100 routes, alors que CLAUDE.md §1 en annonce 73. `~/.diapason/lacite/synchroniser.py:21` appelle `http://127.0.0.1:8000/v1/succes`.
 - **Côté mobile.** VU au commit `2bb080b` :
   - `MeshStore.normalizeBase` ajoute `:8000` à toute adresse sans port, https compris ;
   - `mesh_api.dart:155` signe `'requiresConfirmation': false` ;
@@ -429,13 +429,13 @@ Ne changent pas dans ce commit : `succes.db`, `succes-photos`, les tables, `/v1/
   2. Sauvegarde par `conn.backup()` vers `backups/succes.db.avant-vie-AAAAMMJJ`.
   3. Vérifier que ni `-wal` ni `-shm` ne restent.
   4. `os.replace` vers `vie.db`. Sous Windows, 3 essais, puis on garde `succes.db` pour cette exécution.
-  5. `succes-photos → vie-photos`, et les 62 × 2 chemins réécrits **en chemins relatifs** au dossier de données, résolus à la lecture (`photos.py:241-255`, `:341`, `:432`, `:531`, `:670`, `:818`). Si la réécriture échoue, le dossier reprend son ancien nom.
+  5. `succes-photos → vie-photos`, et les chemins de chaque photo et de son aperçu réécrits **en chemins relatifs** au dossier de données, résolus à la lecture (`photos.py:241-255`, `:341`, `:432`, `:531`, `:670`, `:818`). Si la réécriture échoue, le dossier reprend son ancien nom.
 - **Si les deux bases existent.** Si l'une est vide de données, elle est mise de côté dans `backups/…fantome-<horodatage>`. Si les deux ont des données, les routes vie rendent 503 « Deux bases de vie existent » jusqu'à décision.
 - **Les tables** se renomment à l'étape 6, pas ici.
 
 *Risque silencieux :*
 - une migration lancée par `tick` pendant que l'ancien serveur tourne laisse ce dernier recréer une `succes.db` vide, avec un nouveau `device_id`, et les écritures se coupent en deux bases ;
-- sans réécriture des chemins, les 62 aperçus deviennent `""` (`_data_url`) ;
+- sans réécriture des chemins, tous les aperçus deviennent `""` (`_data_url`) ;
 - le singleton `_store` créé avant la migration garderait l'ancien chemin.
 
 *Preuve :* tests dans un `DIAPASON_HOME` temporaire.
@@ -446,7 +446,7 @@ Ne changent pas dans ce commit : `succes.db`, `succes-photos`, les tables, `/v1/
 - Trois photos à chemins absolus : `photo_content` réussit après migration.
 - `migrer=False` avec seulement `succes.db` rend `succes.db` et ne crée rien.
 - Deux processus (`multiprocessing`) donnent une seule migration.
-- Sur le Mac, après coup : 1 679 tâches, 57 notes, 62 lignes de photos — **45 actives**, chacune lisible par `/v1/vie/photos/{id}/contenu`, et **17 supprimées** (`deleted_at_ms`) dont les fichiers manquaient déjà avant la migration (contre-épreuve du 25/09/2026 sur une copie : 17 manquants avant, les mêmes après, 90 fichiers déplacés, aucun perdu) — et `ls ~/.diapason | grep succes` ne montre que les sauvegardes. Attendre « 62 photos avec leur fichier » ferait conclure à un défaut qui n'en est pas un.
+- Sur le Mac, après coup : tâches, notes et lignes de photos relevées (les comptes ne sont pas reproduits ici). Les photos **actives** sont chacune lisibles par `/v1/vie/photos/{id}/contenu` ; les **supprimées** (`deleted_at_ms`) avaient perdu leur fichier avant la migration (contre-épreuve du 25/09/2026 sur une copie : les mêmes fichiers manquants avant et après, tous les autres déplacés, aucun perdu) — et `ls ~/.diapason | grep succes` ne montre que les sauvegardes. Attendre « toutes les photos avec leur fichier » ferait conclure à un défaut qui n'en est pas un.
 
 ~~**6. « Les tables portaient encore le préfixe succes_ ».**~~ *Commité le 25/09/2026 (`38a587d`).* Décidé : on renomme (« absolument tout »). 26 tables renommées par `ALTER TABLE … RENAME` dans une transaction, `user_version` 3 → 4, environ 340 références SQL dans `src/` et 107 dans `tests/`. Ce serait la première migration de schéma du projet.
 *Risque silencieux :* une requête oubliée sur un chemin rare (pierres tombales, imports) ne lève « no such table » que des semaines plus tard.
@@ -1027,9 +1027,9 @@ redémarrage du serveur de launchd (et l'APK pour la coquille).
 ### Méthode
 
 - **Banc** (scratchpad, `final/banc/`) : le vrai `diapason serve` du commit
-  mesuré, avec un moteur factice. Foyer de test : 726 tâches, 60 notes,
-  20 projets, 8 habitudes et 300 transactions. La vraie passerelle du
-  tailnet est enveloppée d'un faux canal `DiapasonNatif`.
+  mesuré, avec un moteur factice. Foyer de test : plusieurs centaines de
+  tâches, 60 notes, 20 projets, 8 habitudes et 300 transactions. La vraie
+  passerelle du tailnet est enveloppée d'un faux canal `DiapasonNatif`.
 - **4G simulée** : un mandataire asyncio ajoute 55 ms par sens (110 ms
   d'aller-retour) et plafonne le débit à 10 Mbit/s.
 - **Navigateur** : Chromium 152 (Brave) sans tête, 375 × 812, DPR 3, agent

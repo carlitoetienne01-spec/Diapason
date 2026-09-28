@@ -252,9 +252,9 @@ class ViePhotosStore(VieFinancesStore):
     """Piles et photos, rangées sous `<données>/vie-photos/<projet>/`.
 
     Les chemins s'écrivent RELATIFS au dossier de données depuis le
-    25/09/2026 : les 62 photos d'avant portaient un chemin absolu contenant
-    `/succes-photos/`, et renommer le dossier les aurait toutes rendues
-    vides. Un chemin absolu encore en base se lit tel quel.
+    25/09/2026 : toutes les photos d'avant portaient un chemin absolu
+    contenant `/succes-photos/`, et renommer le dossier les aurait toutes
+    rendues vides. Un chemin absolu encore en base se lit tel quel.
     """
 
     def __init__(self, db_path: str | Path | None = None) -> None:
