@@ -106,7 +106,7 @@ export function VieTasksPage() {
   // lancement. Sans lui, chaque retour sur la page — Tâches → Projets →
   // Tâches, chaque clic de module du mini-panneau — repartait d'un écran
   // vide avec « Chargement des tâches… » pendant que l'onglet disait déjà
-  // le compte des terminées (capture de Carlito, 18 sept. 2026).
+  // « Terminées 37 » (capture de Carlito, 18 sept. 2026).
   const [tasks, setTasks] = useState<VieTask[]>(() => lireCache<VieTask[]>(clesVie.taches()) ?? []);
   const [projects, setProjects] = useState<VieProject[]>(
     () => lireCache<VieProject[]>(clesVie.projets()) ?? [],
@@ -230,9 +230,9 @@ export function VieTasksPage() {
     // Le voyant de synchronisation se charge À CÔTÉ, jamais devant : jusqu'au
     // 18 sept. 2026 son `await` précédait `setLoading(false)`, et la liste
     // déjà reçue attendait derrière le spinner qu'un second aller-retour
-    // réponde — d'où la capture « Chargement des tâches… » sous l'onglet
-    // Terminées qui affichait déjà son compte. Une sonde indisponible ne
-    // doit jamais cacher des tâches lues avec succès dans SQLite.
+    // réponde — d'où la capture « Chargement des tâches… » sous « Terminées
+    // 37 ». Une sonde indisponible ne doit jamais cacher des tâches lues
+    // avec succès dans SQLite.
     // 26/09/2026 : au téléphone, la passerelle refuse l'état de la
     // synchronisation entre Mac ; chaque liste de tâches l'inscrivait au
     // journal comme une erreur. Le voyant n'a rien à dire là : il n'est pas
@@ -299,10 +299,9 @@ export function VieTasksPage() {
   useRefreshOnFocus(() => void load());
 
   // Le GET complet ne reste que pour ce qui change la LISTE : création,
-  // suppression, retour de focus. Une coche relançait `load()` sur une liste
-  // de plusieurs centaines de tâches — case figée quelques centaines de ms,
-  // cinq rechargements pour cinq sous-tâches (expertise du 17 sept. 2026,
-  // défaut 6).
+  // suppression, retour de focus. Une coche relançait `load()` sur les 702
+  // tâches — case figée quelques centaines de ms, cinq rechargements pour
+  // cinq sous-tâches (expertise du 17 sept. 2026, défaut 6).
   /** Rend vrai si l'action a abouti : un brouillon ne se vide que sur un vrai succès. */
   const refreshAfter = async (action: () => Promise<unknown>, success: string): Promise<boolean> => {
     commencerEcriture();

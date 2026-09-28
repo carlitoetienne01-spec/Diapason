@@ -33,8 +33,7 @@ function mouvementReduit(): boolean {
  *   578 à 975 ms.
  * - La position de défilement de la page QUITTÉE est retenue, et rendue au
  *   retour (roue, lien, retour d'Android) : avant, revenir sur les Tâches
- *   ramenait en haut d'une liste de plusieurs centaines de tâches qu'on
- *   venait de descendre.
+ *   ramenait en haut des 726 tâches qu'on venait de descendre.
  *
  * Au bureau et au mini-panneau, rien : aucun écouteur, aucune animation.
  */

@@ -111,8 +111,8 @@ const emptyMeta = () => ({
 export function VieNotesPage() {
   const confirm = useConfirm();
   // L'état initial vient du cache — la dernière liste que le serveur a
-  // rendue (plusieurs centaines de Ko, 3-8 ms côté serveur ; c'est l'écran
-  // vide par montage qui coûtait, Carlito, 18 sept. 2026).
+  // rendue (924 Ko, 3-8 ms côté serveur ; c'est l'écran vide par montage
+  // qui coûtait, Carlito, 18 sept. 2026).
   const [notesAuMontage] = useState<CartableNote[]>(() => lireCache<CartableNote[]>(clesVie.resumesNotes()) ?? []);
   const [notes, setNotes] = useState<CartableNote[]>(notesAuMontage);
   const [search, setSearch] = useState('');
@@ -183,8 +183,8 @@ export function VieNotesPage() {
   const versionNoteRef = useRef<{ id: string; hash?: string } | null>(null);
 
   // Lu au moment de la réponse, pas capturé : `load` dépendait d'`activeId`
-  // et chaque note ouverte relançait la liste entière (plusieurs centaines
-  // de Ko) 180 ms plus tard, pour rien (18 sept. 2026).
+  // et chaque note ouverte relançait la liste entière (924 Ko) 180 ms plus
+  // tard, pour rien (18 sept. 2026).
   const activeIdRef = useRef<string | null>(null);
   activeIdRef.current = activeId;
 

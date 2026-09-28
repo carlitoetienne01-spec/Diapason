@@ -312,7 +312,7 @@ défaut qu'elle évite en silence et sa preuve.
 
 ### Décisions de la conception (25/09/2026, suite)
 
-Tranchées par Carlito : le Mac porte un nom public choisi par lui (ce document écrit `mac`, et `mac.tail0000.ts.net` pour son adresse : les vrais noms de la machine et du tailnet ne sont pas reproduits ici) ; **pc-bureau ne
+Tranchées par Carlito : le nom public du Mac est **atelier** ; **pc-bureau ne
 sert plus que de CI** — aucune compatibilité n'est gardée pour lui, et l'étape
 14 n'attend donc ni sa mise à jour ni la bascule de l'invité de synchro ;
 `~/.diapason/SOUL.md` et `~/.diapason/lacite/synchroniser.py` sont mis à jour
@@ -356,7 +356,7 @@ Avant de rédiger les trois plans, j'ai revérifié dans le code et sur la machi
 - **`/v1/succes/import/legacy`.** VU : la route appelle `SuccesSyncStore.import_legacy_snapshot`. Les étages `store.py:1549`, `workspace.py:1957` et `continuity.py:933` s'y enchaînent. Les coches d'habitude ne sont importées que pour les clés présentes dans `habitLogsAt` (boucle `for key, value in logs_at.items()`, `workspace.py` vers la ligne 2089). Une note au titre vide est sautée sans être comptée (vers la ligne 2031). `succes_imports` compte 0 ligne.
   - **Le plantage des citations au démarrage est DÉDUIT, non exécuté.** Le constructeur `SuccesContinuityStore.__init__` appelle `materialize_continuity_archives()` (`continuity.py:98`), qui rejoue tous les imports. `_load_quote` exclut les lignes supprimées, puis `create_quote` fait un `INSERT` simple sur une clé primaire (`continuity.py:675`). `_transaction` relance l'`IntegrityError` telle quelle, et seule `SuccesError` est rattrapée. Une citation importée puis supprimée ferait donc lever l'erreur dans `get_store()` à chaque démarrage, et toutes les routes `/v1/succes` répondraient 500.
 - **Ce qui s'exécute sur le disque.** VU : Diapason est installé en mode éditable (`direct_url.json`). `com.diapason.tick` (toutes les 900 s), `com.diapason.briefing` et `com.diapason.consolidation` lancent `diapason.cli` depuis l'arbre de travail. Ils exécutent donc un commit dès qu'il est posé, alors que le serveur garde l'ancien code jusqu'à son `kickstart`.
-- **La base et les photos.** VU : `succes.db` pèse quelques centaines de Mo (la taille exacte n'est pas reproduite ici), sans `-wal` au moment de l'inspection. Toutes les photos ont un `file_path` absolu qui contient `/succes-photos/`. `succes_sync_peers` compte 0 ligne. `tests/contract/succes_api_surface.json` liste 100 routes, alors que CLAUDE.md §1 en annonce 73. `~/.diapason/lacite/synchroniser.py:21` appelle `http://127.0.0.1:8000/v1/succes`.
+- **La base et les photos.** VU : `succes.db` pèse 311 570 432 octets, sans `-wal` au moment de l'inspection. Les 62 photos ont toutes un `file_path` absolu qui contient `/succes-photos/`. `succes_sync_peers` compte 0 ligne. `tests/contract/succes_api_surface.json` liste 100 routes, alors que CLAUDE.md §1 en annonce 73. `~/.diapason/lacite/synchroniser.py:21` appelle `http://127.0.0.1:8000/v1/succes`.
 - **Côté mobile.** VU au commit `2bb080b` :
   - `MeshStore.normalizeBase` ajoute `:8000` à toute adresse sans port, https compris ;
   - `mesh_api.dart:155` signe `'requiresConfirmation': false` ;
@@ -429,13 +429,13 @@ Ne changent pas dans ce commit : `succes.db`, `succes-photos`, les tables, `/v1/
   2. Sauvegarde par `conn.backup()` vers `backups/succes.db.avant-vie-AAAAMMJJ`.
   3. Vérifier que ni `-wal` ni `-shm` ne restent.
   4. `os.replace` vers `vie.db`. Sous Windows, 3 essais, puis on garde `succes.db` pour cette exécution.
-  5. `succes-photos → vie-photos`, et les chemins de chaque photo et de son aperçu réécrits **en chemins relatifs** au dossier de données, résolus à la lecture (`photos.py:241-255`, `:341`, `:432`, `:531`, `:670`, `:818`). Si la réécriture échoue, le dossier reprend son ancien nom.
+  5. `succes-photos → vie-photos`, et les 62 × 2 chemins réécrits **en chemins relatifs** au dossier de données, résolus à la lecture (`photos.py:241-255`, `:341`, `:432`, `:531`, `:670`, `:818`). Si la réécriture échoue, le dossier reprend son ancien nom.
 - **Si les deux bases existent.** Si l'une est vide de données, elle est mise de côté dans `backups/…fantome-<horodatage>`. Si les deux ont des données, les routes vie rendent 503 « Deux bases de vie existent » jusqu'à décision.
 - **Les tables** se renomment à l'étape 6, pas ici.
 
 *Risque silencieux :*
 - une migration lancée par `tick` pendant que l'ancien serveur tourne laisse ce dernier recréer une `succes.db` vide, avec un nouveau `device_id`, et les écritures se coupent en deux bases ;
-- sans réécriture des chemins, tous les aperçus deviennent `""` (`_data_url`) ;
+- sans réécriture des chemins, les 62 aperçus deviennent `""` (`_data_url`) ;
 - le singleton `_store` créé avant la migration garderait l'ancien chemin.
 
 *Preuve :* tests dans un `DIAPASON_HOME` temporaire.
@@ -446,7 +446,7 @@ Ne changent pas dans ce commit : `succes.db`, `succes-photos`, les tables, `/v1/
 - Trois photos à chemins absolus : `photo_content` réussit après migration.
 - `migrer=False` avec seulement `succes.db` rend `succes.db` et ne crée rien.
 - Deux processus (`multiprocessing`) donnent une seule migration.
-- Sur le Mac, après coup : tâches, notes et lignes de photos relevées (les comptes ne sont pas reproduits ici). Les photos **actives** sont chacune lisibles par `/v1/vie/photos/{id}/contenu` ; les **supprimées** (`deleted_at_ms`) avaient perdu leur fichier avant la migration (contre-épreuve du 25/09/2026 sur une copie : les mêmes fichiers manquants avant et après, tous les autres déplacés, aucun perdu) — et `ls ~/.diapason | grep succes` ne montre que les sauvegardes. Attendre « toutes les photos avec leur fichier » ferait conclure à un défaut qui n'en est pas un.
+- Sur le Mac, après coup : 1 679 tâches, 57 notes, 62 lignes de photos — **45 actives**, chacune lisible par `/v1/vie/photos/{id}/contenu`, et **17 supprimées** (`deleted_at_ms`) dont les fichiers manquaient déjà avant la migration (contre-épreuve du 25/09/2026 sur une copie : 17 manquants avant, les mêmes après, 90 fichiers déplacés, aucun perdu) — et `ls ~/.diapason | grep succes` ne montre que les sauvegardes. Attendre « 62 photos avec leur fichier » ferait conclure à un défaut qui n'en est pas un.
 
 ~~**6. « Les tables portaient encore le préfixe succes_ ».**~~ *Commité le 25/09/2026 (`38a587d`).* Décidé : on renomme (« absolument tout »). 26 tables renommées par `ALTER TABLE … RENAME` dans une transaction, `user_version` 3 → 4, environ 340 références SQL dans `src/` et 107 dans `tests/`. Ce serait la première migration de schéma du projet.
 *Risque silencieux :* une requête oubliée sur un chemin rare (pierres tombales, imports) ne lève « no such table » que des semaines plus tard.
@@ -466,12 +466,12 @@ Ne changent pas dans ce commit : `succes.db`, `succes-photos`, les tables, `/v1/
 - la trame `succes_tasks,mesh_send` ne donne que `vie_tasks` ;
 - le test-fusible de l'étape 2 reste vert.
 
-~~**8. « Les réglages des pages Succès auraient été oubliés, et près de 2 Mo de cache orphelin auraient rempli le quota ».**~~ *Commité le 25/09/2026 (`890f745`).* Les trois clés sont renommées dans le même commit que la fonction pure `migrerStockage(store)`, appelée à l'amorçage, donc une fois par origine (`tauri://localhost` et `http://127.0.0.1:8000`) :
+~~**8. « Les réglages des pages Succès auraient été oubliés, et 1,7 Mo de cache orphelin aurait rempli le quota ».**~~ *Commité le 25/09/2026 (`890f745`).* Les trois clés sont renommées dans le même commit que la fonction pure `migrerStockage(store)`, appelée à l'amorçage, donc une fois par origine (`tauri://localhost` et `http://127.0.0.1:8000`) :
 - `diapason-succes-ui-prefs` (`uiPrefs.ts:8`) et `diapason-succes-habit-reminder-fired` (`habitReminders.ts:12`) sont copiées vers leur nouveau nom si celui-ci est absent, puis retirées ;
 - toutes les clés `diapason-succes-cache:*` (`cacheSucces.ts:61`) sont **supprimées**.
 
 La classe `succes-page-break` reste lue (`notePages.ts:29`, `notes_resume.py:25`).
-*Risque silencieux :* le budget de 4,2 Mo du nouveau cache s'ajoute aux anciens caches d'un foyer réel (près de 2 Mo ; la taille exacte n'est pas reproduite ici) et dépasse les 5 Mo de WebKit. `saveSettings`, qui n'est pas protégé par un `try`, perd alors les réglages d'apparence. Sans la copie, les rappels d'habitude du jour repartent.
+*Risque silencieux :* le budget de 4,2 Mo du nouveau cache s'ajoute à 1 692 006 octets d'anciens caches et dépasse les 5 Mo de WebKit. `saveSettings`, qui n'est pas protégé par un `try`, perd alors les réglages d'apparence. Sans la copie, les rappels d'habitude du jour repartent.
 *Preuve :* vitest avec un faux `Storage` :
 - les préférences sont recopiées à l'identique ;
 - un second passage ne change rien ;
@@ -604,7 +604,7 @@ Le piège `proxy_headers` d'uvicorn entre au §5 de CLAUDE.md, puis dans AGENTS.
 *Risque silencieux :* `true` sans dialogue ferait du contrôle n°10 une formalité.
 *Preuve :* en Python, une enveloppe `desktop.open` signée par le téléphone avec `true` passe le contrôle n°10, et avec `false` elle rend `DENIED`. En Dart, le texte affiché est égal au `userSafeMessage` simulé, y compris quand c'est un échec.
 
-~~**8. (Facultatif, si pc-bureau rejoint le tailnet) « Le maillage tenait une adresse Tailscale pour publique ».**~~ *Commité le 26/09/2026 (branche `chantier/phase2`, `c400701`). L'IPv6 de Tailscale (`fd7a:115c:a1e0::/48`) était déjà privée pour Python (dans `fc00::/7`). Resserré après contre-épreuve (`0726116`) : le /10 est aussi le NAT des opérateurs, et `join.py` lit la même fonction. Une adresse du /10 n'est privée que si le noyau la route par l'interface du tailnet (Tailscale n'installe qu'une route /32 par pair : le téléphone est joint depuis l'adresse 100.x du Mac, 100.100.1.1 part de 192.168.0.104 par en0).* `mesh/transport.py:86` reconnaît `100.64.0.0/10` comme privé.
+~~**8. (Facultatif, si pc-bureau rejoint le tailnet) « Le maillage tenait une adresse Tailscale pour publique ».**~~ *Commité le 26/09/2026 (branche `chantier/phase2`, `c400701`). L'IPv6 de Tailscale (`fd7a:115c:a1e0::/48`) était déjà privée pour Python (dans `fc00::/7`). Resserré après contre-épreuve (`0726116`) : le /10 est aussi le NAT des opérateurs, et `join.py` lit la même fonction. Une adresse du /10 n'est privée que si le noyau la route par l'interface du tailnet (Tailscale n'installe qu'une route /32 par pair : le téléphone part de 100.90.245.46, 100.100.1.1 part de 192.168.0.104 par en0).* `mesh/transport.py:86` reconnaît `100.64.0.0/10` comme privé.
 *Risque silencieux :* sans ce changement, un envoi poussé du Mac vers le PC par Tailscale est refusé en mode `local_only`.
 *Preuve :* `address_is_private('100.100.1.1')` rend `True` quand le noyau la route par le tailnet (`False` sinon, depuis `0726116`), et `8.8.8.8` reste public.
 
@@ -647,7 +647,7 @@ Quinze constats sur les étapes 1 à 4, 8 et 9. Chacun a été revérifié avant
 Tout ceci attend que l'autre chantier ait fini dans `diapason_mobile`, et la page Appareils que le chantier du bundle ait libéré le frontend.
 
 1. ~~**Le vecteur commun de l'enveloppe de session** (étape 2) : un cas dans `scripts/gen_canonical_vectors.py`, régénéré dans `diapason_mobile/test/mesh/canonical_vectors.json` **dans le même commit que le Dart qui le vérifie**. Seulement des entiers et des chaînes.~~ *Fait le 26/09/2026, même thème des deux côtés (`e9e60cb` ici, `f8945ff` là-bas) : deux dépôts, deux commits.*
-2. ~~**Le Dart** (étapes 6 et 7) : `normalizeBase` (rien d'ajouté à une adresse https, `:8001` à une adresse http sans port), `network_security_config.xml` sans trafic en clair hors variante dev, `MeshApi.openSession()` (signe l'enveloppe, rend le ticket, poste le ticket vers `/v1/appareil/ouvrir`), les échecs distingués (injoignable / 502 / 401-403), `requiresConfirmation: true` après un dialogue sur le téléphone, et le `userSafeMessage` du Mac toujours affiché. Le jumelage par la passerelle rend encore `host.address` = l'adresse du LAN : le Dart doit l'ignorer et garder `https://mac.tail0000.ts.net`, que `tailnetAddress` rend une fois `[tailnet] adresse` posée.~~ *Fait le 26/09/2026 (voir les étapes 6 et 7). Écart : `openSession()` rend le ticket sans le poster — c'est la WebView qui poste `/v1/appareil/ouvrir` (étape 7 de la phase 3), pour que le cookie soit posé dans elle ; `MeshSessionTicket.requeteOuverture()` en est la seule définition.*
+2. ~~**Le Dart** (étapes 6 et 7) : `normalizeBase` (rien d'ajouté à une adresse https, `:8001` à une adresse http sans port), `network_security_config.xml` sans trafic en clair hors variante dev, `MeshApi.openSession()` (signe l'enveloppe, rend le ticket, poste le ticket vers `/v1/appareil/ouvrir`), les échecs distingués (injoignable / 502 / 401-403), `requiresConfirmation: true` après un dialogue sur le téléphone, et le `userSafeMessage` du Mac toujours affiché. Le jumelage par la passerelle rend encore `host.address` = l'adresse du LAN : le Dart doit l'ignorer et garder `https://atelier.tail6efbba.ts.net`, que `tailnetAddress` rend une fois `[tailnet] adresse` posée.~~ *Fait le 26/09/2026 (voir les étapes 6 et 7). Écart : `openSession()` rend le ticket sans le poster — c'est la WebView qui poste `/v1/appareil/ouvrir` (étape 7 de la phase 3), pour que le cookie soit posé dans elle ; `MeshSessionTicket.requeteOuverture()` en est la seule définition.*
 3. ~~**La page Appareils** (étape 9, frontend) : sessions, dernière activité, « Fermer ses sessions » distinct de la révocation, l'adresse `tailnetAddress` à saisir — et son vitest sur une fonction pure de formatage.~~ *Fait le 26/09/2026 (voir l'étape 9).*
 4. ~~**Le signal « servi par le tailnet » au bundle** (constat 15, phase 3) : sans lui, le bundle interroge sans relâche `/v1/account/status`, `/v1/triggers/poll`, `/v1/mesh/inbox`, `/v1/vie/sync/status`, `/v1/voice/live/health` et `POST /v1/context/view`, tous refusés~~ ; ~~et `crossorigin="use-credentials"` sur le lien du manifeste si la PWA doit s'installer depuis le téléphone~~. *Le manifeste, fait le 26/09/2026 (`useCredentials: true` du plugin PWA, tenu par `lib/manifeste.build.test.ts` qui lit le lien que le vrai plugin injecte) : par la passerelle de l'instance de test, `/manifest.webmanifest` rend 401 sans le cookie et 200 avec — un lien sans l'attribut est demandé en mode « omit », donc toujours sans. Le signal, fait le 26/09/2026 (branche `chantier/mobile`, `2c169cf9` ; le manifeste `b3c1df87`, le service worker `38775caf`) : servi par le tailnet = le pont natif (`estMobile`) OU l'en-tête `X-Diapason-Passerelle: tailnet`, que la passerelle pose sur chaque réponse, refus compris, et que 8000 ne pose jamais (verrouillé pour la vie de la page). `lib/tailnet.ts` retient dans `apiFetch`, avant tout envoi, TOUTE lecture que la passerelle refuse (32 gabarits et la famille `/v1/succes/`) plus `POST /v1/context/view` : `SondeNonEnvoyee`, dite une fois par route dans la console, jamais relancée par les boucles de `features/mesh/api.ts` et `features/vie/api.ts`. Une action refusée au clic part toujours : la phrase du refus est celle de la passerelle (§100). La liste est tenue par `tailnet.test.ts` contre `tailnet_portee.json` dans les deux sens (une route ouverte n'y reste pas, une lecture refusée n'y manque pas). Les boucles ne démarrent plus au téléphone (relève des déclencheurs, santé de la voix, partage d'écran, statut du compte) ; les Réglages disent « la voix n'est pas encore ouverte au téléphone » et « le compte se gère sur le Mac », les pages Appareils et Synchronisation le disent aussi (l'import Life OS reste), les Tâches ne demandent plus l'état de synchronisation. Vu le 26/09/2026 sur l'instance de test (18500, pont simulé à 375 px) : aucune route refusée n'a atteint le serveur pendant le parcours accueil → Appareils → Synchronisation → Tâches → Réglages (16 routes demandées, toutes `session` ou `ouverte`), contre 317 relèves, 107 santés de la voix, 32 lectures de la boîte et 11 statuts du compte pendant la session de bureau qui précédait ; `curl` sur 18502 montre l'en-tête sur un 200 et sur un 403, 18500 ne le porte pas.*
 5. **Le banc sur le vrai téléphone** (étape 10) : à faire par Carlito, pas à pas, dans « Ce que Carlito fait lui-même » → « Le banc sur le téléphone ». Tout le reste de la partie mobile est commité (voir la table ci-dessous).
@@ -926,7 +926,7 @@ Toute écriture faite après la migration (tâche, note, photo) est perdue par c
 **Avant la phase 2, dans cet ordre**
 1. Créer le compte Tailscale (offre Personal gratuite) avec l'identité de son choix, et utiliser la même sur le téléphone.
 2. Installer la variante « Standalone » pour Mac (DÉDUIT : moins bridée que celle de l'App Store), autoriser l'extension système et la configuration VPN, puis installer la CLI depuis le menu Tailscale. `tailscale status` doit montrer une adresse 100.x.
-3. Console Tailscale → Machines → le Mac : lui donner son nom public (ici `mac`) **avant** d'activer HTTPS, parce que ce nom sera publié dans les journaux publics des certificats. Puis « Disable key expiry », sinon le Mac quitte le tailnet sans bruit au bout de 180 jours.
+3. Console Tailscale → Machines → le Mac : le nommer **atelier** **avant** d'activer HTTPS, parce que ce nom sera publié dans les journaux publics des certificats. Puis « Disable key expiry », sinon le Mac quitte le tailnet sans bruit au bout de 180 jours.
 4. Console → DNS : vérifier que MagicDNS est actif, renommer le tailnet si voulu, puis « HTTPS Certificates » → Enable.
 5. Console → Access controls : retirer le bloc `nodeAttrs` qui accorde `funnel`, s'il y figure.
 6. Réglages du Mac : empêcher la mise en veille sur secteur, écran éteint.
@@ -938,9 +938,9 @@ Toute écriture faite après la migration (tâche, note, photo) est perdue par c
 2. Dans `~/.diapason/config.toml`, poser l'adresse, jamais devinée par le code :
    ```toml
    [tailnet]
-   adresse = "mac.tail0000.ts.net"
+   adresse = "atelier.tail6efbba.ts.net"
    ```
-3. Depuis la racine du dépôt :
+3. Depuis `/Users/carlito.e/Projets/Diapason` :
    ```bash
    .venv/bin/python -m diapason.cli serve-service install --maillage-reseau --tailnet
    ```
@@ -950,8 +950,8 @@ Toute écriture faite après la migration (tâche, note, photo) est perdue par c
    ```bash
    tailscale serve --bg 8002
    ```
-   Accepter l'activation de Serve si une URL s'affiche. Vérifier `tailscale serve status` (https://mac.tail0000.ts.net → http://127.0.0.1:8002) et `tailscale funnel status` (vide). **Ne jamais lancer `tailscale serve 8000` ni `tailscale funnel`.**
-6. Test, Wi-Fi coupé sur le téléphone : `https://mac.tail0000.ts.net/health` répond 200 ; `/` rend « Ouvre Diapason depuis l'app » ; serveur arrêté, 502. À vérifier au passage : si `tailscale serve` réécrit l'en-tête Host, l'adresse posée à l'étape 2 suffit à l'Origin ; sans elle, les écritures et les WebSockets du téléphone rendraient 403.
+   Accepter l'activation de Serve si une URL s'affiche. Vérifier `tailscale serve status` (https://atelier.tail6efbba.ts.net → http://127.0.0.1:8002) et `tailscale funnel status` (vide). **Ne jamais lancer `tailscale serve 8000` ni `tailscale funnel`.**
+6. Test, Wi-Fi coupé sur le téléphone : `https://atelier.tail6efbba.ts.net/health` répond 200 ; `/` rend « Ouvre Diapason depuis l'app » ; serveur arrêté, 502. À vérifier au passage : si `tailscale serve` réécrit l'en-tête Host, l'adresse posée à l'étape 2 suffit à l'Origin ; sans elle, les écritures et les WebSockets du téléphone rendraient 403.
 7. Ensuite seulement : créer une invitation depuis la page Appareils et appairer la nouvelle app avec cette adresse (partie mobile).
 - Après chaque commit mobile : reconstruire et réinstaller l'APK avec `tool/flutter_avec_secrets.sh`.
 
@@ -966,7 +966,7 @@ Toute écriture faite après la migration (tâche, note, photo) est perdue par c
 *Avant de commencer, sur le Mac* — le serveur de launchd lance le code de `~/Projets/Diapason` (branche `main`), et le bundle que le téléphone charge est `src/diapason/server/static` de CE dossier : sans ces trois gestes, le téléphone recevrait l'ancien bundle, sans pont ni mode téléphone.
 1. Fusionner `chantier/mobile` dans `main` (avance rapide : `main` en est l'ancêtre), une fois `git status` propre dans `~/Projets/Diapason` : `git merge --ff-only chantier/mobile`.
 2. `cd frontend && npm run build` dans `~/Projets/Diapason`, puis `launchctl kickstart -k gui/$(id -u)/com.diapason.serve`.
-3. Vérifier : `tailscale serve status` montre toujours https://mac.tail0000.ts.net → http://127.0.0.1:8002 ; depuis le téléphone en données mobiles, `https://mac.tail0000.ts.net/health` rend 200.
+3. Vérifier : `tailscale serve status` montre toujours https://atelier.tail6efbba.ts.net → http://127.0.0.1:8002 ; depuis le téléphone en données mobiles, `https://atelier.tail6efbba.ts.net/health` rend 200.
 
 *Installer « Diapason dev »* — l'APK du 26/09/2026 : `~/Projets/diapason_mobile/build/app/outputs/flutter-apk/app-debug.apk`, 191 779 131 octets, sha256 `4d67725a83da53f25cf92e23603354d1bdc1cb1ce23257677e8e22f5a7c243f4` (`shasum -a 256` pour comparer), `com.diapason.mobile.dev`, versionName 1.0.0-dev. Construit avec `config/secrets.json` : au lancement, la Life OS se synchronise avec le site PHP, comme prévu jusqu'à l'import.
 4. Copier l'APK sur le téléphone, sans adb : par Taildrop (menu Tailscale du Mac → envoyer le fichier au téléphone, ou `tailscale file cp <apk> <nom-du-téléphone>:`), ou par un câble USB en mode « transfert de fichiers » (Android File Transfer ou OpenMTP), dans Téléchargements.
@@ -974,7 +974,7 @@ Toute écriture faite après la migration (tâche, note, photo) est perdue par c
 6. Ne PAS désinstaller l'ancienne « Succès » avant le résumé d'import (plus bas).
 
 *Le banc, Wi-Fi COUPÉ, Tailscale actif sur le téléphone. Noter pour chaque ligne : vu / pas vu, et l'heure.*
-7. **Appairage.** Sur le Mac, page Appareils → « Ajouter un appareil » → nom « Nothing Phone » → « Créer une invitation ». La carte montre le code et l'adresse https://mac.tail0000.ts.net (boutons Copier). Sur le téléphone, ouvrir « Diapason dev » : l'écran d'appairage. Contre-épreuve d'abord : taper `192.168.0.104` (ou `mac`) et un code quelconque → « Cette adresse passe en clair par le réseau local… » et rien d'autre (l'invitation n'est pas dépensée). Puis l'adresse `https://mac.tail0000.ts.net` et le code → « Relier ». Attendu : le bundle s'affiche (la Discussion), la page Appareils du Mac dit « 1 session ouverte · dernière activité à l'instant ».
+7. **Appairage.** Sur le Mac, page Appareils → « Ajouter un appareil » → nom « Nothing Phone » → « Créer une invitation ». La carte montre le code et l'adresse https://atelier.tail6efbba.ts.net (boutons Copier). Sur le téléphone, ouvrir « Diapason dev » : l'écran d'appairage. Contre-épreuve d'abord : taper `192.168.0.104` (ou `atelier`) et un code quelconque → « Cette adresse passe en clair par le réseau local… » et rien d'autre (l'invitation n'est pas dépensée). Puis l'adresse `https://atelier.tail6efbba.ts.net` et le code → « Relier ». Attendu : le bundle s'affiche (la Discussion), la page Appareils du Mac dit « 1 session ouverte · dernière activité à l'instant ».
 8. **Le bundle.** Le tiroir s'ouvre et se ferme ; le bouton retour d'Android ferme d'abord le tiroir, puis recule, puis met l'app en arrière-plan. Parcourir Tâches, Planificateur, Habitudes, Notes, Projets, Réglages : ni débordement horizontal, ni bouton plus petit qu'un doigt, ni page « Chargement… » qui ne finit pas. Réglages → Apparence → Ardéchine : la barre d'état d'Android passe en clair ; tuer l'app et la rouvrir : pas de flash blanc.
 9. **La Discussion.** Envoyer « Quelle heure est-il ? » : la réponse apparaît jeton par jeton (le flux passe par `tailscale serve`), pas d'un bloc à la fin. Demander « Qu'y a-t-il à mon écran ? » : le Mac doit refuser de lire son écran (outil fermé au téléphone), en le disant. Joindre une photo : « Appareil photo » → prendre → la pièce jointe apparaît dans le compositeur. Joindre un PDF par « Fichiers ».
 10. **Le micro (§78).** Dans la Discussion, toucher la dictée : Android demande le micro — accepter. Le voyant vert d'Android s'allume pendant la dictée et S'ÉTEINT à l'arrêt. La voix en direct (`/v1/voice/live`) doit, elle, rester fermée : les Réglages disent « la voix n'est pas encore ouverte au téléphone » (phase 4).
@@ -1027,9 +1027,9 @@ redémarrage du serveur de launchd (et l'APK pour la coquille).
 ### Méthode
 
 - **Banc** (scratchpad, `final/banc/`) : le vrai `diapason serve` du commit
-  mesuré, avec un moteur factice. Foyer de test : plusieurs centaines de
-  tâches, 60 notes, 20 projets, 8 habitudes et 300 transactions. La vraie
-  passerelle du tailnet est enveloppée d'un faux canal `DiapasonNatif`.
+  mesuré, avec un moteur factice. Foyer de test : 726 tâches, 60 notes,
+  20 projets, 8 habitudes et 300 transactions. La vraie passerelle du
+  tailnet est enveloppée d'un faux canal `DiapasonNatif`.
 - **4G simulée** : un mandataire asyncio ajoute 55 ms par sens (110 ms
   d'aller-retour) et plafonne le débit à 10 Mbit/s.
 - **Navigateur** : Chromium 152 (Brave) sans tête, 375 × 812, DPR 3, agent
@@ -1135,8 +1135,7 @@ cadence (voir Méthode).
   donne 26 → 22 ms pour les Tâches. Le gain des lots porte sur la **fraîcheur** des données (la
   page stable), pas sur l'affichage.
 - **La piste 4 n'est pas faite** : chaque visite des Tâches relit toute la
-  liste. C'est 33 Ko comprimés au banc, et plusieurs centaines de Ko bruts
-  sur un foyer réel.
+  liste. C'est 33 Ko comprimés au banc, environ 825 Ko bruts chez Carlito.
   Une relecture conditionnelle (numéro d'écriture → 304) économiserait les
   octets, pas l'aller-retour de 110 ms. Pour passer sous 100 ms, il faudrait
   ne pas relire du tout, c'est-à-dire pousser les changements.
