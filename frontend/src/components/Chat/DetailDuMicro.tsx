@@ -17,15 +17,18 @@ export function DetailDuMicro({
   micro,
   onOuvrirReglages,
   classeBouton,
+  classeConteneur = '',
 }: {
   micro: MicroEnEchec | null;
   onOuvrirReglages: () => void;
   classeBouton?: string;
+  /** Pour s'aligner sur la phrase d'erreur de l'hôte. */
+  classeConteneur?: string;
 }) {
   const { t } = useTranslation();
   if (!micro || (!micro.technique && !micro.reglages && !micro.avis)) return null;
   return (
-    <div className="detail-du-micro mt-2 flex flex-col items-start gap-2">
+    <div className={`detail-du-micro mt-2 flex flex-col items-start gap-2 ${classeConteneur}`}>
       {micro.technique && (
         <p className="text-[11px] leading-snug opacity-80" style={{ overflowWrap: 'anywhere' }}>
           {t('talk.micro.detail', { technique: micro.technique })}

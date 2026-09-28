@@ -222,7 +222,7 @@ export function TalkOrb({
             {t(cleErreurVocale(error))}
           </p>}
           {error && onOuvrirReglagesMicro && <DetailDuMicro micro={micro} onOuvrirReglages={onOuvrirReglagesMicro}
-            classeBouton="resonance-terminer text-sm" />}
+            classeBouton="resonance-terminer text-sm" classeConteneur="w-full max-w-[60ch]" />}
         </section>
         {fil.length > 0 && <section className="resonance-conversation" aria-label={t('talk.resonance.transcript')}>
           <div className="resonance-fil-titre">{t('talk.resonance.transcript')}</div>
