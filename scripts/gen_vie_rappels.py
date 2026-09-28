@@ -21,11 +21,14 @@ fichier en mémoire et exige qu'il soit identique à celui du dépôt mobile.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import pathlib
 import sys
 import tempfile
+from datetime import date
 from typing import Any
+from unittest import mock
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -53,9 +56,43 @@ LECTURES = (
 )
 
 
+# Le jour que simule ``adaptateur_rappels_test.dart`` (``aujourdhui:
+# DateTime(2026, 9, 27)``). 27/09/2026 : sans lui, ``GET /v1/vie/habits``
+# datait sa réponse du jour RÉEL (``date``, ``done`` du jour) — le fichier
+# engendré le 26 ne concordait déjà pas avec le test Dart, et le cliquet
+# rougissait à chaque minuit, une habitude passant de cochée à non cochée.
+JOUR = date(2026, 9, 27)
+
+
+# Les modules du domaine qui lisent ``date.today()`` : ``workspace`` date les
+# habitudes (``GET /v1/vie/habits``), ``store`` et ``continuity`` les tâches
+# et les archives. Figer seulement ``continuity`` (premier jet) laissait
+# passer le jour réel par ``workspace``.
+MODULES_DATES = (
+    "diapason.vie.workspace",
+    "diapason.vie.store",
+    "diapason.vie.continuity",
+)
+
+
+class _JourFige(date):
+    @classmethod
+    def today(cls) -> date:  # type: ignore[override]
+        return JOUR
+
+
+def figer_le_jour(classe: type[date] = _JourFige) -> contextlib.ExitStack:
+    """Remplace ``date`` par ``classe`` dans chaque module de ``MODULES_DATES``."""
+    pile = contextlib.ExitStack()
+    for module in MODULES_DATES:
+        pile.enter_context(mock.patch(f"{module}.date", classe))
+    return pile
+
+
 def rendre(etat: dict[str, Any]) -> str:
-    """Le fichier ``vie_rappels.json`` pour cet ``etat``, octet pour octet."""
-    with tempfile.TemporaryDirectory() as dossier:
+    """Le fichier ``vie_rappels.json`` pour cet ``etat``, octet pour octet,
+    au jour ``JOUR`` quel que soit le jour réel."""
+    with figer_le_jour(), tempfile.TemporaryDirectory() as dossier:
         magasin = VieSyncStore(pathlib.Path(dossier) / "vie.db")
         set_store_for_tests(magasin)
         try:

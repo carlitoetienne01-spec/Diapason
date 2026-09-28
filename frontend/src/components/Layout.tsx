@@ -14,6 +14,7 @@ import { titreDiscussion } from '../lib/discussions';
 import { useTranslation } from '../i18n/useTranslation';
 import { useSondeVisible } from '../lib/useSondeVisible';
 import { BandeauCompte } from '../features/compte/BandeauCompte';
+import { useTransitionDesPages } from '../lib/useTransitionDesPages';
 
 export function Layout() {
   const { t } = useTranslation();
@@ -52,6 +53,11 @@ export function Layout() {
   // Le sélecteur rend une chaîne : Layout ne se re-rend que quand le titre
   // change, pas à chaque message ajouté.
   const { pathname } = useLocation();
+  // Au téléphone, la page qui arrive glisse et se révèle, et celle qu'on
+  // retrouve reprend sa position (lib/useTransitionDesPages.ts, 27/09/2026).
+  // Ailleurs, le crochet ne fait rien.
+  const colonneRef = useRef<HTMLDivElement>(null);
+  useTransitionDesPages(colonneRef, pathname);
   const titreFil = useAppStore((s) => titreDiscussion(s.conversations, s.activeId, t));
   useEffect(() => {
     if (!estCompact) return;
@@ -96,8 +102,23 @@ export function Layout() {
     );
   }
 
+  // Au téléphone, ni ce cadre ni <main> ne coupent (`mobile:overflow-visible`,
+  // 27/09/2026, lot 3 « élan ») : un ancêtre en overflow hidden empêchait le
+  // défileur de la page de devenir la racine, et donc le rebond de fin de
+  // liste d'Android (index.css, « L'élan du défilement »).
   return (
-    <div className="flex flex-col h-full w-full overflow-hidden relative" style={{ paddingTop: '3px' }}>
+    <div className="h-full w-full overflow-hidden mobile:overflow-visible relative">
+      {/* Tout ce que Layout rend de « la page » — décor, voyant du haut,
+          cloche, bandeau, la colonne — vit dans [data-recul-page] : roue
+          ouverte, au téléphone, ce bloc recule à 95 % sous la roue (roue.css,
+          transform pur ; 27/09/2026 — l'écran plein « Aller à » cachait la
+          page). Il épouse la fenêtre au pixel près : ses position:fixed ne
+          bougent pas roue fermée (mêmes rectangles qu'avant, mesurés au
+          banc) et reculent avec elle roue ouverte. Le bouton de la roue et
+          son voile sont dehors et ne reculent pas. Au téléphone, sur une page
+          à défileur, les 3 px du voyant et la bande de la cloche passent DANS
+          le défileur (index.css, 27/09/2026) : ce padding-là y est remis à 0. */}
+      <div data-recul-page="" className="flex flex-col h-full w-full relative" style={{ paddingTop: '3px' }}>
       <div className="hud-backdrop" aria-hidden="true" />
       <SystemPulse apiReachable={apiReachable} />
 
@@ -142,11 +163,12 @@ export function Layout() {
             onClick={() => useAppStore.getState().setSidebarOpen(false)}
           />
         )}
-        <main className="flex-1 flex flex-col min-w-0 h-full relative overflow-hidden" style={{ background: 'transparent' }}>
+        <main className="flex-1 flex flex-col min-w-0 h-full relative overflow-hidden mobile:overflow-visible" style={{ background: 'transparent' }}>
           {/* La Discussion réserve la place du bouton de la barre dans son
               propre en-tête ; les autres pages reçoivent une bande au-dessus
               d'elles (index.css, `--bande-barre-fermee`). */}
           <div
+            ref={colonneRef}
             data-colonne-page=""
             className="flex-1 flex flex-col min-w-0 min-h-0 relative z-[2]"
             style={{
@@ -165,6 +187,7 @@ export function Layout() {
             <Outlet />
           </div>
         </main>
+      </div>
       </div>
       {estMobile && <RoueNavigation />}
     </div>

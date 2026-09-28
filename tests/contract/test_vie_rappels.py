@@ -68,6 +68,27 @@ class TestLaReponseDuMacLivreeAuTelephoneEstLaVraie:
             "Dart adaptateur_rappels_test.dart, dans le même thème."
         )
 
+    def test_le_fichier_ne_depend_pas_du_jour_reel(self):
+        """27/09/2026 : engendré le 26, le fichier rougissait à minuit —
+        ``GET /v1/vie/habits`` datait sa réponse du jour réel. Le
+        générateur fige le jour du test Dart ; un autre « aujourd'hui »
+        doit rendre exactement le même fichier."""
+        from datetime import date
+
+        class _AutreJour(date):
+            @classmethod
+            def today(cls):
+                return date(2027, 1, 15)
+
+        gen = _generateur()
+        etat = json.loads(_lire(gen.ETAT))
+        with gen.figer_le_jour(_AutreJour):
+            rendu = gen.rendre(etat)
+        assert rendu == _lire(gen.SORTIE), (
+            "le contrat des rappels dépend du jour réel : il rougira au "
+            "prochain minuit (le générateur doit figer JOUR)"
+        )
+
     def test_il_porte_les_cas_que_l_adaptateur_doit_tenir(self):
         gen = _generateur()
         reponses = json.loads(_lire(gen.SORTIE))

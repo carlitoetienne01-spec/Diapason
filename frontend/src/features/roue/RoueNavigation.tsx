@@ -59,7 +59,7 @@ import {
 } from './geometrieRoue';
 import { clavierOuvert, estUneSaisie, suivreHauteurMax } from './clavier';
 import { opaciteMinimale } from './contraste';
-import { freresARendreInertes, rendreInertes, reponseAuRetour } from './fermetureRoue';
+import { cibleEstUnBouton, freresARendreInertes, rendreInertes, reponseAuRetour, toucherDuVoile } from './fermetureRoue';
 import { annoncerLeMenuDeLApp, OUVRIR_MENU_APP } from './menuDeLApp';
 import { PAGES_ROUE, indexDeLaPage } from './pagesRoue';
 import './roue.css';
@@ -120,8 +120,11 @@ type Geste = {
 };
 
 /**
- * La roue du téléphone : un bouton rond et un glissé depuis le bord ouvrent
- * l'écran « Aller à », où toutes les pages sont posées sur un arc.
+ * La roue du téléphone : un bouton rond et un glissé depuis le bord posent
+ * la roue PAR-DESSUS la page courante (surimpression, 26/09/2026) — la page
+ * recule à 95 % sous un voile léger et reste bien visible, toutes les pages
+ * sont posées sur un arc, chaque nom sur sa capsule opaque. Avant, un écran
+ * plein « Aller à » cachait la page : on ne voyait plus d'où l'on partait.
  *
  * 26/09/2026, chantier de la fluidité (lot 3) : la barre latérale du bureau
  * devenait au téléphone un tiroir de 260 px sur un voile — deux touchers,
@@ -152,6 +155,7 @@ export function RoueNavigation() {
   const repereRef = useRef<SVGPathElement>(null);
   const placesRef = useRef<(HTMLLIElement | null)[]>([]);
   const pastillesRef = useRef<(HTMLSpanElement | null)[]>([]);
+  const nomsRef = useRef<(HTMLSpanElement | null)[]>([]);
   const elementsRef = useRef<(HTMLButtonElement | null)[]>([]);
   const lignesRef = useRef<(HTMLButtonElement | null)[]>([]);
 
@@ -194,10 +198,17 @@ export function RoueNavigation() {
           g.cote === 'droite'
             ? `translate3d(${tx}, ${p.y}px, 0) translate(-100%, -50%)`
             : `translate3d(${tx}, ${p.y}px, 0) translateY(-50%)`;
-        place.style.opacity = String(p.opacite);
+        // La capsule reste opaque tant qu'elle se touche ; seuls le nom et la
+        // pastille s'estompent DESSUS (geometrieRoue.ts, surimpression).
+        place.style.opacity = String(p.presence);
         place.style.pointerEvents = p.visible ? 'auto' : 'none';
         const pastille = pastillesRef.current[i];
-        if (pastille) pastille.style.transform = `scale(${p.echelle})`;
+        if (pastille) {
+          pastille.style.transform = `scale(${p.echelle})`;
+          pastille.style.opacity = String(p.estompe);
+        }
+        const nom = nomsRef.current[i];
+        if (nom) nom.style.opacity = String(p.estompe);
       }
     }
     const index = indexAllume(rotation, n);
@@ -280,13 +291,17 @@ export function RoueNavigation() {
     if (!ouverte || mode !== 'roue' || !zone) return undefined;
     const mesurer = () => {
       const r = zone.getBoundingClientRect();
-      // L'opacité sous laquelle un nom n'a plus 4,5:1, dans CETTE apparence
-      // (contraste.ts) : l'écran « Aller à » porte la couleur du texte et
-      // celle du fond.
+      // L'opacité sous laquelle un nom n'a plus 4,5:1 sur SA CAPSULE, dans
+      // CETTE apparence (contraste.ts). En surimpression (27/09/2026), le
+      // fond d'un nom n'est plus l'écran « Aller à » mais sa capsule opaque,
+      // posée sur une page que personne ne connaît : c'est elle qu'on lit.
       let opaciteLisible: number | undefined;
       try {
-        const ecran = getComputedStyle(zone.closest('.roue-ecran') ?? zone);
-        opaciteLisible = opaciteMinimale(ecran.color, ecran.backgroundColor);
+        const temoin = elementsRef.current.find((el, i) => el && i !== allumeRef.current);
+        if (temoin) {
+          const capsule = getComputedStyle(temoin);
+          opaciteLisible = opaciteMinimale(capsule.color, capsule.backgroundColor);
+        }
       } catch {
         opaciteLisible = undefined;
       }
@@ -351,6 +366,18 @@ export function RoueNavigation() {
       vivant = false;
     };
   }, []);
+
+  // Roue ouverte, la page recule (surimpression, 26/09/2026) : l'attribut
+  // porte l'état, roue.css fait le reste — un scale(0.95) en transform pur
+  // sur [data-recul-page] (Layout), 180 ms, jamais une propriété de mise en
+  // page. Seule la roue écrit cet attribut : le bureau et le mini-panneau ne
+  // la montent pas, et la règle CSS exige de plus [data-diapason-mobile].
+  useEffect(() => {
+    const racine = document.documentElement;
+    if (ouverte) racine.setAttribute('data-roue-ouverte', '');
+    else racine.removeAttribute('data-roue-ouverte');
+    return () => racine.removeAttribute('data-roue-ouverte');
+  }, [ouverte]);
 
   // Roue ouverte, la page dessous est inerte. `aria-modal` seul ne suffisait
   // pas : au banc (arbre d'accessibilité de Chromium, 26/09/2026), 44
@@ -597,6 +624,13 @@ export function RoueNavigation() {
     }
   };
 
+  // Toucher le voile — la page visible derrière — ferme (décision du
+  // 26/09/2026 : Échap, retour et le voile ferment). Pas sur un bouton, pas
+  // sur le clic fantôme d'un glissé (fermetureRoue.ts, `toucherDuVoile`).
+  const surVoile = (e: { target: EventTarget }) => {
+    if (toucherDuVoile(cibleEstUnBouton(e.target), clicAIgnorer()) === 'fermer') fermerEtRendreLeFocus();
+  };
+
   const nomAllume = t(PAGES_ROUE[allume].cle);
   const courant = indexDeLaPage(pathname);
 
@@ -605,17 +639,23 @@ export function RoueNavigation() {
       <div
         className="roue-ecran"
         data-ouverte={ouverte ? '' : undefined}
+        data-mode={mode}
         role="dialog"
         aria-modal="true"
         aria-labelledby="roue-titre"
         inert={!ouverte}
         onKeyDown={surTouche}
+        onClick={surVoile}
       >
         <div className="roue-entete">
-          <h2 id="roue-titre" className="roue-titre">
+          {/* Le titre ne s'affiche plus (26/09/2026, surimpression) : la page
+              visible derrière situe déjà — « Aller à » ne disait rien qu'elle
+              ne dise, et sa ligne d'aide redécrivait le geste à chaque
+              ouverture. Le nom reste pour les lecteurs d'écran : le dialogue
+              s'annonce « Aller à », comme avant (df89435a). */}
+          <h2 id="roue-titre" className="sr-only">
             {t('roue.titre')}
           </h2>
-          <p className="roue-aide">{mode === 'roue' ? t('roue.aide') : t('roue.aideListe')}</p>
           <div className="roue-actions">
             <button type="button" className="roue-action" onClick={basculerMode} aria-pressed={mode === 'liste'}>
               {mode === 'roue' ? <List size={16} aria-hidden="true" /> : <Disc3 size={16} aria-hidden="true" />}
@@ -692,7 +732,14 @@ export function RoueNavigation() {
                       aria-current={i === courant ? 'page' : undefined}
                       onClick={() => toucherElement(i)}
                     >
-                      <span className="roue-nom">{t(page.cle)}</span>
+                      <span
+                        className="roue-nom"
+                        ref={(el) => {
+                          nomsRef.current[i] = el;
+                        }}
+                      >
+                        {t(page.cle)}
+                      </span>
                       <span
                         className="roue-pastille"
                         ref={(el) => {

@@ -113,14 +113,21 @@ export function VieNotesPage() {
   // L'état initial vient du cache — la dernière liste que le serveur a
   // rendue (924 Ko, 3-8 ms côté serveur ; c'est l'écran vide par montage
   // qui coûtait, Carlito, 18 sept. 2026).
-  const [notes, setNotes] = useState<CartableNote[]>(() => lireCache<CartableNote[]>(clesVie.resumesNotes()) ?? []);
+  const [notesAuMontage] = useState<CartableNote[]>(() => lireCache<CartableNote[]>(clesVie.resumesNotes()) ?? []);
+  const [notes, setNotes] = useState<CartableNote[]>(notesAuMontage);
   const [search, setSearch] = useState('');
   // Le tri repartait à « Récent » à chaque ouverture : l'arrangement des
   // cartables (rang manuel, côté serveur) existait sans jamais être montré —
   // « ma préférence, où j'ai placé mes cartables, et non le dernier édité »
   // (17 sept. 2026). Le choix est mémorisé ; sans choix, un arrangement
-  // existant vaut « Mon ordre » (inféré au chargement, plus bas).
-  const [sort, setSortState] = useState<SortMode>(() => loadNotesSort() ?? 'recent');
+  // existant vaut « Mon ordre » — inféré DÈS LE MONTAGE sur la liste du
+  // cache, puis de nouveau au chargement (plus bas). 27/09/2026, contre-
+  // épreuve du chantier « soyeux » : inféré au chargement seulement, le tri
+  // naissait « Récent » (60, 59, 58…) et basculait en « Mon ordre » (10, 12,
+  // 15…) une à deux images plus tard. Au retour sur les Notes, la position
+  // rendue tenait une image, puis l'ancrage du défilement suivait la liste
+  // réordonnée : 2 685 px de recul sur l'émulateur, 14 retours sur 15.
+  const [sort, setSortState] = useState<SortMode>(() => triInitialDesNotes(loadNotesSort(), notesAuMontage));
   const setSort = useCallback((mode: SortMode) => {
     setSortState(mode);
     saveNotesSort(mode);

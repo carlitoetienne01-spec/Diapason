@@ -757,7 +757,7 @@ Le contrat que la coquille doit tenir, tel que le bundle l'attend (26/09/2026) :
 - **Canal.** Un `JavaScriptChannel` nommé `DiapasonNatif`, injecté avant le chargement. Sa présence — et elle seule — fait `estMobile` : ni la largeur, ni l'agent utilisateur.
 - **Du bundle vers la coquille.** `DiapasonNatif.postMessage(JSON)` avec `{type: "demande", id, verbe, donnees}` ; `id` vaut `<préfixe>-1`, `<préfixe>-2`…, le préfixe étant tiré au chargement de la page (26/09/2026 : `b1` à chaque chargement, une réponse en route à travers un rechargement aurait résolu la nouvelle `b1`). La coquille répond par `window.diapasonNatifRecevoir(JSON)` avec `{type: "reponse", id, ok, donnees?, erreur?}`. Une réponse peut arriver avant que l'attente soit posée ; un `id` inconnu est ignoré ; une réponse arrivée après le délai ne résout rien, mais un `enregistrer` réussi en retard s'annonce encore (« Le téléphone a finalement enregistré le fichier »).
 - **Liens.** Le bundle intercepte tout clic sur un `<a href>` http(s) d'une autre origine que celle du Mac et l'envoie par `ouvrirExterne` (26/09/2026 : les sources de recherche, les citations, les liens des réponses et ceux des pages d'administration étaient des `<a target="_blank">` bruts, morts dans la WebView). La coquille, elle, ne charge JAMAIS une navigation refusée vers http(s) : `onNavigationRequest` rend `prevent` et l'ouvre par `url_launcher` — un filet pour un lien que le bundle n'aurait pas vu.
-- **Verbes sortants et délais.** `theme` (10 s) : `{theme, skin, fond, encre, clair}`. `ouvrirExterne` (10 s) : `{url}`, http(s) seulement, filtré avant l'envoi. `bordRoue` (10 s) : `{cote}`, `droite` ou `gauche`, envoyé au montage de la roue et à chaque changement de « Roue à gauche » ; la coquille retire les 200 dp du bas de ce bord aux gestes d'Android (`MainActivity.reserverBord`, Android 10 et plus) et ne répond que `ok` — sans quoi, en navigation par gestes, le glissé qui ouvre la roue était un « retour » du système. Une coquille plus ancienne répond `verbeInconnu`, ignoré : le bouton « Aller à… » reste. `menuApp` (10 s, lot 4 de la fluidité) : `{ouvrir}`, un booléen et rien d'autre. Au montage de la roue, `ouvrir: false` ANNONCE que la page porte le bouton « Menu de l'app » : la coquille retire alors sa barre native de 40 px (qui ne portait que « ⋮ ») et répond `ok` ; le bouton n'apparaît dans l'écran « Aller à » qu'après ce `ok`, et envoie `ouvrir: true` — la coquille ouvre son menu (Recharger, Life OS, l'Entité, Appareils, Importer) en feuille du bas. La poignée de main est mutuelle, pour que le menu reste atteignable dans les quatre combinaisons (§82) : une coquille ancienne répond `verbeInconnu` et garde sa barre, le bouton n'apparaît pas ; un bundle ancien n'annonce rien, et la coquille garde ou rend sa barre (8 s après la fin de page sans annonce). `enregistrer` (120 s, parce qu'il attend une personne dans le sélecteur d'Android) : `{nom, mime, base64}` ; `ok` avec `donnees.nom` = le nom écrit (affiché tel quel) ; `ok: false, erreur: "annule"` = la personne a renoncé, rien n'est annoncé ; toute autre `erreur` est une phrase affichée.
+- **Verbes sortants et délais.** `theme` (10 s) : `{theme, skin, fond, encre, clair}`. `ouvrirExterne` (10 s) : `{url}`, http(s) seulement, filtré avant l'envoi. `bordRoue` (10 s) : `{cote}`, `droite` ou `gauche`, envoyé au montage de la roue et à chaque changement de « Roue à gauche » ; la coquille retire les 200 dp du bas de ce bord aux gestes d'Android (`MainActivity.reserverBord`, Android 10 et plus) et ne répond que `ok` — sans quoi, en navigation par gestes, le glissé qui ouvre la roue était un « retour » du système. Une coquille plus ancienne répond `verbeInconnu`, ignoré : le bouton « Aller à… » reste. `menuApp` (10 s, lot 4 de la fluidité) : `{ouvrir}`, un booléen et rien d'autre. Au montage de la roue, `ouvrir: false` ANNONCE que la page porte le bouton « Menu de l'app » : la coquille retire alors sa barre native de 40 px (qui ne portait que « ⋮ ») et répond `ok` ; le bouton n'apparaît dans l'en-tête de la roue qu'après ce `ok`, et envoie `ouvrir: true` — la coquille ouvre son menu (Recharger, Life OS, l'Entité, Appareils, Importer) en feuille du bas. La poignée de main est mutuelle, pour que le menu reste atteignable dans les quatre combinaisons (§82) : une coquille ancienne répond `verbeInconnu` et garde sa barre, le bouton n'apparaît pas ; un bundle ancien n'annonce rien, et la coquille garde ou rend sa barre (8 s après la fin de page sans annonce). `enregistrer` (120 s, parce qu'il attend une personne dans le sélecteur d'Android) : `{nom, mime, base64}` ; `ok` avec `donnees.nom` = le nom écrit (affiché tel quel) ; `ok: false, erreur: "annule"` = la personne a renoncé, rien n'est annoncé ; toute autre `erreur` est une phrase affichée.
 - **Verbes entrants.** La coquille envoie `{type: "demande", id, verbe: "retour"}` ; le bundle répond `ok: true, donnees: {traite}`. `traite: false` n'est pas un échec : la coquille fait alors `goBack()`, puis passe en arrière-plan. Depuis l'étape 5 (`5e87751`), la barre latérale s'y inscrit : un tiroir ouvert se ferme et le bundle répond `traite: true` ; sinon `false`. Un verbe entrant inconnu reçoit `ok: false, erreur: "verbeInconnu"`. **`naviguer`** (ajouté le 26/09/2026, étape 9 — la liste fermée s'élargit, décision prise dans ce chantier) : `{path, selection?}` → le bundle refuse tout chemin hors de `PATHS` (`readShellNavigation`), navigue, et ne répond `ok: true, donnees: {path, selection}` qu'une fois la page MONTÉE (8 s au plus, sinon `ok: false` avec sa phrase) ; `erreur: "pasPret"` si rien n'est inscrit. Délai côté coquille : 10 s. **`approbations`** (26/09/2026, phase 5 — une notification d'approbation touchée) : sans données → le bundle RELIT `GET /v1/approvals/pending`, pose la liste dans la cloche, l'ouvre, et ne répond `ok: true, donnees: {nombre}` qu'ensuite ; une relecture en échec n'ouvre rien et rend sa phrase (`lib/ouvrirLaCloche.ts`). Le verbe ne décide JAMAIS : Approuver et Refuser restent sous le doigt. Délai côté coquille : 10 s. Un bundle d'avant ce jour répond `verbeInconnu`, que la coquille dit. **`partager`** (26/09/2026, phase 5 — « Partager vers Diapason » depuis une autre app) : `{texte?, fichiers?: [{nom, mime, base64}]}`, 20 000 signes, 9 fichiers et 10 Mo par fichier au plus (les bornes du compositeur ; au-delà, refus avec sa phrase, rien de tronqué) → le bundle dépose le partage dans une boîte que le compositeur vide à sa montée (avant, pendant ou après la navigation vers la Discussion), le texte à la suite du brouillon, les fichiers par le `joindre` du trombone (ses refus dits un par un), et ne répond `ok: true, donnees: {texte, fichiers}` qu'une fois le compositeur servi (8 s au plus ; sinon `ok: false` avec sa phrase, et le partage est RETIRÉ de la boîte pour ne pas surgir plus tard). Un second partage arrivé avant que le premier soit pris le remplace, et le premier est dit non déposé. RIEN n'est envoyé : la personne relit et envoie (`lib/partageEntrant.ts`). Délai côté coquille : 15 s.
 - **Aucun verbe ne rend un secret.** La liste est fermée par un test (`natif.test.ts`) : l'élargir est une décision.
 
@@ -1175,3 +1175,290 @@ l'installation de l'APK de la coquille :
 7. Menu de l'app → Appareils → « Quitter cette flotte », puis réappairer :
    les pages vides se remplissent depuis le Mac, rien de l'ancien cache ne
    s'affiche avant.
+
+### La roue en surimpression (27/09/2026, chantier « soyeux », lot 1)
+
+Retour de Carlito sur l'APK d6052bde : « je ne veux pas la page sombre
+Aller à : je veux que la page actuelle se trouve en arrière-plan ». La roue
+se pose désormais **par-dessus** la page :
+
+- **Le recul** : la page (`[data-recul-page]`, Layout) passe à 95 % en
+  180 ms, `transform` seul, sous un voile `rgba(0, 0, 0, 0.2)`. Au
+  téléphone seulement : la règle exige `data-diapason-mobile` et
+  `data-roue-ouverte`, que seule la roue écrit.
+- **Les noms** : chaque nom touchable a sa capsule **opaque**
+  (`--color-surface`, sans flou) ; seuls le nom et la pastille
+  s'estompent dessus. Une capsule estompée avec son nom laissait lire le
+  texte d'une tâche à travers elle.
+- **Le titre** « Aller à » ne s'affiche plus (il reste pour les lecteurs
+  d'écran), la ligne d'aide disparaît. La vue Liste garde un fond plein.
+- **Fermer** : Échap, le retour d'Android, et un toucher du voile.
+
+Mesures au banc (Brave sans tête, 375 × 812, DPR 3, ×4) :
+
+| Mesure | Avant (`c9161159`) | Après |
+|---|---|---|
+| Tuiles rastérisées, 6 ouvertures-fermetures | 134 | 131 (201 sans `will-change`) |
+| Tâche du fil principal la plus longue | 14,0-20,8 ms | 13,6-15,8 ms |
+| Rotation, lancers, ouvertures : images/s | 60 | 60, 0 image au-delà de 20 ms |
+| Pire nom touchable, 7 apparences | — | 4,52:1 (Oxblood) à 4,63:1 |
+| Boutons exposés roue ouverte | 21 | 21 |
+| Bureau 1280 px et mini-panneau 340 px | — | 0 rectangle différent sur 1 850 |
+
+**Pour le lot 2 (défilement)** : les `position:fixed` de la page vivent
+sous ce transform. Si le document devient le défileur, le bloc qui recule
+sera plus haut que la fenêtre et ses fixes défileront avec lui : il faudra
+déplacer le recul sur un conteneur de la taille de la fenêtre, ou sortir
+les fixes.
+
+**Carlito vérifie** :
+
+1. Ouvrir la roue sur les Tâches : la page reste visible derrière, un peu
+   plus petite et un peu plus sombre ; aucun texte de la page ne se lit à
+   travers un nom.
+2. Toucher la page à gauche de la roue : la roue se ferme, rien ne
+   s'ouvre dessous.
+3. Tourner la roue du pouce, puis l'ouvrir par un glissé depuis le bord
+   droit et tourner sans lever le pouce : la page derrière ne défile pas.
+4. Dans Sauge, Oxblood et Ardéchine, chaque nom qu'on peut toucher se lit.
+5. Réglages d'accessibilité d'Android → « Supprimer les animations » : si
+   la WebView transmet la préférence (`prefers-reduced-motion`), la roue et
+   le recul apparaissent sans mouvement. Au banc, préférence émulée :
+   aucune animation en cours après le toucher. Non vérifié sur le
+   téléphone.
+
+### Les transitions entre pages (27/09/2026, chantier « soyeux », lot 2)
+
+Retour de Carlito sur l'APK d6052bde : « je le veux plus smooth, la
+navigation entre les pages ». Avant, chaque page remplaçait l'autre d'une
+image à la suivante, et revenir sur une page ramenait en haut. Maintenant,
+au téléphone seulement (`lib/useTransitionDesPages.ts`, décisions pures
+dans `lib/transitionPage.ts`) :
+
+- **La page qui arrive** glisse de 12 px vers le haut en se révélant,
+  180 ms, `transform` et `opacity` seuls (Web Animations, rien ne reste
+  posé après). C'est la **colonne** (`[data-colonne-page]`) qu'on anime,
+  pas la racine de la page : animer la racine, qui est le défileur, fait
+  repeindre tout son contenu.
+- **La page qui part** n'est pas animée : la garder à l'écran pour
+  l'estomper, c'est la rendre deux fois (mesuré ci-dessous).
+- **La position** de défilement de la page quittée est retenue, et rendue
+  au retour, par la roue, un lien ou le retour d'Android. La Discussion
+  garde sa propre règle (collée au dernier message). Tout toucher, molette
+  ou touche pendant la reprise l'annule ; au-delà de 1,2 s, on y renonce.
+- **« Supprimer les animations »** : aucune animation, la position est
+  quand même rendue.
+- Le document ne défile toujours pas : la position vit sur le défileur de
+  chaque page. La mise en garde du lot 1 (les `position:fixed` sous le
+  recul) reste donc valable pour le lot du défilement.
+
+Mesures au banc (Brave sans tête, 375 × 812, DPR 3, ×4, charge sur 1 min
+entre 0,9 et 2,9). Avant = `e95a5546`, série alternée de trois passes,
+14 navigations chacune (Tâches, Notes, Planificateur, Projets, Réglages,
+Habitudes, Discussion, deux fois) :
+
+| Mesure | Avant | Après |
+|---|---|---|
+| Contenu affiché (`contenuMs`), médiane / moyenne, 42 navigations | 18,5 / 19,2 ms | 19,0 / 20,8 ms |
+| Écart le plus grand par page (moyennes) | — | +6,3 ms (Notes) |
+| Images rAF au-delà de 20 ms dans les 400 ms suivantes | 16 / 1 018 | 16 / 1 017 |
+| … hors Notes | 2 / 898 | 3 / 897 |
+| p95 entre images, toutes pages sauf Notes | 16,8 ms | 16,8 ms |
+| Images abandonnées (trace CDP), navigation par lien | 59 / 316 | 58 / 708 |
+| Images abandonnées, navigation par la roue au clavier | 23 / 750 | 21 / 838 |
+| Tâche la plus longue (Notes, les deux côtés) | 70,0-71,8 ms | 70,7-73,6 ms |
+| Peinture, 42 navigations | 482 ms | 578 ms |
+| Retour Tâches → Notes → Tâches (poussée, historique, roue) | 0 | 1 567 à la 1re image, 9 sur 9 |
+| Retour Notes → Tâches → Notes | 0 | 2 000 à la 1re image, 9 sur 9 |
+| Retour Réglages → Projets → Réglages | 0 | 1 500 à la 1re image, 9 sur 9 |
+
+Plus d'images dans la trace, c'est l'animation qui en demande ; le nombre
+d'images **abandonnées** ne bouge pas. Les images perdues des Notes
+viennent de leur tâche de ~70 ms à ×4, présente avant comme après.
+
+Les deux autres façons de faire, prototypées au banc sur le même bundle
+(trois passes chacune) :
+
+| | Colonne (retenue) | Racine de la page | Page quittée estompée en plus |
+|---|---|---|---|
+| Peinture médiane des Notes | 46 ms | 97 ms | 53 ms |
+| Peinture, 42 navigations | 578 ms | 999 ms | 975 ms |
+| Images abandonnées | 58 / 708 | 49 / 700 | 84 / 765 |
+| … du Planificateur | 2 / 85 | 6 / 95 | 26 / 117 |
+
+Ce qui a aussi été vérifié :
+
+- Aucune des 17 pages de la roue n'a d'élément `position:fixed` dans la
+  colonne à l'arrivée, à 90 ms ni à 400 ms : le transform de 180 ms ne
+  déplace aucun volet. Après 400 ms, aucune animation ne reste.
+- 15 des 17 pages ont un défileur racine ; la Discussion et les Journaux
+  n'en ont pas, et rien n'y est retenu.
+- La page Tâches du banc ne descend pas plus bas que 1 567 px : la
+  vérification « 2 000 px » s'est faite sur les Notes.
+- Aux Réglages, la position est rendue à 1 500 dès la 1re image, puis la
+  page glisse de 24 px (1 476) à la 2e ou 3e image : la section « Source
+  d'inférence » recharge ses données et change de hauteur (repères suivis
+  image par image). C'est la page qui bouge, pas la reprise.
+- Préférence « mouvement réduit » émulée : aucune animation de la colonne,
+  les neuf retours à leur position.
+- Bureau 1280 px (Tâches, Discussion, Réglages) et mini-panneau 340 px
+  (Discussion, Tâches) contre `e95a5546` : 0 rectangle différent sur
+  1 854 éléments ; 8 pixels différents d'un niveau, sur le bord d'une
+  pastille ronde des Réglages.
+- Roue ouverte : les mêmes 21 boutons exposés qu'au parent.
+- Huit mutations du code (animer au bureau, animer la racine, laisser le
+  transform, écoute non passive, ignorer « mouvement réduit », décoller la
+  Discussion, poser une position à moitié, ne pas viser la colonne) : les
+  huit font échouer un test.
+
+**Pas vu** : l'émulateur Android et le téléphone. Le GPU du banc n'est pas
+ralenti.
+
+**Carlito vérifie** :
+
+1. Passer des Tâches aux Notes par la roue : les Notes montent de quelques
+   pixels en apparaissant, sans que les Tâches bougent en partant.
+2. Descendre loin dans les Tâches, aller aux Notes, revenir par le retour
+   d'Android : les Tâches sont là où on les a laissées, sans passer par le
+   haut.
+3. Même chose en revenant par la roue.
+4. Revenir sur une page et la toucher tout de suite : rien ne saute sous
+   le doigt.
+5. « Supprimer les animations » : les pages apparaissent d'un coup, la
+   position est toujours rendue. Non vérifié sur le téléphone.
+
+### L'élan du défilement (27/09/2026, chantier « soyeux », lot 3)
+
+Retour de Carlito sur l'APK d6052bde : « les scrolls aussi […] le geste
+manque d'inertie ou s'arrête sec ». Diagnostic d'abord, sur l'émulateur et
+au banc, puis deux corrections, au téléphone seulement (`index.css`,
+`Layout.tsx`).
+
+**Ce que le diagnostic a trouvé**
+
+| Piste | Mesure | Verdict |
+|---|---|---|
+| L'élan d'un lancer, défileur intérieur contre racine | page nue, 3 lancers identiques : 674 à 1 830 px des deux côtés | pas de différence au-delà du bruit d'adb |
+| Le rebond d'Android 12 en fin de liste | tirer au bout des Tâches, Notes, Réglages, Projets : rien ne bouge ; lancées vers leur fin, les Notes s'arrêtent net (0 image étirée) | **défaut** : c'est le « s'arrête sec » |
+| Repeint pendant le défilement | trace CDP ×4, six glissés : 170 à 211 `Paint` du document et de la colonne, un par image | **défaut** : la barre dessinée (`::-webkit-scrollbar`) |
+| Écouteurs tactiles non passifs | CDP `getEventListeners` sur tout le DOM : `touchstart`, `touchmove` et `wheel` tous passifs (React, la roue) | rien à faire |
+| Rafraîchissement des données au retour, pendant un geste | retour d'historique puis glissé 60 ms après, ×4, 4G : Tâches, aucune tâche de plus de 50 ms, 0 saut de contenu ; Notes, une tâche de 103 à 118 ms au MONTAGE (avant les données), identique avant et après | rien à faire ici : le coût des Notes est leur montage (déjà noté au lot 2), pas le rafraîchissement |
+| Réglages de la WebView dans la coquille | l'étirement apparaît avec les réglages par défaut de `webview_flutter`, dès que la page le permet | la coquille ne change pas |
+
+**Pourquoi le rebond ne jouait pas.** Android n'étire que le défileur
+RACINE. Chromium y promeut le défileur d'une page (« implicit root
+scroller ») à trois conditions : il remplit toute la fenêtre, aucun ancêtre
+ne le coupe (`overflow: hidden` ou `clip`, même sur `#root`), il n'a pas de
+barre dessinée. Vérifié une condition à la fois : sur l'app, deux sur trois
+ne suffisent jamais ; sur une page nue, un seul `#root` en `hidden` ou
+`clip`, une barre `::-webkit-scrollbar` de 6 px, ou 48 px de marge au-dessus
+du défileur suffisent à éteindre l'étirement. Une bordure transparente à la
+place de la marge intérieure ne suffit pas non plus.
+
+**Ce qui change, au téléphone seulement**
+
+- La barre dessinée ne vise plus que le bureau et le mini-panneau ; le
+  téléphone prend celle d'Android, qui s'efface. La page y gagne 6 px de
+  large (les Notes : 10 578 → 9 221 px de haut sur l'émulateur).
+- `html`, `body`, `#root`, le cadre de `Layout` et `<main>` ne coupent plus.
+  *Corrigé par la contre-épreuve (plus bas) : `<html>` garde son `hidden`,
+  sans quoi le document redevenait défilable au doigt.*
+- Sur les 15 pages dont le défileur est un enfant direct de la colonne, le
+  voyant (3 px) et la bande de la cloche (48 px) passent DANS le défileur,
+  avant le contenu : le défileur touche le haut de la fenêtre, le contenu se
+  pose au même pixel qu'avant, et passe sous la cloche en défilant, comme il
+  passe déjà sous le bouton de la roue.
+- Le voile d'une fenêtre modale couvre aussi cette bande (elle devient sa
+  bordure transparente) : sinon, la page défilée y restait en clair au-dessus
+  du voile.
+- **La Discussion et les Journaux ne changent pas.** Le défileur de la
+  Discussion est pris entre son en-tête et le compositeur (et la pluie
+  derrière eux) : le faire remplir la fenêtre, c'est poser l'en-tête et le
+  compositeur PAR-DESSUS le fil, avec une marge qui suit la hauteur du
+  compositeur, sans casser le suivi du flux ni le clavier. C'est le lot
+  suivant, s'il est voulu. La Discussion profite déjà de la première
+  correction (plus de repeint).
+
+**Mesures.** Émulateur : Android 15, WebView 124, lancé avec
+`-gpu host` ; son journal dit `vulkan_mode_selected:lavapipe` (Vulkan
+logiciel) et `gles_mode_selected:host` (et non « SwiftShader », comme
+écrit d'abord — voir la contre-épreuve), hôte WebView de banc monté comme `coquille_screen.dart`
+(voir plus bas pourquoi pas la coquille elle-même), serveur de banc relayé
+par `adb reverse`, bundles construits et précomprimés. Avant = `bd6bb265`
+(lot 2), après = les deux commits du lot 3. Charge de la machine entre 1,3
+et 3,1.
+
+| Émulateur | Avant | Après |
+|---|---|---|
+| Tirer en fin de liste (Tâches, Notes, Réglages, Projets) | aucun étirement | toute la WebView s'étire, 4 pages sur 4 |
+| Tirer en haut des Notes | aucun étirement | toute la WebView s'étire |
+| Lancer vers la fin des Notes, filmé (3 lancers) : images / étirées | 13-16 / 0 | 42-48 / 4-6 |
+| … des Projets | 12-51 / 0 | 27-42 / 4-5 |
+| gfxinfo, 8 lancers par page, 2 passes : p50 | 10-14 ms | 10-12 ms |
+| … p95 | 26-53 ms | 28-48 ms |
+| … images en retard | 2,7-10,7 % | 3,8-11,4 % |
+| Défileur des 15 pages (haut / hauteur) | 51 / 789 | 0 / 840 |
+| Document défilable (17 pages) | non | non (412 × 840, clair seulement : faux en Phosphore aux Réglages, voir la contre-épreuve) |
+
+gfxinfo ne bouge pas au-delà du bruit : ces chiffres ne valent que pour ce
+lancement de l'émulateur (Vulkan logiciel), et ses images coûtent autant
+avant qu'après. Les pourcentages d'images en retard ne se comparent pas
+quand le nombre d'images change (contre-épreuve, constat 3). Les Tâches et les Projets rendent
+plus d'images (206-466 → 672-806) : ce sont celles de l'étirement, aux
+bouts de listes courtes.
+
+| Banc (×4, 375 × 812, trois passes) | Avant | Après |
+|---|---|---|
+| `Paint` pendant six glissés : Tâches | 170-174 | 0 |
+| … Notes | 194-198 | 2 |
+| … Réglages | 190-198 | 2 |
+| … Projets | 198-202 | 2 |
+| … Discussion (deux passes) | 201-211 | 11 |
+| Peinture, Notes | 49-67 ms | 7-9 ms |
+| Tuiles rastérisées, Tâches / Notes | 134-138 / 117-127 | 9 / 21 |
+| Images abandonnées pendant les glissés | 0 à 2 | 0 |
+
+Retirer la seule barre dessinée du bundle d'avant, par injection, donne
+déjà 0 `Paint` sur les Tâches et 2 sur les Notes : le repeint, c'est elle.
+
+Ce qui a aussi été vérifié :
+
+- La position rendue du lot 2 : 9 retours sur 9 à la 1re image (Tâches
+  1 567, Notes 2 000, Réglages 1 500 puis 1 476, comme avant).
+- `roue.py` : 22 étapes sur 22, glissé depuis la bande du bord compris ;
+  60 images/s, 0 image au-delà de 20 ms.
+- `position:fixed`, roue fermée et roue ouverte, sur 5 pages : rectangles
+  identiques à l'avant.
+- Roue ouverte : les mêmes boutons exposés, aucune zone de saisie.
+- Clavier ouvert sur la recherche des Notes (émulateur) : le champ reste au
+  même endroit (144 à 184 px), la bande du bouton se retire comme avant.
+- La Discussion suit un flux : 0 à 1 px du bas, 40 relevés sur 8 s, avant
+  comme après.
+- Bureau 1280 px et mini-panneau 340 px : 0 rectangle différent sur 1 892
+  éléments, 8 pixels d'un niveau (la pastille des Réglages, déjà là au
+  lot 2).
+- Six mutations, six tests qui échouent (`telephoneSeulement.test.ts`).
+
+**Pourquoi un hôte de banc et pas la coquille.** La coquille se verrouille
+et exige un code ou une empreinte sur le téléphone ; l'émulateur `-read-only`
+n'en a pas, et je n'ai ni posé de code sur l'émulateur, ni construit de
+coquille sans verrou. L'hôte de banc (dans le scratchpad, jamais dans le
+dépôt) monte une `WebViewWidget` comme `coquille_screen.dart` — Scaffold,
+SafeArea, Stack, paramètres Android par défaut — et charge le banc, qui
+injecte le faux pont. Ce qui dépend du pont réel (appairage, verbes de la
+coquille) n'y est pas ; le défilement, la WebView et l'étirement, si.
+
+**Carlito vérifie** :
+
+1. Descendre jusqu'au bout des Notes d'un seul lancer : la liste s'étire un
+   instant puis revient, au lieu de s'arrêter net.
+2. Au bout d'une liste, tirer encore : toute la page s'étire, et revient au
+   lâcher. Même chose en haut.
+3. Descendre les Tâches : la liste passe sous la cloche en haut, comme sous
+   le bouton de la roue en bas, et la cloche reste touchable.
+4. Ouvrir un jour dans les Tâches, liste descendue : tout l'écran est
+   assombri, bande du haut comprise.
+5. La barre de défilement : fine, grise, elle apparaît en défilant et
+   s'efface. Au Mac, rien ne change.
+6. La Discussion : comme avant, sans étirement en bout de fil (voir plus
+   haut) ; elle doit rester fluide et suivre la réponse qui s'écrit.

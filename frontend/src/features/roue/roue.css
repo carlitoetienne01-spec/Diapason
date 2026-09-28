@@ -1,8 +1,10 @@
 /* La roue du téléphone (26/09/2026, chantier de la fluidité, lot 3).
  *
  * N'existe que sous `estMobile` : RoueNavigation n'est monté qu'au téléphone,
- * et ces règles ne visent que ses propres éléments ([data-roue]). La fenêtre
- * du Mac et le mini-panneau n'en rendent aucun.
+ * et ces règles ne visent que ses propres éléments ([data-roue]) — sauf le
+ * recul de la page ([data-recul-page], Layout), gardé deux fois : par
+ * [data-diapason-mobile] sur <html> et par [data-roue-ouverte], que seule la
+ * roue écrit. La fenêtre du Mac et le mini-panneau n'en rendent aucun.
  *
  * Tout ce qui bouge à chaque image passe par `transform` et `opacity`, écrits
  * par le composant : jamais `top`, `left`, `width` — une propriété de mise
@@ -14,6 +16,43 @@
   --roue-encre: var(--color-on-accent);
   /* La place que le bouton flottant prend en bas de chaque page (Layout). */
   --roue-bouton: 52px;
+  /* Le voile posé sur la page (surimpression, 26/09/2026) : 0,20 est le plus
+   * léger des candidats mesurés (0,15/0,20/0,25/0,30) qui sépare encore la
+   * capsule blanche d'une page blanche en thème clair — le pire cas — à
+   * 1,61:1 (0,15 tombe à 1,41:1), et la page reste lisible dessous : son
+   * texte garde ≥ 4,5:1 sous le voile dans les sept apparences
+   * (contraste.test.ts tient ces deux chiffres). */
+  --roue-voile: rgba(0, 0, 0, 0.2);
+}
+
+/* ── Le recul de la page (surimpression, 26/09/2026) ─────────────────
+ * Roue ouverte, la page recule à 95 % : un transform pur, 180 ms, que la
+ * roue déclenche par [data-roue-ouverte] sur <html>. Doublement borné au
+ * téléphone : la règle exige [data-diapason-mobile] ET seule la roue —
+ * montée sous estMobile — écrit l'attribut.
+ *
+ * Le transform fait de [data-recul-page] le bloc contenant des
+ * position:fixed de la page (voyant du haut, cloche) : ils reculent AVEC
+ * elle. Le bloc épouse la fenêtre au pixel près (h-full, w-full, le
+ * document ne défile pas), donc roue fermée rien ne bouge : au banc du
+ * 27/09/2026, mêmes rectangles qu'avant ce changement sur 4 pages, et roue
+ * ouverte, rectangle × 0,95 autour du centre à 0,01 px près.
+ *
+ * `will-change: transform` reste posé, roue fermée comprise : la page vit
+ * déjà dans sa couche, l'ouverture la compose sans la rastériser de
+ * nouveau. Trace CDP du 27/09/2026, six ouvertures-fermetures (×4) : 131
+ * tuiles rastérisées avec, 201 sans (+53 %), 134 avec l'ancien écran plein.
+ *
+ * ATTENTION : si un jour le DOCUMENT défile (piste « le défileur de chaque
+ * page devient le document »), ce bloc devient plus haut que la fenêtre et
+ * ses position:fixed défileraient avec lui — le recul devra alors porter
+ * sur un conteneur de la taille de la fenêtre, ou les fixes sortir d'ici. */
+html[data-diapason-mobile='1'] [data-recul-page] {
+  will-change: transform;
+  transition: transform 180ms ease-out;
+}
+html[data-diapason-mobile='1'][data-roue-ouverte] [data-recul-page] {
+  transform: scale(0.95);
 }
 /* Thème clair (et système clair) : l'encre blanche sur l'accent #0891b2 ne
  * fait que 3,68:1, sous les 4,5:1 d'un nom de 16 px. Sa teinte appuyée
@@ -53,12 +92,14 @@ html[data-clavier-ouvert] .roue-bouton[aria-expanded='false'] { display: none; }
  * page l'empêchait de défiler au pouce (26/09/2026, contre-épreuve). Il est
  * écouté sur la fenêtre (RoueNavigation.tsx, `decisionDuBord`). */
 
-/* ── L'écran « Aller à » ────────────────────────────────────────────── */
+/* ── La roue en surimpression (l'écran « Aller à » plein a disparu) ──── */
 .roue-ecran {
   position: fixed;
   inset: 0;
   z-index: 58;
-  background: var(--color-bg);
+  /* Un voile, plus un fond plein : la page reste bien visible derrière
+   * (décision du 26/09/2026). Chaque nom porte sa propre capsule opaque. */
+  background: var(--roue-voile);
   color: var(--color-text);
   display: flex;
   flex-direction: column;
@@ -71,19 +112,14 @@ html[data-clavier-ouvert] .roue-bouton[aria-expanded='false'] { display: none; }
   visibility: visible;
   transition: opacity 180ms ease-out, visibility 0s;
 }
+/* La vue Liste garde l'écran plein : 17 lignes pleine largeur n'ont pas de
+ * capsule à elles, et transparentes sur la page elles ne se lisaient plus. */
+.roue-ecran[data-mode='liste'] {
+  background: var(--color-bg);
+}
 .roue-entete {
   padding: 16px 16px 8px;
   flex-shrink: 0;
-}
-.roue-titre {
-  font-size: 1.5rem;
-  font-weight: 700;
-  line-height: 1.2;
-}
-.roue-aide {
-  margin-top: 4px;
-  font-size: 0.875rem;
-  color: var(--color-text-secondary);
 }
 .roue-actions {
   margin-top: 10px;
@@ -145,19 +181,27 @@ html[data-clavier-ouvert] .roue-bouton[aria-expanded='false'] { display: none; }
   gap: 12px;
   height: 52px;
   border-radius: 9999px;
-  border: none;
-  background: transparent;
+  /* La capsule plate de chaque nom (surimpression, 27/09/2026) : la couleur
+   * de surface de l'apparence, OPAQUE tant qu'elle se touche, sans flou.
+   * Transparent, un nom se posait sur la page vivante — le texte d'une
+   * tâche passait à travers. Seuls le nom et la pastille s'estompent DESSUS
+   * (RoueNavigation.tsx, geometrieRoue.ts `estompeSelonEcart`), et l'opacité
+   * lisible se mesure sur la capsule (contraste.ts). */
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
   color: var(--color-text);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
 .roue-place[data-cote='droite'] .roue-element { flex-direction: row; padding: 0 6px 0 18px; }
 .roue-place[data-cote='gauche'] .roue-element { flex-direction: row-reverse; padding: 0 18px 0 6px; }
-/* La capsule de l'élément allumé : un fond qui apparaît en opacité seule. */
+/* La capsule de l'élément allumé : un fond qui apparaît en opacité seule.
+ * inset -1px : il couvre aussi la tranche de la capsule de surface, qui
+ * sinon laissait un anneau d'un pixel autour de l'accent. */
 .roue-element::before {
   content: '';
   position: absolute;
-  inset: 0;
+  inset: -1px;
   border-radius: inherit;
   background: var(--roue-allume);
   opacity: 0;
@@ -238,4 +282,7 @@ html[data-clavier-ouvert] .roue-bouton[aria-expanded='false'] { display: none; }
   .roue-ecran[data-ouverte],
   .roue-element::before,
   .roue-bouton { transition: none; }
+  /* Le recul aussi : la page bascule à 95 % sans mouvement, comme le reste
+   * de la roue (bascule directe, décision du 26/09/2026). */
+  html[data-diapason-mobile='1'] [data-recul-page] { transition: none; }
 }

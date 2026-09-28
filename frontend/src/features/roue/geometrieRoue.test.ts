@@ -16,7 +16,11 @@ import {
   largeurDuNom,
   nomTient,
   OPACITE_LISIBLE_PAR_DEFAUT,
+  opaciteLisibleBornee,
+  ECART_ALLUME,
+  estompeSelonEcart,
   opaciteSelonEcart,
+  presenceSelonEcart,
   PORTEE_LISIBLE,
   commenceAuBord,
   commenceDansLaBande,
@@ -146,6 +150,82 @@ describe('Un nom qu’on ne lit pas ne se touche pas', () => {
   it('sans apparence lue, le repli est l’exigence de Sauge', () => {
     expect(geometrieRoue({ largeur: 375, hauteur: 600, cote: 'droite' }).opaciteLisible).toBe(OPACITE_LISIBLE_PAR_DEFAUT);
   });
+
+  it('une mesure faussée ne fait jamais toucher un nom illisible', () => {
+    // 27/09/2026, contre-épreuve « soyeux » (mutants J1 et O4) : un témoin
+    // pris sur la capsule allumée, ou une opacité forcée à 0,3 dans l'appel,
+    // laissaient des noms à 0,3 d'opacité touchables — sous 4,5:1 dans les
+    // sept apparences — et vitest restait vert.
+    for (const mesuree of [0, 0.3, 0.5, Number.NaN, -1]) {
+      const g = geometrieRoue({ largeur: 375, hauteur: 600, cote: 'droite', opaciteLisible: mesuree });
+      expect(g.opaciteLisible, `mesure ${mesuree} : jamais sous le repli de Sauge`).toBe(OPACITE_LISIBLE_PAR_DEFAUT);
+      for (let rotation = 0; rotation <= 16; rotation += 0.25) {
+        for (let i = 0; i < 17; i += 1) {
+          const p = placerElement(i, rotation, g);
+          if (p.visible) {
+            expect(p.estompe, `mesure ${mesuree}, élément ${i}, rotation ${rotation}`).toBeGreaterThanOrEqual(
+              OPACITE_LISIBLE_PAR_DEFAUT - 1e-9,
+            );
+          }
+        }
+      }
+    }
+    expect(opaciteLisibleBornee(0.9), 'une apparence plus exigeante garde sa mesure').toBe(0.9);
+    expect(opaciteLisibleBornee(1.4), 'jamais au-delà de 1').toBe(1);
+    expect(opaciteLisibleBornee(undefined)).toBe(OPACITE_LISIBLE_PAR_DEFAUT);
+  });
+
+  it('la capsule accent ne s’estompe jamais : plein jusqu’au demi-écart où l’allumé glisse', () => {
+    // 27/09/2026, surimpression : en Oxblood, l'encre sur l'accent tombe à
+    // 4,49:1 dès 0,99 d'opacité — un allumé estompé d'un centième pendant la
+    // rotation serait passé dessous (contraste.test.ts).
+    for (const lisible of [0.5, 0.71, 0.76]) {
+      expect(estompeSelonEcart(ECART_ALLUME, lisible), 'plein au demi-écart').toBe(1);
+      expect(estompeSelonEcart(0.3, lisible)).toBe(1);
+      expect(estompeSelonEcart(ECART_ALLUME + 0.01, lisible), 'l’estompage part juste après').toBeLessThan(1);
+      expect(estompeSelonEcart(1, lisible)).toBeGreaterThan(estompeSelonEcart(2, lisible));
+    }
+    expect(placerElement(8, 8.49, droite).allume, 'à 0,49 d’écart, encore l’allumé').toBe(true);
+    expect(placerElement(8, 8.51, droite).allume, 'à 0,51, plus lui').toBe(false);
+  });
+});
+
+describe('En surimpression, une capsule qui se touche est opaque', () => {
+  // 27/09/2026 : capsule et nom s'estompaient ensemble, et la page vivante
+  // passait à travers la capsule — au banc, « Portfolio · 3 » se lisait
+  // sous « Discussion ». Seul le nom s'estompe désormais, sur une capsule
+  // pleine ; la capsule ne s'efface qu'au-delà de la portée, intouchable.
+  it('la capsule reste pleine dans la portée, puis s’efface sur un demi-élément', () => {
+    for (const ecart of [0, 0.5, 1, 2, PORTEE_LISIBLE]) {
+      expect(presenceSelonEcart(ecart), `capsule pleine à l’écart ${ecart}`).toBe(1);
+    }
+    expect(presenceSelonEcart(PORTEE_LISIBLE + 0.25)).toBeCloseTo(0.5, 9);
+    expect(presenceSelonEcart(PORTEE_LISIBLE + 0.5), 'au-delà, effacée').toBe(0);
+  });
+
+  it('le nom s’estompe jusqu’à l’opacité lisible et jamais dessous, même effacé', () => {
+    for (const lisible of [0.49, 0.76]) {
+      expect(estompeSelonEcart(PORTEE_LISIBLE, lisible)).toBeCloseTo(lisible, 9);
+      expect(estompeSelonEcart(PORTEE_LISIBLE + 2, lisible), 'au-delà, c’est la capsule qui part').toBe(lisible);
+    }
+  });
+
+  it('quelle que soit la rotation, tout élément touchable a sa capsule pleine et un nom lisible', () => {
+    for (const lisible of [0.56, 0.76]) {
+      const g = geometrieRoue({ largeur: 375, hauteur: 600, cote: 'droite', opaciteLisible: lisible });
+      let touchables = 0;
+      for (let rotation = 0; rotation <= 16; rotation += 0.1) {
+        for (let i = 0; i < 17; i += 1) {
+          const p = placerElement(i, rotation, g);
+          if (!p.visible) continue;
+          touchables += 1;
+          expect(p.presence, `élément ${i}, rotation ${rotation.toFixed(1)} : capsule pleine`).toBeGreaterThanOrEqual(1 - 1e-9);
+          expect(p.estompe, `élément ${i}, rotation ${rotation.toFixed(1)} : nom lisible`).toBeGreaterThanOrEqual(lisible - 1e-9);
+        }
+      }
+      expect(touchables, 'la roue garde des éléments à toucher').toBeGreaterThan(161 * 5);
+    }
+  });
 });
 
 describe('Les autres éléments s’estompent avec la distance', () => {
@@ -163,7 +243,7 @@ describe('Les autres éléments s’estompent avec la distance', () => {
     expect(placerElement(3, 3.5, droite).echelle, 'à mi-chemin, à mi-taille').toBeCloseTo(1.15, 6);
   });
 
-  it('un élément sous le titre « Aller à » ou hors de la zone ne se touche pas', () => {
+  it('un élément sous les actions de l’en-tête ou hors de la zone ne se touche pas', () => {
     // Loin au-dessus : le premier élément quand le dernier est allumé.
     const haut = placerElement(0, 16, droite);
     expect(haut.visible, 'un élément hors de la zone ne doit pas être touchable').toBe(false);

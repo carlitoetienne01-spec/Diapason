@@ -44,6 +44,42 @@ export function placerMenu(
   return { haut, hauteurMax: Math.max(MENU_HAUTEUR_MIN, Math.min(MENU_HAUTEUR_MAX, place)) };
 }
 
+/**
+ * Le fond du bouton de la cloche. Au Mac, inchangé : transparent au repos.
+ * Au téléphone, une capsule PLATE et opaque (la surface de l'apparence, un
+ * filet de bordure, sans flou ni ombre) — 27/09/2026, contre-épreuve du
+ * chantier « soyeux » : depuis que la page défile jusqu'en haut de l'écran
+ * (lot 3), le contenu passe sous la cloche, fixe par-dessus. Sans fond, son
+ * icône se posait sur le « › semaine suivante » des Tâches et les deux
+ * glyphes se fondaient ; sur le voile d'une fenêtre modale, la cloche grise
+ * ne se distinguait presque plus. Les noms de la roue ont reçu la même
+ * capsule pour la même raison (roue.css, `.roue-element`).
+ */
+export function fondDeLaCloche(p: { ouverte: boolean; enAttente: number; mobile: boolean }): {
+  background: string;
+  boxShadow?: string;
+} {
+  if (!p.mobile) {
+    return {
+      background: p.ouverte
+        ? 'var(--color-bg-tertiary)'
+        : p.enAttente > 0
+          ? 'color-mix(in srgb, var(--color-error) 8%, transparent)'
+          : 'transparent',
+    };
+  }
+  return {
+    background: p.ouverte
+      ? 'var(--color-bg-tertiary)'
+      : p.enAttente > 0
+        ? 'color-mix(in srgb, var(--color-error) 8%, var(--color-surface))'
+        : 'var(--color-surface)',
+    // Un filet intérieur, pas une bordure : le bouton garde sa taille au
+    // pixel près, et rien ne bouge autour de lui.
+    boxShadow: 'inset 0 0 0 1px var(--color-border)',
+  };
+}
+
 function timeAgo(iso: string, t: Translate): string {
   const diff = Date.now() - new Date(iso).getTime();
   const m = Math.floor(diff / 60000);
@@ -182,11 +218,7 @@ export function ApprovalBell() {
         aria-haspopup="dialog"
         style={{
           color: count > 0 ? 'var(--color-text)' : 'var(--color-text-secondary)',
-          background: open
-            ? 'var(--color-bg-tertiary)'
-            : count > 0
-            ? 'color-mix(in srgb, var(--color-error) 8%, transparent)'
-            : 'transparent',
+          ...fondDeLaCloche({ ouverte: open, enAttente: count, mobile: estMobile }),
         }}
       >
         <Bell size={17} />
