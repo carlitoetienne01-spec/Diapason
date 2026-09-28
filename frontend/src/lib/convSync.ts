@@ -31,6 +31,7 @@ import type { ChatMessage, Conversation, ConversationStore } from '../types';
 import { apiFetch, getApiKey } from './api';
 import { estVierge } from './discussions';
 import { CONVERSATIONS_KEY, generateId, loadConversations, saveConversations, useAppStore, viderSauvegardeConversations } from './store';
+import { serviParLeTailnet } from './tailnet';
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -298,6 +299,57 @@ export function estRefusPermanent(status: number): boolean {
 }
 
 /**
+ * Vrai si ce refus d'un DELETE dit que le serveur ne peut pas ADRESSER l'id
+ * (404, 422) : il ne l'a donc pas, et la tombale n'a plus rien à tuer.
+ *
+ * 28/09/2026 : tout refus permanent jetait la tombale. Un 403 de la
+ * passerelle du tailnet (« Origine refusée par la passerelle. ») dit
+ * pourtant que la REQUÊTE est refusée, pas que l'id est inconnu : la file se
+ * vidait, et le tirage suivant — qui porte l'écriture du téléphone lui-même
+ * — rendait la conversation supprimée. Tout autre refus permanent garde la
+ * tombale en file, mise de côté pour la session.
+ */
+export function idNonAdressable(status: number): boolean {
+  return status === 404 || status === 422;
+}
+
+/**
+ * Vrai si une requête de synchronisation a une chance d'être acceptée.
+ *
+ * 28/09/2026 : les deux gardes « sans clé, ne rien tenter » (16/09, écrites
+ * avant le téléphone) rendaient la synchronisation MUETTE au téléphone depuis
+ * le premier jour. Là, `getApiKey()` vaut toujours '' : la passerelle du
+ * tailnet authentifie par le cookie HttpOnly de la session d'appareil et
+ * REFUSE la clé locale (server/passerelle_tailnet.py). Le journal complet ne
+ * portait aucun GET ni PUT /v1/conversations venu du téléphone, alors que
+ * tailnet_portee.json les classe « session » : les discussions tapées au
+ * téléphone ne vivaient que dans sa WebView, celles du Mac n'y arrivaient
+ * jamais. Servi par le tailnet, le cookie suffit — `apiFetch` part sans
+ * en-tête Authorization et le navigateur joint le cookie de même origine.
+ * Hors de la passerelle et sans clé, rien ne part, comme avant.
+ */
+export function serveurJoignable(cle: string, parLeTailnet: boolean): boolean {
+  return cle !== '' || parLeTailnet;
+}
+
+/**
+ * Vrai si ce refus dit que la session d'appareil est morte (expirée,
+ * fermée ou révoquée depuis le Mac) : un 401 servi par le tailnet.
+ *
+ * 28/09/2026 : une session morte ne revit qu'avec une NOUVELLE page. La
+ * coquille en rouvre une par une navigation — au démarrage à froid, sur le
+ * 401 du document, ou au retour au premier plan passé 6 h — et ce module
+ * repart alors de zéro ; avant 6 h, elle reprend le même cookie sans rien
+ * faire (diapason_mobile, `deciderOuverture`). Rejouer le GET toutes les
+ * 10 s d'ici là n'aurait produit que des 401 à la passerelle. Au Mac, un 401
+ * reste transitoire (la clé n'est pas encore injectée) et se réessaie au
+ * tick suivant, comme avant.
+ */
+export function sessionPerdue(status: number, parLeTailnet: boolean): boolean {
+  return status === 401 && parLeTailnet;
+}
+
+/**
  * Rend une sauvegarde importée propre, ou null si elle n'a pas la forme
  * attendue. L'import n'était validé que sur `version === 1` : un fichier
  * sans `conversations` plantait le store à chaque tick, un `pinned: null`
@@ -415,6 +467,32 @@ function signalerRetablissement(): void {
   }
 }
 
+// Vrai après un 401 servi par le tailnet (`sessionPerdue`) : les ticks et les
+// poussées se taisent ; chaque reprise (focus, retour au premier plan,
+// réseau) sonde UNE fois. Rien n'est vidé — la carte, le curseur, la file des
+// suppressions et le localStorage restent tels quels, et repartent avec la
+// page que la session suivante rechargera.
+let sessionEnAttente = false;
+
+function joignable(): boolean {
+  return serveurJoignable(getApiKey(), serviParLeTailnet());
+}
+
+/** Rend vrai si le statut a mis le moteur en attente de session. */
+function noterRefus(status: number, requete: string): boolean {
+  if (sessionPerdue(status, serviParLeTailnet())) {
+    if (!sessionEnAttente) {
+      sessionEnAttente = true;
+      console.warn(
+        `[convSync] ${requete} → 401 : session d'appareil perdue, la synchronisation reprendra avec la prochaine session (page rechargée)`,
+      );
+    }
+    return true;
+  }
+  signalerPanne(`${requete} → ${status}`);
+  return false;
+}
+
 function mettreEnQuarantaine(id: string, detail: string): void {
   if (quarantaine.has(id)) return;
   quarantaine.add(id);
@@ -484,9 +562,10 @@ export function tirer(): Promise<void> {
   return tirageEnCours;
 }
 async function tirerUneFois(): Promise<void> {
-  // Sans clé, ne rien tenter et ne rien afficher : le prochain tick
-  // réessaiera. Prétendre « synchronisé » ici serait un faux SUCCESS.
-  if (!getApiKey()) return;
+  // Sans clé hors du tailnet, ou session perdue, ne rien tenter et ne rien
+  // afficher : le prochain tick (ou la reprise) réessaiera. Prétendre
+  // « synchronisé » ici serait un faux SUCCESS.
+  if (!joignable() || sessionEnAttente) return;
 
   const e = getEtat();
   const query = e.curseur > 0 ? `?since=${e.curseur}` : '';
@@ -497,7 +576,7 @@ async function tirerUneFois(): Promise<void> {
   try {
     const reponse = await apiFetch(`/v1/conversations${query}`);
     if (!reponse.ok) {
-      signalerPanne(`GET /v1/conversations → ${reponse.status}`);
+      noterRefus(reponse.status, 'GET /v1/conversations');
       return;
     }
     const corps = await reponse.json();
@@ -541,7 +620,7 @@ export async function pousser(): Promise<void> {
     pousseeDemandee = true;
     return;
   }
-  if (!getApiKey()) return;
+  if (!joignable() || sessionEnAttente) return;
   pousseeEnCours = true;
   try {
     do {
@@ -559,12 +638,16 @@ async function pousserUneFois(): Promise<boolean> {
   const e = getEtat();
 
   for (const id of [...e.suppressions]) {
+    // Une tombale refusée pour de bon dans cette session attend le
+    // rechargement suivant, comme un PUT mis de côté ; elle reste en file,
+    // donc aucun tirage ne ressuscite sa conversation.
+    if (quarantaine.has(id)) continue;
     try {
       const reponse = await apiFetch(`/v1/conversations/${encodeURIComponent(id)}`, {
         method: 'DELETE',
       });
       if (!reponse.ok) {
-        if (estRefusPermanent(reponse.status)) {
+        if (idNonAdressable(reponse.status)) {
           // Un id que le serveur ne peut pas adresser ne le sera jamais : il
           // n'est pas chez lui non plus. On passe.
           mettreEnQuarantaine(id, `DELETE → ${reponse.status}`);
@@ -572,7 +655,14 @@ async function pousserUneFois(): Promise<boolean> {
           persisterEtat();
           continue;
         }
-        signalerPanne(`DELETE /v1/conversations/${id} → ${reponse.status}`);
+        if (estRefusPermanent(reponse.status)) {
+          // 28/09/2026 : un 403 de la passerelle jetait la tombale, et la
+          // conversation supprimée revenait au tirage suivant (voir
+          // `idNonAdressable`). Refusée n'est pas inconnue : on la garde.
+          mettreEnQuarantaine(id, `DELETE → ${reponse.status}`);
+          continue;
+        }
+        noterRefus(reponse.status, `DELETE /v1/conversations/${id}`);
         return false;
       }
       e.suppressions = sansSuppression(e, id).suppressions;
@@ -605,7 +695,7 @@ async function pousserUneFois(): Promise<boolean> {
           mettreEnQuarantaine(conv.id, `PUT → ${reponse.status}`);
           continue;
         }
-        signalerPanne(`PUT /v1/conversations/${conv.id} → ${reponse.status}`);
+        noterRefus(reponse.status, `PUT /v1/conversations/${conv.id}`);
         return false;
       }
       const corps = await reponse.json();
@@ -691,6 +781,13 @@ export function demarrerSyncConversations(): void {
   });
 
   const reprendre = () => {
+    // Une session d'appareil perdue ne revit qu'au chargement d'une nouvelle
+    // page (voir `sessionPerdue`) : avant 6 h, la coquille reprend le même
+    // cookie mort sans rien faire. On sonde quand même UNE fois par reprise,
+    // jamais au tick — un 401 par retour — pour ne pas dépendre de ce détail
+    // de la coquille. (Corrigé le 28/09/2026 après revue : ce commentaire la
+    // disait « rouverte sans recharger la page », ce qui n'arrive jamais.)
+    sessionEnAttente = false;
     viderSauvegardeConversations();
     void tirer().then(() => pousser());
   };

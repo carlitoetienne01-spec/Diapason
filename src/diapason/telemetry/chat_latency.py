@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -33,6 +34,10 @@ class ChatLatency:
         # Rempli quand un tour léger a été rerouté : le journal doit dire
         # quel modèle a vraiment répondu, pas celui du sélecteur.
         self.routage: dict[str, Any] | None = None
+        # The exception a server generator caught and turned into an
+        # "Error during generation" chunk followed by [DONE] — see
+        # record_stream_error.
+        self.stream_error: str | None = None
 
     def elapsed_ms(self) -> float:
         return round((self.clock() - self.started) * 1000, 3)
@@ -65,6 +70,21 @@ def record_queue_wait(wait_ms: float) -> None:
         measure.phases["inferenceQueueMs"] = round(
             measure.phases.get("inferenceQueueMs", 0) + wait_ms, 3
         )
+
+
+def record_stream_error(exc: BaseException) -> None:
+    """Note that the response generator caught *exc* and carried on.
+
+    28/09/2026 (review): routes._handle_stream and _handle_stream_tools catch
+    every exception, emit "Error during generation: …" with finish_reason
+    stop, then ``data: [DONE]``. measured_sse only saw the [DONE] and wrote
+    ``completed=True end=done``: Ollama dying mid-reply read exactly like a
+    normal answer in serve.err.log — a false SUCCESS (§100). The frames sent
+    to the client do not change; only the log line learns the truth.
+    """
+    measure = _current.get()
+    if measure is not None and measure.stream_error is None:
+        measure.stream_error = type(exc).__name__
 
 
 def mark_model_text() -> None:
@@ -118,6 +138,22 @@ async def measured_sse(
 ) -> AsyncIterator[str | bytes]:
     token = _current.set(measure)
     completed = False
+    # 28/09/2026: a reply cut on the phone (26/09, 19:44) left
+    # "completed=False" and nothing else — a client that went away and a
+    # generator that raised read the same. `end` says which: done, no_done
+    # (the source stopped without [DONE]), cancelled (the response task was
+    # cancelled: an http.disconnect, or a shutdown), closed (the reader
+    # stopped iterating: a failed send), or error:<Type> (the source raised,
+    # or caught an exception and said so in an error chunk before [DONE] —
+    # record_stream_error).
+    #
+    # cancelled and closed say HOW the stream stopped, never WHO stopped it.
+    # They were "client_gone:…" until the review of 28/09/2026: when the
+    # tailnet gateway cuts a session closed from the Mac, the app receives
+    # the same http.disconnect, and the line said "client gone" while the
+    # phone was still reading. The gateway writes its own WARNING line with
+    # this request id when the Mac did the cutting.
+    end = "aborted"
     try:
         # The server generators yield complete SSE frames. Close them on
         # cancellation as well; cancelling a client must release its inference.
@@ -146,13 +182,38 @@ async def measured_sse(
                     if text.startswith("data: [DONE]"):
                         completed = True
                     yield frame
+        end = "done" if completed else "no_done"
+        if measure.stream_error is not None:
+            # A generation that failed and said so is not a completed reply,
+            # whatever [DONE] followed it.
+            end = f"error:{measure.stream_error}"
+            completed = False
+    except asyncio.CancelledError:
+        end = "cancelled"
+        raise
+    except GeneratorExit:
+        end = "closed"
+        raise
+    except Exception as exc:
+        end = f"error:{type(exc).__name__}"
+        raise
     finally:
-        _current.reset(token)
+        try:
+            _current.reset(token)
+        except ValueError:
+            # 28/09/2026: a reader that stops without closing us (a send that
+            # raised, ASGI 2.4) leaves this generator to the event loop's
+            # asyncgen finaliser, which runs aclose() in ANOTHER task and
+            # Context. reset() then raised "created in a different Context"
+            # and the line below was never written — the one ending that most
+            # needed it. That Context is discarded afterwards; nothing to undo.
+            pass
         # Timings and counters only: no prompt, answer, key, path or tool args.
         logger.info(
-            "chat_performance request=%s completed=%s metrics=%s",
+            "chat_performance request=%s completed=%s end=%s metrics=%s",
             measure.request_id,
             completed,
+            end,
             json.dumps(measure.snapshot()),
         )
 

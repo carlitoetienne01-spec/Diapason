@@ -48,6 +48,18 @@ describe('les écritures réelles du store', () => {
     expect(mod.useAppStore.getState().messages[0].questions).toEqual(questions);
     expect(JSON.parse(stockage.getItem(mod.CONVERSATIONS_KEY)!).conversations[id].messages[0].questions).toEqual(questions);
   });
+  it('garde la coupure du réseau sur la réponse, pour la phrase et « Renvoyer » (28/09/2026)', () => {
+    const app = mod.useAppStore.getState();
+    const id = app.createConversation('test');
+    app.addMessage(id, msg('q', 'user', 'Bonjour'));
+    app.addMessage(id, msg('r', 'assistant', ''));
+    const coupure = { detail: 'TypeError: network error', during: 'response' as const, overTailnet: true };
+    app.updateLastAssistant(id, 'Début', undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, coupure);
+    expect(mod.useAppStore.getState().messages[1].connectionLost,
+      'sans elle, la bulle ne dirait ni la coupure ni comment renvoyer').toEqual(coupure);
+    expect(JSON.parse(stockage.getItem(mod.CONVERSATIONS_KEY)!).conversations[id].messages[1].connectionLost,
+      'elle voyage avec la conversation : l’autre vue la voit aussi').toEqual(coupure);
+  });
   it('ne recrée pas les anciens messages et ne modifie pas les copies en vol', () => {
     const app = mod.useAppStore.getState();
     const id = app.createConversation('test');

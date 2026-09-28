@@ -61,6 +61,7 @@ __all__ = [
     "INTERVALLE_DE_CONTROLE_S",
     "PasserelleTailnet",
     "adresse_du_tailnet",
+    "motif_de_fermeture",
 ]
 
 COOKIE_APPAREIL = "diapason_appareil"
@@ -154,6 +155,30 @@ def adresse_du_tailnet(config: Any = None) -> str | None:
     return f"https://{reste.lower()}"
 
 
+def motif_de_fermeture(
+    echeance_ms: int, maintenant_ms: int, confiance: str | None
+) -> str:
+    """Le motif, en clair, de la fermeture d'une session d'appareil tenue.
+
+    ``confiance`` est le ``trustLevel`` de l'appareil au moment du constat,
+    ``None`` s'il n'est plus au registre. L'ordre compte : un appareil
+    révoqué au moment où sa session expirait a été révoqué — c'est ce que
+    Carlito a fait, et ce qu'il doit relire.
+    """
+    from diapason.mesh.registry import TRUST_REVOKED, TRUST_TRUSTED
+    from diapason.mesh.sessions import SESSION_TTL_MS
+
+    if confiance is None:
+        return "appareil oublié par le Mac"
+    if confiance == TRUST_REVOKED:
+        return "appareil révoqué depuis le Mac"
+    if confiance != TRUST_TRUSTED:
+        return f"appareil plus approuvé ({confiance})"
+    if maintenant_ms >= echeance_ms:
+        return f"session expirée ({SESSION_TTL_MS // 3_600_000} h)"
+    return "session fermée (page Appareils du Mac, ou déconnexion du téléphone)"
+
+
 class _Coupure:
     """Ce qui relie la surveillance d'une session au flux qu'elle garde."""
 
@@ -216,6 +241,17 @@ class PasserelleTailnet:
         from diapason.mesh.identity import device_identity, owner_id
 
         return device_identity().device_id, owner_id()
+
+    def _motif_de_fermeture(self, appareil: str | None, echeance_ms: int) -> str:
+        """Pourquoi la session tenue ne vaut plus, lu dans le registre (bloquant)."""
+        from diapason.mesh.registry import now_ms
+
+        try:
+            fiche = self._registre_courant().find(appareil) if appareil else None
+        except Exception as exc:  # noqa: BLE001 - le journal dit pourquoi il ne sait pas
+            return f"motif inconnu : registre illisible ({type(exc).__name__})"
+        confiance = fiche.get("trustLevel") if fiche else None
+        return motif_de_fermeture(echeance_ms, now_ms(), confiance)
 
     # ── ASGI ─────────────────────────────────────────────────────────────
 
@@ -408,6 +444,11 @@ class PasserelleTailnet:
         websocket = scope.get("type") == "websocket"
         verrou = asyncio.Lock()
         etat = {"accepte": False, "ferme": False}
+        # L'identifiant de la réponse du chat (X-Diapason-Request-Id, posé par
+        # telemetry/chat_latency.measure_response). Revue du 28/09/2026 : la
+        # ligne chat_performance d'un flux coupé ici ne se rapprochait de la
+        # ligne WARNING ci-dessous que par l'heure.
+        requete: list[str] = []
 
         async def envoyer(message: dict) -> None:
             async with verrou:
@@ -421,6 +462,12 @@ class PasserelleTailnet:
                     etat["accepte"] = True
                 elif genre == "websocket.close":
                     etat["ferme"] = True
+                elif genre == "http.response.start":
+                    requete[:] = [
+                        valeur.decode("latin-1")
+                        for cle, valeur in message.get("headers") or []
+                        if cle.lower() == b"x-diapason-request-id"
+                    ][:1]
                 await send(message)
 
         attente_recue: asyncio.Task | None = None
@@ -474,10 +521,25 @@ class PasserelleTailnet:
                 await asyncio.sleep(min(self._intervalle_s, reste_s))
                 verdict = await asyncio.to_thread(sessions.verify_session, jeton)
                 if verdict is None:
-                    logger.info(
-                        "passerelle : session d'appareil fermée pendant %s %s",
+                    # 28/09/2026 : cette ligne était en INFO, sous le niveau
+                    # WARNING du logger diapason (cli/log_config.py) : elle
+                    # n'atteignait jamais serve.err.log. Le 26/09 à 19:44, une
+                    # réponse du chat coupée au téléphone ne se distinguait
+                    # donc pas d'une coupure du réseau — l'absence de la ligne
+                    # ne prouvait rien. Le motif est lu hors de la boucle :
+                    # le registre est un SQLite.
+                    appareil = scope.get("diapason.appareil")
+                    motif = await asyncio.to_thread(
+                        self._motif_de_fermeture, appareil, echeance_ms
+                    )
+                    logger.warning(
+                        "passerelle : session d'appareil fermée (%s) — %s %s coupé, "
+                        "appareil %s%s",
+                        motif,
                         scope.get("type"),
                         scope.get("path"),
+                        appareil,
+                        f", requête {requete[0]}" if requete else "",
                     )
                     await couper()
                     return

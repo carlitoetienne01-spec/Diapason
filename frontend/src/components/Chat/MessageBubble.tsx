@@ -6,7 +6,7 @@ import rehypeKatex from 'rehype-katex';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import 'katex/dist/katex.min.css';
-import { Copy, Check, Globe, FileText } from 'lucide-react';
+import { Copy, Check, Globe, FileText, RotateCw } from 'lucide-react';
 import { AudioPlayer } from './AudioPlayer';
 import { TerminalExecution } from './TerminalExecution';
 import { appelsDeRecherche } from './etatExecution';
@@ -27,6 +27,7 @@ import {
   type DemandeDeVerification,
 } from './notesDeVerification';
 import { useAppStore } from '../../lib/store';
+import { EVENEMENT_RENVOYER, cleDeCoupure, preparerRenvoi, type DemandeDeRenvoi } from '../../lib/coupureDuFlux';
 import { isCloudModel } from '../../lib/cloud-models';
 import { libellesVisuel } from './visuels/libelles';
 import { genreVisuel, remarkVisuels } from './visuels/formatVisuel';
@@ -189,6 +190,55 @@ function VerifierEnLigneButton({ messageId }: { messageId: string }) {
       <Globe size={11} />
       {t('chat.verification.verifierEnLigne')}
     </button>
+  );
+}
+
+/**
+ * 28/09/2026 : sous une réponse coupée par le réseau, ce qui s'est passé,
+ * le moyen de renvoyer la même question, et le nom brut en petit. Le bouton
+ * est visible sans survol et fait 40 px au doigt (règles du téléphone) ; il
+ * n'existe que sur la dernière bulle du fil, et seulement si rien n'a
+ * répondu depuis (lib/coupureDuFlux.ts, `preparerRenvoi`).
+ */
+function AvisDeCoupure({ message }: { message: ChatMessage }) {
+  const { t } = useTranslation();
+  const isStreaming = useAppStore((s) => s.streamState.isStreaming);
+  const activeId = useAppStore((s) => s.activeId);
+  const renvoyable = useAppStore((s) => preparerRenvoi(s.messages, message.id) !== null);
+  const coupure = message.connectionLost;
+  if (!coupure) return null;
+  const renvoyer = () => {
+    if (!activeId || isStreaming) return;
+    window.dispatchEvent(
+      new CustomEvent<DemandeDeRenvoi>(EVENEMENT_RENVOYER, {
+        detail: { conversationId: activeId, messageId: message.id },
+      }),
+    );
+  };
+  return (
+    <div role="status" className="mt-2 flex flex-col items-start gap-1.5 text-sm">
+      <p style={{ color: 'var(--color-warning)' }}>{t(cleDeCoupure(coupure))}</p>
+      {message.toolCalls && message.toolCalls.length > 0 && (
+        <p className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>{t('chat.coupure.outils')}</p>
+      )}
+      {renvoyable && (
+        <button
+          type="button"
+          onClick={renvoyer}
+          disabled={isStreaming}
+          className="inline-flex items-center gap-1.5 min-h-8 mobile:min-h-10 px-3 mobile:px-4 rounded-full text-xs font-medium cursor-pointer disabled:cursor-default disabled:opacity-40"
+          style={{ color: 'var(--color-accent)', border: '1px solid currentColor' }}
+          title={t('chat.coupure.renvoyerAide')}
+          aria-label={t('chat.coupure.renvoyerAide')}
+        >
+          <RotateCw size={12} />
+          {t('chat.coupure.renvoyer')}
+        </button>
+      )}
+      <p className="text-[11px] font-mono break-all" style={{ color: 'var(--color-text-tertiary)' }}>
+        {coupure.detail}
+      </p>
+    </div>
   );
 }
 
@@ -363,6 +413,8 @@ export const MessageBubble = memo(function MessageBubble({ message, isLive = fal
           ))}
         </div>
       )}
+
+      {!isLive && message.connectionLost && <AvisDeCoupure message={message} />}
 
       {/* Footer: copy + badge de vérification + x-ray. 21/09/2026 (P1/P2 du
           jury) : le niveau vient du serveur, jamais du modèle ; le bouton

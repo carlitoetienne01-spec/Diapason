@@ -391,6 +391,232 @@ class TestMesures:
         assert all("loadMs" not in m for m in mesures["inferences"]), "absence ≠ zéro"
 
 
+class TestLaRaisonDeFinDuFlux:
+    """28/09/2026 : une réponse coupée au téléphone (26/09, 19:44) laissait
+    « completed=False » et rien d'autre dans chat_performance — un client
+    parti et un générateur qui lève s'y lisaient pareil. §5 : la ligne dit
+    maintenant pourquoi le flux s'est arrêté, sans rien changer au flux."""
+
+    _JOURNAL = "diapason.telemetry.chat_latency"
+
+    def _fin(self, caplog) -> str:
+        lignes = [
+            r.getMessage()
+            for r in caplog.records
+            if r.name == self._JOURNAL and "chat_performance" in r.getMessage()
+        ]
+        assert len(lignes) == 1, f"une ligne chat_performance par réponse : {lignes}"
+        return lignes[0].split(" end=", 1)[1].split(" ", 1)[0]
+
+    @pytest.mark.asyncio
+    async def test_une_reponse_entiere_finit_done(self, caplog):
+        caplog.set_level("INFO", logger=self._JOURNAL)
+
+        async def source():
+            yield 'data: {"choices":[{"delta":{"content":"Bonjour"}}]}\n\n'
+            yield "data: [DONE]\n\n"
+
+        sortie = [t async for t in measured_sse(source(), ChatLatency())]
+        assert sortie[-1] == "data: [DONE]\n\n", "le flux lui-même ne change pas"
+        assert self._fin(caplog) == "done"
+
+    @pytest.mark.asyncio
+    async def test_une_source_qui_s_arrete_sans_done(self, caplog):
+        caplog.set_level("INFO", logger=self._JOURNAL)
+
+        async def source():
+            yield 'data: {"choices":[{"delta":{"content":"Bon"}}]}\n\n'
+
+        _ = [t async for t in measured_sse(source(), ChatLatency())]
+        assert self._fin(caplog) == "no_done"
+
+    @pytest.mark.asyncio
+    async def test_le_lecteur_qui_ferme_le_flux_se_dit_closed(self, caplog):
+        """Un envoi qui échoue : le lecteur cesse de lire et ferme le
+        générateur. La ligne dit COMMENT le flux s'arrête, pas QUI l'arrête :
+        « client_gone » (jusqu'à la revue du 28/09/2026) s'écrivait aussi
+        quand la passerelle coupait une session fermée depuis le Mac, le
+        téléphone lisant encore."""
+        caplog.set_level("INFO", logger=self._JOURNAL)
+
+        async def source():
+            yield 'data: {"choices":[{"delta":{"content":"Bon"}}]}\n\n'
+            await asyncio.Event().wait()
+            yield "inaccessible"
+
+        flux = measured_sse(source(), ChatLatency())
+        await anext(flux)
+        await flux.aclose()
+        assert self._fin(caplog) == "closed"
+
+    @pytest.mark.asyncio
+    async def test_fermee_par_la_boucle_dans_un_autre_contexte_la_ligne_s_ecrit(
+        self, caplog
+    ):
+        """Un envoi qui lève (ASGI 2.4) laisse le générateur au finaliseur
+        asyncgen de la boucle, qui le ferme dans une AUTRE tâche et un autre
+        Context : reset() levait « created in a different Context » et la
+        ligne chat_performance de cette fin-là ne s'écrivait jamais."""
+        import contextvars
+
+        caplog.set_level("INFO", logger=self._JOURNAL)
+
+        async def source():
+            yield 'data: {"choices":[{"delta":{"content":"Bon"}}]}\n\n'
+            await asyncio.Event().wait()
+            yield "inaccessible"
+
+        flux = measured_sse(source(), ChatLatency())
+        await anext(flux)
+        await asyncio.create_task(flux.aclose(), context=contextvars.Context())
+        assert self._fin(caplog) == "closed"
+
+    @pytest.mark.asyncio
+    async def test_la_tache_annulee_se_dit_cancelled(self, caplog):
+        """Starlette annule la réponse sur un http.disconnect — le client
+        parti, ou la passerelle qui coupe une session fermée : la ligne ne
+        prétend pas savoir lequel (sa ligne WARNING le dit, même requête)."""
+        caplog.set_level("INFO", logger=self._JOURNAL)
+        entre = asyncio.Event()
+
+        async def source():
+            entre.set()
+            await asyncio.Event().wait()
+            yield "inaccessible"
+
+        async def lire():
+            async for _ in measured_sse(source(), ChatLatency()):
+                pass
+
+        tache = asyncio.create_task(lire())
+        await entre.wait()
+        tache.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await tache
+        assert self._fin(caplog) == "cancelled"
+
+    @pytest.mark.asyncio
+    async def test_une_exception_de_la_source_se_nomme_et_remonte(self, caplog):
+        caplog.set_level("INFO", logger=self._JOURNAL)
+
+        async def source():
+            yield 'data: {"choices":[{"delta":{"content":"Bon"}}]}\n\n'
+            raise httpx.ReadError("Ollama est tombé")
+
+        with pytest.raises(httpx.ReadError):
+            _ = [t async for t in measured_sse(source(), ChatLatency())]
+        assert self._fin(caplog) == "error:ReadError", (
+            "une exception ne doit pas se lire comme un client parti"
+        )
+
+    def _ligne(self, caplog) -> str:
+        return next(
+            r.getMessage()
+            for r in caplog.records
+            if r.name == self._JOURNAL and "chat_performance" in r.getMessage()
+        )
+
+    @pytest.mark.asyncio
+    async def test_une_erreur_dite_avant_done_n_est_pas_une_reponse_complete(
+        self, caplog
+    ):
+        """Revue du 28/09/2026 : un générateur qui rattrape l'exception,
+        émet « Error during generation » puis [DONE] s'écrivait
+        « completed=True end=done » — une panne lue comme un succès (§100)."""
+        from diapason.telemetry.chat_latency import record_stream_error
+
+        caplog.set_level("INFO", logger=self._JOURNAL)
+
+        async def source():
+            yield 'data: {"choices":[{"delta":{"content":"Bon"}}]}\n\n'
+            record_stream_error(httpx.ReadError("Ollama est tombé"))
+            yield (
+                'data: {"choices":[{"delta":{"content":"Error"},'
+                '"finish_reason":"stop"}]}\n\n'
+            )
+            yield "data: [DONE]\n\n"
+
+        sortie = [t async for t in measured_sse(source(), ChatLatency())]
+        assert sortie[-1] == "data: [DONE]\n\n", "le flux lui-même ne change pas"
+        assert self._fin(caplog) == "error:ReadError"
+        assert "completed=False" in self._ligne(caplog), (
+            "une génération tombée en route n'est pas une réponse complète"
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("chemin", ["court", "outils_auto", "outils_client"])
+    async def test_ollama_qui_tombe_en_route_se_lit_dans_le_journal(
+        self, chemin, caplog, monkeypatch
+    ):
+        """Le vrai chemin : routes._handle_stream (et _handle_stream_tools)
+        rattrape l'exception d'Ollama. Le client reçoit toujours « Error during
+        generation » puis [DONE] ; le journal, lui, ne dit plus « done »."""
+        from diapason.core.events import EventBus
+        from diapason.security.guardrails import GuardrailsEngine
+        from diapason.server.models import ChatCompletionRequest
+        from diapason.telemetry.chat_latency import measure_response
+        from diapason.telemetry.instrumented_engine import InstrumentedEngine
+
+        caplog.set_level("INFO", logger=self._JOURNAL)
+        monkeypatch.setattr(
+            routes, "_ensure_identity_prompt", lambda messages, *a, **kw: messages
+        )
+
+        class Reponse(httpx.AsyncByteStream):
+            async def __aiter__(self):
+                yield (json.dumps({"message": {"content": "Début"}}) + "\n").encode()
+                raise httpx.ReadError("Ollama est tombé")
+
+            async def aclose(self):
+                pass
+
+        moteur = OllamaEngine(host="http://local-test")
+        moteur._async_transport = httpx.MockTransport(
+            lambda _: httpx.Response(200, stream=Reponse())
+        )
+        enveloppe = InstrumentedEngine(GuardrailsEngine(moteur), EventBus())
+        req = ChatCompletionRequest(
+            model="local",
+            messages=[ChatMessage(role="user", content="Explique les saisons.")],
+            stream=True,
+        )
+        try:
+            if chemin == "outils_client":
+                req.tools = [
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "lecture",
+                            "parameters": {"type": "object"},
+                        },
+                    }
+                ]
+                reponse = await routes._handle_stream_tools(enveloppe, "local", req)
+            else:
+                reponse = await routes._handle_stream(
+                    enveloppe,
+                    "local",
+                    req,
+                    tooling=([], None) if chemin == "outils_auto" else None,
+                )
+            reponse = measure_response(reponse, ChatLatency())
+            corps = ""
+            async with asyncio.timeout(5):
+                async for frame in reponse.body_iterator:
+                    corps += frame if isinstance(frame, str) else frame.decode()
+        finally:
+            moteur.close()
+        assert "Error during generation" in corps and corps.endswith(
+            "data: [DONE]\n\n"
+        ), "le flux envoyé au client ne change pas"
+        # Le moteur traduit la ReadError d'httpx : c'est ce type-là que la
+        # route rattrape, et que la ligne nomme.
+        assert self._fin(caplog) == "error:EngineConnectionError", (
+            "Ollama tombé en route ne doit pas s'écrire « end=done »"
+        )
+        assert "completed=False" in self._ligne(caplog)
+
+
 class TestFermetureDuFluxComplet:
     """§100 : fermer une réponse SSE doit atteindre la connexion du moteur."""
 

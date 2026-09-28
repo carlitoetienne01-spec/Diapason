@@ -103,3 +103,66 @@ clé.
 Sous pytest, `tests/conftest.py` redirige le magasin de tout `create_app`
 vers un répertoire jetable (portée session) : la base réelle ne doit jamais
 être ouverte par un test.
+
+## Le téléphone synchronise sans clé, par le cookie (28 septembre 2026)
+
+**Le défaut.** `tirerUneFois` et `pousser` sortaient sur `if (!getApiKey())
+return;` — deux gardes du 16 septembre, écrites avant le téléphone. Dans la
+WebView du téléphone, `getApiKey()` vaut toujours `''` : la passerelle du
+tailnet (`server/passerelle_tailnet.py`) authentifie par le cookie `HttpOnly`
+de la session d'appareil (`diapason_appareil`) et **refuse** la clé locale.
+Le journal complet ne portait donc aucun `GET` ni `PUT /v1/conversations`
+venu du téléphone, alors que `tests/contract/tailnet_portee.json` classe les
+trois routes `session` (permises). Les discussions tapées au téléphone ne
+vivaient que dans le `localStorage` de sa WebView (une troisième origine,
+`https://<Mac>.<tailnet>.ts.net`) ; celles du Mac n'y arrivaient jamais.
+
+**La règle.** Une requête de synchronisation part si
+`serveurJoignable(getApiKey(), serviParLeTailnet())` : une clé, OU le bundle
+servi par la passerelle (le pont natif, ou l'en-tête
+`X-Diapason-Passerelle: tailnet` vu sur une réponse — `lib/tailnet.ts`). Au
+téléphone, `apiFetch` part sans en-tête `Authorization` et le navigateur
+joint le cookie de même origine, comme à tout autre appel du bundle ; les
+`PUT` et `DELETE` portent l'`Origin` que la passerelle exige des écritures.
+Hors de la passerelle et sans clé, rien ne part : la garantie du 16
+septembre (pas de faux « synchronisé ») tient toujours.
+
+**Le premier tick du téléphone.** Son état de synchronisation n'a jamais
+servi (curseur 0, carte vide) : le `GET` sans `since` tire tout ce que le Mac
+détient et le fusionne au grain du message ; la poussée qui suit envoie
+chaque conversation locale non vierge que la carte ne connaît pas — celles
+tapées au téléphone depuis le 26 septembre compris — et les suppressions
+faites au téléphone partent en `DELETE`. Rien de neuf dans la règle de
+fusion : c'est la même union, commutative et idempotente.
+
+**Un 401 servi par le tailnet = session d'appareil perdue** (expirée à 12 h,
+fermée ou révoquée depuis le Mac) : `sessionPerdue(401, true)`, qu'il tombe
+sur le `GET`, un `PUT` ou un `DELETE`. Le moteur le dit une fois dans la
+console, puis ses ticks et ses poussées se taisent ; chaque reprise (`focus`,
+retour au premier plan, retour du réseau, réouverture du panneau) sonde UNE
+fois — un 401 par retour, jamais au tick. Il ne vide RIEN : `localStorage`,
+carte, curseur et file des suppressions restent tels quels, et rien n'est mis
+en quarantaine. Au Mac, un 401 reste transitoire (la clé n'est pas encore
+injectée) et se réessaie au tick, comme avant.
+
+**La synchronisation reste muette jusqu'au prochain chargement de la page.**
+Une session morte ne revit pas sous une page ouverte : la coquille en rouvre
+une par une NAVIGATION — au démarrage à froid, sur le 401 du document, ou au
+retour au premier plan passé 6 h — qui remet ce module à zéro ; avant 6 h,
+elle reprend le même cookie sans rien faire (`deciderOuverture`, dépôt
+`diapason_mobile`). Rien n'est perdu : les discussions restent dans la
+WebView et partent avec la page suivante. (Corrigé le 28/09/2026 après
+revue : ce paragraphe disait que la coquille rouvre une session « à la
+reprise », ce qu'elle ne fait qu'après 6 h.)
+
+**Une tombale refusée n'est pas jetée.** Un `DELETE` refusé pour de bon ne
+retire l'id de la file que si le serveur ne peut pas l'ADRESSER (404, 422 :
+`idNonAdressable`). Tout autre refus — un 403 de la passerelle, « Origine
+refusée » — garde la tombale en file, mise de côté pour la session : jetée,
+la conversation supprimée revenait au tirage suivant.
+
+Tenu par `lib/convSync.telephone.test.ts` (le moteur entier sans clé : tirer,
+pousser, supprimer, curseur ; un 401 sur le `GET`, puis page cachée sur le
+`DELETE` et sur le `PUT` ; un 403 et un 404 sur le `DELETE`) et
+`lib/convSync.test.ts` (les fonctions pures). Dix-sept mutations, dix-sept
+tests qui échouent.
