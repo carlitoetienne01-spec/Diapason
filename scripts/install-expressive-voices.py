@@ -171,6 +171,29 @@ def _defaire_les_liens(modele: Path, liens: list[str]) -> None:
         _retirer(modele, nom)
 
 
+def _sans_lien(modele: Path, operation: str) -> None:
+    # 28/09/2026 : verifier() et copier() ne passaient plus à travers un
+    # lien, mais le téléchargement, si : huggingface_hub retire puis réécrit
+    # local_dir/speech_tokenizer/model.safetensors (ou y recopie son cache)
+    # à travers un speech_tokenizer lié — dans le dossier de l'utilisateur,
+    # avant que la vérification n'ait vu le lien. Tout ce qui écrit dans
+    # model/ passe donc d'abord ici : chaque lien part (le lien seul), et s'il
+    # en reste un, rien n'est écrit.
+    liens = _liens(modele)
+    _defaire_les_liens(modele, liens)
+    if restes := _liens(modele):
+        raise RuntimeError(
+            f"Impossible de retirer {', '.join(restes)} (lien symbolique) : "
+            "supprimez le lien lui-même, pas sa cible, puis relancez le "
+            f"script. Rien n'a été {operation}."
+        )
+    if liens:
+        print(
+            "Lien symbolique retiré de model/, sa cible reste intacte : "
+            + ", ".join(liens)
+        )
+
+
 def verifier(modele: Path, temoin: Path) -> None:
     liens = _liens(modele)
     refuses = _non_conformes(modele)
@@ -237,14 +260,8 @@ def copier(source: Path, modele: Path, temoin: Path) -> None:
     # témoin qui dirait le contraire.
     temoin.unlink(missing_ok=True)
     # 28/09/2026 : copier par-dessus un model/speech_tokenizer lié effaçait
-    # puis réécrivait les fichiers du dossier extérieur. Les liens tombent
-    # d'abord ; s'il en reste un, rien n'est copié à travers lui.
-    _defaire_les_liens(modele, _liens(modele))
-    if restes := _liens(modele):
-        raise RuntimeError(
-            f"Impossible de retirer {', '.join(restes)} (lien symbolique) : "
-            "supprimez-les, puis relancez le script. Rien n'a été copié."
-        )
+    # puis réécrivait les fichiers du dossier extérieur.
+    _sans_lien(modele, "copié")
     for nom in EMPREINTES:
         cible = modele / nom
         cible.parent.mkdir(parents=True, exist_ok=True)
@@ -292,6 +309,7 @@ def main() -> None:
     if args.model_source:
         copier(args.model_source, modele, temoin)
     elif not temoin.exists():
+        _sans_lien(modele, "téléchargé")
         script = (
             "import os; os.environ['HF_HUB_DISABLE_IMPLICIT_TOKEN']='1'; "
             "from huggingface_hub import snapshot_download; "

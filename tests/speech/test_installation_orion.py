@@ -653,6 +653,87 @@ class TestAucuneSuppressionNeSuitUnLien:
         assert not banc.temoin.exists(), "aucun témoin sur une copie abandonnée"
         assert not moteur_installe(), "la voix ne doit pas se dire disponible"
 
+    @pytest.mark.parametrize("avant", ["rien", "un-refus"])
+    def test_le_telechargement_ne_passe_jamais_a_travers_un_lien(
+        self, banc, tmp_path, capsys, avant
+    ):
+        """§5 — le téléchargement écrasait le codec de l'utilisateur.
+
+        Sans témoin (première installation, ou relance après un refus),
+        main() téléchargeait avant toute vérification : huggingface_hub
+        retire puis réécrit speech_tokenizer/model.safetensors À TRAVERS le
+        dossier lié, et le refus du lien arrivait après coup, en affirmant
+        que sa cible n'était « jamais touchée ».
+        """
+        ailleurs = tmp_path / "codec_de_l_utilisateur"
+        if avant == "un-refus":
+            banc.lancer()
+            (banc.modele / "model.safetensors").write_bytes(b"poids du locuteuR")
+            with pytest.raises(RuntimeError, match="model.safetensors"):
+                banc.lancer()
+            assert not banc.temoin.exists(), "précondition : le refus retire le témoin"
+            _ecrire(ailleurs, {"model.safetensors": self.CODEC_PRECIEUX})
+            _lier(banc.modele / "speech_tokenizer", ailleurs)
+        else:
+            _ecrire(ailleurs, {"model.safetensors": self.CODEC_PRECIEUX})
+            banc.modele.mkdir(parents=True)
+            (banc.modele / "speech_tokenizer").symlink_to(
+                ailleurs, target_is_directory=True
+            )
+        telechargements_avant = len(banc.telechargements)
+
+        banc.lancer()
+
+        assert len(banc.telechargements) == telechargements_avant + 1, (
+            "précondition : ce lancement a bien téléchargé"
+        )
+        assert (ailleurs / "model.safetensors").read_bytes() == self.CODEC_PRECIEUX, (
+            "le téléchargement ne doit rien écrire derrière un lien"
+        )
+        assert [p.name for p in ailleurs.iterdir()] == ["model.safetensors"], (
+            "rien ne doit être ajouté dans le dossier lié"
+        )
+        assert not (banc.modele / "speech_tokenizer").is_symlink(), (
+            "le codec doit arriver dans un vrai dossier de model/"
+        )
+        assert moteur_installe(), "le modèle téléchargé et vérifié rend la voix prête"
+        sortie = capsys.readouterr().out
+        assert "Lien symbolique retiré" in sortie and "speech_tokenizer" in sortie, (
+            f"le retrait du lien doit être dit, pas fait en silence : {sortie!r}"
+        )
+
+    def test_un_lien_impossible_a_retirer_arrete_le_telechargement(
+        self, banc, tmp_path, verrouiller
+    ):
+        """§5 — la relance suivante écrasait ce que la première avait protégé.
+
+        model/ en lecture seule garde le lien : la relance refuse sans rien
+        effacer et retire le témoin… et la suivante, sans témoin,
+        téléchargeait à travers le lien resté en place.
+        """
+        ailleurs = tmp_path / "codec_de_l_utilisateur"
+        self._installer_puis_lier_le_codec(
+            banc, ailleurs, {"model.safetensors": self.CODEC_PRECIEUX}
+        )
+        verrouiller(banc.modele)
+        with pytest.raises(RuntimeError, match="Impossible de retirer speech_"):
+            banc.lancer()
+        assert not banc.temoin.exists(), "précondition : le refus retire le témoin"
+
+        with pytest.raises(RuntimeError, match="Rien n'a été téléchargé") as refus:
+            banc.lancer()
+
+        assert "Impossible de retirer speech_tokenizer (lien symbolique)" in str(
+            refus.value
+        ), f"le lien resté en place doit être nommé : {refus.value}"
+        assert banc.telechargements == [], (
+            "rien ne doit être téléchargé tant que le lien reste"
+        )
+        assert (ailleurs / "model.safetensors").read_bytes() == self.CODEC_PRECIEUX, (
+            "rien ne doit être écrit à travers un lien resté en place"
+        )
+        assert not moteur_installe(), "la voix ne doit pas se dire disponible"
+
 
 class TestUnFichierRefuseEstRetelecharge:
     def test_le_vrai_hub_ne_ressert_plus_un_fichier_refuse(self, tmp_path, monkeypatch):

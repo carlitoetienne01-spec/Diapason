@@ -139,10 +139,13 @@ une copie fausse ne remplace rien.
 
 Un lien symbolique sous `model/`, de fichier ou de dossier, est refusé lui
 aussi : le glob du chargeur suivrait un `speech_tokenizer` lié hors de la
-vérification. Seul le lien est retiré, jamais sa cible, et aucune suppression
-ni aucune copie ne passe à travers un lien : un lien impossible à retirer est
-nommé, et ce qu'il y a derrière reste intact (28 septembre 2026 ; avant, la
-relance effaçait le fichier extérieur refusé).
+vérification. Seul le lien est retiré, jamais sa cible, et aucune
+suppression, aucune copie ni aucun téléchargement ne passe à travers un
+lien : avant de télécharger ou de copier, le script retire chaque lien de
+`model/` et le dit ; un lien impossible à retirer est nommé, rien n'est
+écrit, et ce qu'il y a derrière reste intact (28 septembre 2026 ; avant, la
+relance effaçait le fichier extérieur refusé, puis le téléchargement
+réécrivait encore le codec derrière un `speech_tokenizer` lié).
 
 `README.md` et `.gitattributes` sont les deux noms que l'ancienne version
 du script posait, et qu'une installation faite avant le 28 septembre 2026
