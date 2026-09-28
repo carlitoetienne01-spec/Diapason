@@ -111,6 +111,22 @@ def banc(tmp_path, monkeypatch) -> _Banc:
     return _Banc(tmp_path, monkeypatch)
 
 
+@pytest.fixture
+def verrouiller():
+    """Met un dossier en lecture seule, et le rend inscriptible à la fin."""
+    if os.geteuid() == 0:
+        pytest.skip("root retire un fichier d'un dossier en lecture seule")
+    verrouilles: list[Path] = []
+
+    def _verrouiller(dossier: Path) -> None:
+        dossier.chmod(0o555)
+        verrouilles.append(dossier)
+
+    yield _verrouiller
+    for dossier in verrouilles:
+        dossier.chmod(0o755)
+
+
 class TestLeTemoinDeLOreilleMLX:
     def test_un_telechargement_conforme_ecrit_un_temoin_qui_porte_les_empreintes(
         self, banc
@@ -146,6 +162,33 @@ class TestLeTemoinDeLOreilleMLX:
             "weights.safetensors"
         ], "la relance conseillée doit retélécharger le poids refusé"
         assert moteur_installe(), "le modèle réparé doit être rendu disponible"
+
+    def test_un_poids_impossible_a_retirer_est_nomme_sans_se_dire_retire(
+        self, banc, verrouiller
+    ):
+        """§5 — « Ces fichiers ont été retirés » ne couvre jamais un fichier resté.
+
+        Vider la liste des restants laissait les tests verts : le message
+        aurait affirmé le retrait d'un poids toujours en place, que le hub
+        aurait resservi à la relance conseillée, refusé de nouveau, sans fin.
+        """
+        banc.lancer()
+        poids = banc.modele / "weights.safetensors"
+        poids.write_bytes(b"poids de l'oreillE")
+        verrouiller(banc.modele)
+
+        with pytest.raises(RuntimeError, match="weights.safetensors") as refus:
+            banc.lancer()
+
+        assert poids.exists(), "précondition : le dossier verrouillé garde le poids"
+        assert "Impossible de retirer weights.safetensors" in str(refus.value), (
+            f"le fichier resté en place doit être nommé : {refus.value}"
+        )
+        assert "retirés" not in str(refus.value), (
+            "le message ne doit pas dire retiré un fichier resté en place"
+        )
+        assert not banc.temoin.exists(), "le témoin d'un poids refusé doit tomber"
+        assert not moteur_installe(), "l'oreille ne doit pas se dire disponible"
 
     def test_un_fichier_illisible_est_un_refus_et_non_une_exception_qui_fuit(
         self, banc

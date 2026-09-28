@@ -301,6 +301,34 @@ class TestCeQueLeChargeurLirait:
         banc.lancer()
         assert moteur_installe(), "la relance conseillée doit suffire à réparer"
 
+    def test_un_intrus_impossible_a_retirer_est_nomme_sans_se_dire_retire(
+        self, banc, verrouiller
+    ):
+        """§5 — « Ces fichiers ont été retirés » ne couvre jamais un fichier resté.
+
+        Vider la liste des restants laissait les 23 tests verts : le message
+        aurait affirmé le retrait d'un intrus toujours en place, et la
+        relance conseillée l'aurait retrouvé, refusé de nouveau, sans fin.
+        """
+        _ecrire(banc.source, CONTENUS)
+        banc.lancer("--model-source", str(banc.source))
+        intrus = banc.modele / "speech_tokenizer/intrus.safetensors"
+        _ecrire(banc.modele, {"speech_tokenizer/intrus.safetensors": b"inconnu"})
+        verrouiller(banc.modele / "speech_tokenizer")
+
+        with pytest.raises(RuntimeError, match="hors de la table") as refus:
+            banc.lancer()
+
+        assert intrus.exists(), "précondition : le dossier verrouillé garde l'intrus"
+        assert "Impossible de retirer speech_tokenizer/intrus.safetensors" in str(
+            refus.value
+        ), f"le fichier resté en place doit être nommé : {refus.value}"
+        assert "retirés" not in str(refus.value), (
+            "le message ne doit pas dire retiré un fichier resté en place"
+        )
+        assert not banc.temoin.exists(), "le témoin d'un modèle refusé doit tomber"
+        assert not moteur_installe(), "la voix ne doit pas se dire disponible"
+
     def test_un_poids_illisible_a_la_relance_retire_le_temoin(self, banc):
         """§5 — une lecture impossible est un refus, pas une exception qui fuit.
 
