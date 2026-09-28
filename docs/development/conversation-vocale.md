@@ -120,6 +120,13 @@ Installation explicite sur Mac Apple Silicon :
 le venv produit ni la voix par défaut. Aucun téléchargement au démarrage
 d'une conversation. Les autres plateformes gardent leur voix classique.
 
+Depuis le 28 septembre 2026, les douze fichiers que le chargeur lit (poids,
+codec, configurations, vocabulaire) ont un SHA-256 fixé, comme ceux de
+l'oreille MLX : seuls ceux-là sont téléchargés ou copiés, et le témoin
+`installed.json` n'est écrit qu'après leur vérification. Relancer le script
+sur une installation existante re-vérifie ses poids ; un refus retire le
+témoin, et la voix cesse de se dire disponible.
+
 Dans **Parler**, le sélecteur propose B, A et la voix classique. Le choix
 passe par la configuration du serveur et reste identique entre les fenêtres.
 Il se fait avant la séance : une séance en cours conserve le timbre avec
