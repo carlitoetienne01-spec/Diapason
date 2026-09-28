@@ -27,6 +27,11 @@ EMPREINTES = {
 # seulement si weights.safetensors manque — ce que la vérification refuse et
 # que moteur_installe() exclut —, et son tokenizer vient de ses propres
 # assets. Aucun glob : un fichier de trop dans model/ n'est jamais lu.
+# Pas de refus des liens non plus (vérifié le 28/09/2026, quand la voix Orion
+# effaçait un fichier extérieur à travers model/speech_tokenizer lié) : les
+# deux noms sont à la racine de model/, aucun dossier lié ne peut s'intercaler
+# entre model/ et eux, et _retirer() défait un lien sans toucher sa cible.
+# Aucune suppression ni aucune copie ne sort donc de model/.
 
 
 def _empreinte(chemin: Path) -> str | None:

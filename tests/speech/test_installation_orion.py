@@ -20,6 +20,7 @@ import importlib.util
 import json
 import os
 import re
+import shutil
 import socket
 import sys
 import types
@@ -57,6 +58,31 @@ def _ecrire(dossier: Path, contenus: dict[str, bytes]) -> None:
 
 def _table(contenus: dict[str, bytes]) -> dict[str, str]:
     return {nom: hashlib.sha256(o).hexdigest() for nom, o in contenus.items()}
+
+
+def _lier(lien: Path, cible: Path) -> None:
+    """Remplace ``lien`` (fichier ou dossier du modèle) par un lien vers ``cible``."""
+    if lien.is_dir():
+        shutil.rmtree(lien)
+    else:
+        lien.unlink()
+    lien.symlink_to(cible, target_is_directory=cible.is_dir())
+
+
+@pytest.fixture
+def verrouiller():
+    """Met un dossier en lecture seule, et le rend inscriptible à la fin."""
+    if os.geteuid() == 0:
+        pytest.skip("root retire un fichier d'un dossier en lecture seule")
+    verrouilles: list[Path] = []
+
+    def _verrouiller(dossier: Path) -> None:
+        dossier.chmod(0o555)
+        verrouilles.append(dossier)
+
+    yield _verrouiller
+    for dossier in verrouilles:
+        dossier.chmod(0o755)
 
 
 class _Banc:
@@ -361,6 +387,214 @@ class TestCeQueLeChargeurLirait:
             banc.lancer("--model-source", str(banc.source))
 
         assert not banc.temoin.exists(), "aucun témoin sur une copie interrompue"
+        assert not moteur_installe(), "la voix ne doit pas se dire disponible"
+
+
+class TestAucuneSuppressionNeSuitUnLien:
+    """28/09/2026 : un sous-dossier lié du modèle menait les suppressions dehors.
+
+    Le cas suppose qu'un utilisateur ait lié lui-même un dossier du modèle
+    géré ; mais ce qui est derrière le lien est à lui, et la vérification
+    l'effaçait (CLAUDE.md : un code qui écrit doit valider son chemin).
+    """
+
+    CODEC_PRECIEUX = b"un autre codec, precieux"
+
+    def _installer_puis_lier_le_codec(self, banc, ailleurs, contenus):
+        _ecrire(banc.source, CONTENUS)
+        banc.lancer("--model-source", str(banc.source))
+        _ecrire(ailleurs, contenus)
+        _lier(banc.modele / "speech_tokenizer", ailleurs)
+
+    def test_un_dossier_du_codec_lie_ailleurs_est_refuse_et_seul_le_lien_part(
+        self, banc, tmp_path
+    ):
+        """§5 — le glob du chargeur suit le lien, la vérification non.
+
+        rglob ne descend pas dans un dossier lié : un intrus.safetensors posé
+        derrière model/speech_tokenizer était chargé par post_load_hook sans
+        passer par la table, et la clause qui refusait le lien n'avait aucun
+        test.
+        """
+        ailleurs = tmp_path / "codec_de_l_utilisateur"
+        self._installer_puis_lier_le_codec(
+            banc,
+            ailleurs,
+            {
+                "model.safetensors": CONTENUS["speech_tokenizer/model.safetensors"],
+                "intrus.safetensors": b"inconnu",
+            },
+        )
+
+        with pytest.raises(RuntimeError, match="lien symbolique") as refus:
+            banc.lancer()
+
+        assert "speech_tokenizer" in str(refus.value), f"lien non nommé : {refus.value}"
+        assert not banc.temoin.exists(), "le témoin d'un modèle refusé doit tomber"
+        assert not moteur_installe(), "la voix ne doit pas se dire disponible"
+        assert not os.path.lexists(banc.modele / "speech_tokenizer"), (
+            "le lien doit être retiré, sinon chaque relance le retrouve"
+        )
+        assert sorted(p.name for p in ailleurs.iterdir()) == [
+            "intrus.safetensors",
+            "model.safetensors",
+        ], "la cible du lien n'est pas au modèle : rien ne doit y être retiré"
+        banc.lancer()
+        assert moteur_installe(), "la relance conseillée doit suffire à réparer"
+        assert not (banc.modele / "speech_tokenizer").is_symlink(), (
+            "la relance doit reposer un vrai dossier"
+        )
+
+    def test_un_poids_lie_a_un_fichier_exterieur_est_refuse_meme_conforme(
+        self, banc, tmp_path
+    ):
+        """§5 — ce qu'on vérifie doit être dans model/, pas ailleurs.
+
+        Un model.safetensors lié à un fichier conforme passait : sa cible,
+        hors du modèle, peut changer sans que rien ne la re-vérifie.
+        """
+        _ecrire(banc.source, CONTENUS)
+        banc.lancer("--model-source", str(banc.source))
+        exterieur = tmp_path / "ailleurs/poids.safetensors"
+        _ecrire(exterieur.parent, {exterieur.name: CONTENUS["model.safetensors"]})
+        _lier(banc.modele / "model.safetensors", exterieur)
+
+        with pytest.raises(RuntimeError, match="lien symbolique") as refus:
+            banc.lancer()
+
+        assert "model.safetensors" in str(refus.value), (
+            f"lien non nommé : {refus.value}"
+        )
+        assert not moteur_installe(), "la voix ne doit pas se dire disponible"
+        assert exterieur.read_bytes() == CONTENUS["model.safetensors"], (
+            "seul le lien est retiré, jamais sa cible"
+        )
+        banc.lancer()
+        assert moteur_installe(), "la relance conseillée doit suffire à réparer"
+
+    def test_un_poids_refuse_derriere_un_lien_n_est_jamais_efface(self, banc, tmp_path):
+        """§5 — la vérification effaçait le vrai fichier du dossier lié.
+
+        Les fichiers refusés partaient AVANT le lien qui les portait :
+        _retirer(model/speech_tokenizer/model.safetensors) supprimait le
+        fichier extérieur, puis seulement le lien.
+        """
+        ailleurs = tmp_path / "codec_de_l_utilisateur"
+        self._installer_puis_lier_le_codec(
+            banc, ailleurs, {"model.safetensors": self.CODEC_PRECIEUX}
+        )
+
+        with pytest.raises(RuntimeError, match="lien symbolique"):
+            banc.lancer()
+
+        assert (ailleurs / "model.safetensors").read_bytes() == self.CODEC_PRECIEUX, (
+            "un fichier hors de model/ ne doit jamais être effacé"
+        )
+        assert not os.path.lexists(banc.modele / "speech_tokenizer"), (
+            "le lien, lui, doit être retiré"
+        )
+        assert not moteur_installe(), "la voix ne doit pas se dire disponible"
+        banc.lancer()
+        assert moteur_installe(), "la relance conseillée doit suffire à réparer"
+        assert (ailleurs / "model.safetensors").read_bytes() == self.CODEC_PRECIEUX, (
+            "la relance ne doit rien écrire derrière l'ancien lien"
+        )
+
+    def test_un_lien_impossible_a_retirer_ne_laisse_rien_effacer_derriere_lui(
+        self, banc, tmp_path, verrouiller
+    ):
+        """§5 — l'ordre ne suffit pas si le lien refuse de partir.
+
+        model/ en lecture seule garde le lien : le fichier refusé derrière
+        lui ne doit pas être effacé pour autant, et le message ne doit
+        demander de supprimer que le lien — pas le fichier de l'utilisateur.
+        """
+        ailleurs = tmp_path / "codec_de_l_utilisateur"
+        self._installer_puis_lier_le_codec(
+            banc, ailleurs, {"model.safetensors": self.CODEC_PRECIEUX}
+        )
+        verrouiller(banc.modele)
+
+        with pytest.raises(RuntimeError, match="lien symbolique") as refus:
+            banc.lancer()
+
+        assert (ailleurs / "model.safetensors").read_bytes() == self.CODEC_PRECIEUX, (
+            "rien ne doit être effacé à travers un lien resté en place"
+        )
+        a_supprimer = re.search(r"Impossible de retirer (.*?) :", str(refus.value))
+        assert a_supprimer and a_supprimer.group(1) == "speech_tokenizer", (
+            f"seul le lien doit être à supprimer à la main : {refus.value}"
+        )
+        assert "retirés" not in str(refus.value), "rien n'a été retiré"
+        assert not banc.temoin.exists(), "le témoin d'un modèle refusé doit tomber"
+        assert not moteur_installe(), "la voix ne doit pas se dire disponible"
+
+    def test_aucun_nom_ne_mene_une_suppression_hors_de_model(self, tmp_path):
+        """§5 — tout chemin supprimé doit se résoudre sous model/, sans lien.
+
+        Le garde-fou de _retirer() est la dernière barrière : un nom qui
+        remonte (« .. ») ou qui traverse un dossier lié désigne un fichier
+        d'ailleurs, et ne doit rien effacer.
+        """
+        installeur = _installeur()
+        modele = tmp_path / "model"
+        ailleurs = tmp_path / "ailleurs"
+        _ecrire(tmp_path, {"voisin.txt": b"a garder"})
+        _ecrire(ailleurs, {"model.safetensors": self.CODEC_PRECIEUX})
+        modele.mkdir()
+        (modele / "speech_tokenizer").symlink_to(ailleurs, target_is_directory=True)
+
+        installeur._retirer(modele, "../voisin.txt")
+        installeur._retirer(modele, "speech_tokenizer/model.safetensors")
+
+        assert (tmp_path / "voisin.txt").read_bytes() == b"a garder", (
+            "un nom qui remonte ne doit rien effacer hors de model/"
+        )
+        assert (ailleurs / "model.safetensors").read_bytes() == self.CODEC_PRECIEUX, (
+            "un nom qui traverse un lien ne doit rien effacer derrière lui"
+        )
+
+    def test_une_copie_ne_passe_jamais_a_travers_un_lien(self, banc, tmp_path):
+        """§5 — --model-source effaçait puis réécrivait le dossier lié.
+
+        copier() retirait speech_tokenizer/model.safetensors, donc le fichier
+        extérieur, puis y écrivait celui de la source.
+        """
+        ailleurs = tmp_path / "codec_de_l_utilisateur"
+        self._installer_puis_lier_le_codec(
+            banc, ailleurs, {"model.safetensors": self.CODEC_PRECIEUX}
+        )
+
+        banc.lancer("--model-source", str(banc.source))
+
+        assert (ailleurs / "model.safetensors").read_bytes() == self.CODEC_PRECIEUX, (
+            "la copie ne doit rien écrire ni effacer hors de model/"
+        )
+        assert not (banc.modele / "speech_tokenizer").is_symlink(), (
+            "le lien doit laisser place à un vrai dossier"
+        )
+        assert moteur_installe(), "la copie saine doit rendre la voix disponible"
+
+    def test_une_copie_s_arrete_devant_un_lien_impossible_a_retirer(
+        self, banc, tmp_path, verrouiller
+    ):
+        """§5 — un lien resté en place ne doit pas devenir un chemin d'écriture."""
+        ailleurs = tmp_path / "codec_de_l_utilisateur"
+        self._installer_puis_lier_le_codec(
+            banc, ailleurs, {"model.safetensors": self.CODEC_PRECIEUX}
+        )
+        verrouiller(banc.modele)
+
+        with pytest.raises(RuntimeError, match="Rien n'a été copié") as refus:
+            banc.lancer("--model-source", str(banc.source))
+
+        assert "Impossible de retirer speech_tokenizer" in str(refus.value), (
+            f"le lien resté en place doit être nommé : {refus.value}"
+        )
+        assert (ailleurs / "model.safetensors").read_bytes() == self.CODEC_PRECIEUX, (
+            "rien ne doit être copié à travers un lien resté en place"
+        )
+        assert not banc.temoin.exists(), "aucun témoin sur une copie abandonnée"
         assert not moteur_installe(), "la voix ne doit pas se dire disponible"
 
 

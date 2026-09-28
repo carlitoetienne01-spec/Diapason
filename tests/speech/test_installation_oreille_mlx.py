@@ -178,6 +178,38 @@ class TestLeTemoinDeLOreilleMLX:
         assert not moteur_installe(), "l'oreille ne doit pas se dire disponible"
 
 
+class TestRienNeSortDuDossierDeLOreille:
+    def test_un_poids_lie_refuse_perd_son_lien_et_jamais_sa_cible(self, banc, tmp_path):
+        """§5 — la voix Orion effaçait un fichier extérieur à travers un lien.
+
+        Ici les deux noms sont à la racine de model/ : seul le lien peut
+        être refusé, et c'est lui, pas sa cible, qui doit partir. Un
+        _retirer() qui résoudrait le chemin effacerait le fichier de
+        l'utilisateur.
+        """
+        banc.lancer()
+        exterieur = tmp_path / "ailleurs/poids.safetensors"
+        _ecrire(exterieur.parent, {exterieur.name: b"un autre poids, precieux"})
+        (banc.modele / "weights.safetensors").unlink()
+        (banc.modele / "weights.safetensors").symlink_to(exterieur)
+
+        with pytest.raises(RuntimeError, match="weights.safetensors"):
+            banc.lancer()
+
+        assert exterieur.read_bytes() == b"un autre poids, precieux", (
+            "un fichier hors de model/ ne doit jamais être effacé"
+        )
+        assert not moteur_installe(), "l'oreille ne doit pas se dire disponible"
+        banc.lancer()
+        assert not (banc.modele / "weights.safetensors").is_symlink(), (
+            "la relance doit reposer un vrai fichier à la place du lien"
+        )
+        assert moteur_installe(), "le modèle réparé doit être rendu disponible"
+        assert exterieur.read_bytes() == b"un autre poids, precieux", (
+            "la relance ne doit rien écrire derrière l'ancien lien"
+        )
+
+
 class TestLaCopieLocaleDeLOreille:
     def test_une_copie_saine_remplace_un_poids_en_lecture_seule(self, banc):
         """§5 — copy2 par-dessus un poids en r--r--r-- levait PermissionError.

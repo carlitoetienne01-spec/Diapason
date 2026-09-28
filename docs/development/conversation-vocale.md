@@ -136,6 +136,13 @@ au lieu de se le voir resservir par le hub. `--model-source` recopie même sur
 une installation existante, après avoir vérifié la source : une copie fausse
 ne remplace rien.
 
+Un lien symbolique sous `model/`, de fichier ou de dossier, est refusé lui
+aussi : le glob du chargeur suivrait un `speech_tokenizer` lié hors de la
+vérification. Seul le lien est retiré, jamais sa cible, et aucune suppression
+ni aucune copie ne passe à travers un lien : un lien impossible à retirer est
+nommé, et ce qu'il y a derrière reste intact (28 septembre 2026 ; avant, la
+relance effaçait le fichier extérieur refusé).
+
 Une installation faite avant le 28 septembre 2026 contient encore
 `README.md` et `.gitattributes` : sa première relance les refuse et les
 retire, la seconde (avec réseau) réécrit le témoin.

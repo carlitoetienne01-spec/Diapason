@@ -85,50 +85,100 @@ def _non_conformes(dossier: Path) -> list[str]:
     ]
 
 
+def _liens(modele: Path) -> list[str]:
+    # 28/09/2026 : rglob ne descend pas dans un lien de dossier (Python 3.13,
+    # recurse_symlinks=False), alors que le glob de post_load_hook le suit :
+    # un model/speech_tokenizer lié à un dossier extérieur faisait charger tout
+    # *.safetensors qui s'y trouvait sans qu'un seul passe par la table. Et
+    # c'est à travers lui que verifier() effaçait le vrai fichier de ce
+    # dossier. Un lien, de fichier ou de dossier, n'a pas sa place dans
+    # model/ : ce qu'on y vérifie doit y être, pas ailleurs.
+    if not modele.is_dir():
+        return []
+    return sorted(
+        chemin.relative_to(modele).as_posix()
+        for chemin in modele.rglob("*")
+        if chemin.is_symlink()
+    )
+
+
 def _hors_table(modele: Path) -> list[str]:
     # 28/09/2026 : seuls les douze noms étaient vérifiés, or mlx-audio charge
     # TOUT *.safetensors de model/ et de speech_tokenizer/ (glob), et
     # AutoTokenizer tout nom qu'il reconnaît dans model/. Un
     # intrus.safetensors posé à côté des poids passait la relance, qui
     # réécrivait le témoin « installé et vérifié ». Le dossier doit donc être
-    # la table, à la tenue du hub près.
+    # la table, à la tenue du hub près. Les liens sont refusés par _liens().
     if not modele.is_dir():
         return []
     return sorted(
         nom
         for chemin in modele.rglob("*")
-        if chemin.is_symlink() or not chemin.is_dir()
+        if not chemin.is_symlink() and not chemin.is_dir()
         if (nom := chemin.relative_to(modele).as_posix()) not in EMPREINTES
         and not nom.startswith(TENUE_DU_HUB)
     )
 
 
-def _retirer(chemin: Path) -> None:
+def _dans_le_modele(modele: Path, nom: str) -> bool:
+    # Un seul dossier lié (ou un « .. ») entre model/ et le fichier, et
+    # modele / nom désigne le fichier de quelqu'un d'autre : son dossier,
+    # résolu, n'est alors plus le chemin écrit sous model/.
+    return (modele / nom).parent.resolve() == modele.resolve() / Path(nom).parent
+
+
+def _present(modele: Path, nom: str) -> bool:
+    return _dans_le_modele(modele, nom) and os.path.lexists(modele / nom)
+
+
+def _retirer(modele: Path, nom: str) -> None:
+    # 28/09/2026 : _retirer(modele / "speech_tokenizer/model.safetensors")
+    # effaçait le fichier du dossier extérieur quand speech_tokenizer était un
+    # lien. Rien ne se supprime plus à travers un lien : un lien resté en
+    # place (dossier en lecture seule) laisse intact ce qu'il y a derrière.
+    if not _dans_le_modele(modele, nom):
+        return
+    chemin = modele / nom
     try:
         if chemin.is_dir() and not chemin.is_symlink():
             shutil.rmtree(chemin)
         else:
-            chemin.unlink(missing_ok=True)
+            chemin.unlink(missing_ok=True)  # un lien : lui seul, jamais sa cible
     except OSError:
         pass  # verifier() nomme ce qui reste, et demande de le retirer
 
 
+def _defaire_les_liens(modele: Path, liens: list[str]) -> None:
+    for nom in liens:
+        _retirer(modele, nom)
+
+
 def verifier(modele: Path, temoin: Path) -> None:
+    liens = _liens(modele)
     refuses = _non_conformes(modele)
     en_trop = _hors_table(modele)
-    if not refuses and not en_trop:
+    if not liens and not refuses and not en_trop:
         return
     # Relancer sur une installation existante re-vérifie ses poids.
     # Laisser l'ancien témoin ferait dire « installé » à moteur_installe()
     # sur un fichier qu'on vient de refuser (§5).
     temoin.unlink(missing_ok=True)
+    # Les liens tombent avant toute autre suppression, et seuls : une fois
+    # speech_tokenizer défait, « speech_tokenizer/model.safetensors » ne
+    # désigne plus rien hors de model/.
+    _defaire_les_liens(modele, liens)
     # 28/09/2026 : un fichier refusé restait en place, et huggingface_hub le
     # resservait sans rien retélécharger — ses métadonnées de local_dir
     # portent la bonne révision. Chaque relance refusait le même fichier.
     # Le retirer oblige la relance à le retélécharger (ou à le recopier).
     for nom in (*refuses, *en_trop):
-        _retirer(modele / nom)
+        _retirer(modele, nom)
     raisons = []
+    if liens:
+        raisons.append(
+            "lien symbolique, sa cible échapperait à la vérification et n'est "
+            "jamais touchée : " + ", ".join(liens)
+        )
     if refuses:
         raisons.append(
             "empreinte invalide ou fichier absent/illisible : " + ", ".join(refuses)
@@ -138,7 +188,11 @@ def verifier(modele: Path, temoin: Path) -> None:
             "hors de la table d'empreintes, le chargeur les lirait sans "
             "vérification : " + ", ".join(en_trop)
         )
-    restants = [n for n in (*refuses, *en_trop) if os.path.lexists(modele / n)]
+    # Derrière un lien resté en place, un nom désigne un fichier d'ailleurs :
+    # le nommer ici demanderait à l'utilisateur de l'effacer. Le lien suffit.
+    restants = [
+        n for n in dict.fromkeys((*liens, *refuses, *en_trop)) if _present(modele, n)
+    ]
     suite = (
         f"Impossible de retirer {', '.join(restants)} : supprimez-les, puis "
         "relancez le script."
@@ -164,13 +218,22 @@ def copier(source: Path, modele: Path, temoin: Path) -> None:
     # Une copie interrompue laisserait un modèle à moitié remplacé sous un
     # témoin qui dirait le contraire.
     temoin.unlink(missing_ok=True)
+    # 28/09/2026 : copier par-dessus un model/speech_tokenizer lié effaçait
+    # puis réécrivait les fichiers du dossier extérieur. Les liens tombent
+    # d'abord ; s'il en reste un, rien n'est copié à travers lui.
+    _defaire_les_liens(modele, _liens(modele))
+    if restes := _liens(modele):
+        raise RuntimeError(
+            f"Impossible de retirer {', '.join(restes)} (lien symbolique) : "
+            "supprimez-les, puis relancez le script. Rien n'a été copié."
+        )
     for nom in EMPREINTES:
         cible = modele / nom
         cible.parent.mkdir(parents=True, exist_ok=True)
         # Les poids installés sont en lecture seule (r--r--r--, constaté le
         # 28/09/2026) : copy2 par-dessus lève PermissionError, et un fichier
         # refusé ne pouvait plus être remplacé depuis une copie saine.
-        _retirer(cible)
+        _retirer(modele, nom)
         shutil.copy2(source / nom, cible)
 
 
