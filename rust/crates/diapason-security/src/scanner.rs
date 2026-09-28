@@ -56,6 +56,16 @@ macro_rules! pattern {
 // repliement simple d'Unicode et les refuse. Mesuré sur les 1 114 112 points
 // de code : c'est la seule lettre ASCII où les deux moteurs divergent (k et s
 // admettent K U+212A et ſ U+017F des deux côtés).
+//
+// Le blanc s'écrit [\s\x1c-\x1f], ici et dans PII_PATTERNS (28/09/2026) : le
+// \s de re admet U+001C..U+001F, celui de Rust non — mesuré sur les
+// 1 114 112 points de code, c'est leur seul écart, et dans ce sens-là.
+// « Password\x1c: '…' », « API_KEY\x1f= '…' » ou une carte coupée de \x1c
+// sortaient en clair par l'extension, masqués par le seul repli. La classe
+// élargie est, dans les deux moteurs, exactement le \s de re. Le corps d'une
+// URI de base garde son [^\s] : celui de Rust admet déjà U+001C..U+001F, et
+// l'exclure élargirait ce qui passe. Ce que le repli y masque de moins est
+// nommé dans test_scanner.py.
 static SECRET_PATTERNS: Lazy<Vec<PatternDef>> = Lazy::new(|| {
     vec![
         pattern!(
@@ -84,7 +94,7 @@ static SECRET_PATTERNS: Lazy<Vec<PatternDef>> = Lazy::new(|| {
         ),
         pattern!(
             "password_assignment",
-            r#"(?i:password|passwd|pwd)\s*[=:]\s*['"]([^'"]{4,})['"]"#,
+            r#"(?i:password|passwd|pwd)[\s\x1c-\x1f]*[=:][\s\x1c-\x1f]*['"]([^'"]{4,})['"]"#,
             ThreatLevel::High,
             "Password assignment"
         ),
@@ -114,13 +124,14 @@ static SECRET_PATTERNS: Lazy<Vec<PatternDef>> = Lazy::new(|| {
         ),
         pattern!(
             "generic_api_key",
-            r#"(?i:ap[iİı]_key|secret_key|auth_token)\s*[=:]\s*['"]([^'"]{8,})['"]"#,
+            r#"(?i:ap[iİı]_key|secret_key|auth_token)[\s\x1c-\x1f]*[=:][\s\x1c-\x1f]*['"]([^'"]{8,})['"]"#,
             ThreatLevel::High,
             "Generic API key/secret"
         ),
     ]
 });
 
+// Le blanc s'y écrit [\s\x1c-\x1f] : voir le commentaire de SECRET_PATTERNS.
 static PII_PATTERNS: Lazy<Vec<PatternDef>> = Lazy::new(|| {
     vec![
         pattern!(
@@ -137,19 +148,19 @@ static PII_PATTERNS: Lazy<Vec<PatternDef>> = Lazy::new(|| {
         ),
         pattern!(
             "credit_card_visa",
-            r"\b4\d{3}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b",
+            r"\b4\d{3}[-\s\x1c-\x1f]?\d{4}[-\s\x1c-\x1f]?\d{4}[-\s\x1c-\x1f]?\d{4}\b",
             ThreatLevel::Critical,
             "Visa credit card"
         ),
         pattern!(
             "credit_card_mastercard",
-            r"\b5[1-5]\d{2}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b",
+            r"\b5[1-5]\d{2}[-\s\x1c-\x1f]?\d{4}[-\s\x1c-\x1f]?\d{4}[-\s\x1c-\x1f]?\d{4}\b",
             ThreatLevel::Critical,
             "Mastercard credit card"
         ),
         pattern!(
             "credit_card_amex",
-            r"\b3[47]\d{2}[\s-]?\d{6}[\s-]?\d{5}\b",
+            r"\b3[47]\d{2}[-\s\x1c-\x1f]?\d{6}[-\s\x1c-\x1f]?\d{5}\b",
             ThreatLevel::Critical,
             "Amex credit card"
         ),
@@ -161,7 +172,7 @@ static PII_PATTERNS: Lazy<Vec<PatternDef>> = Lazy::new(|| {
             // suffisaient — 48273 × 91847 = 4433730231 ressortait
             // « [REDACTED:us_phone] », et avec lui tout numéro de commande,
             // horodatage en millisecondes ou montant en centimes.
-            r"(?:\+1[-.\s]?)?\(\d{3}\)[-.\s]?\d{3}[-.\s]?\d{4}|\+1[-.\s]?\d{3}[-.\s]?\d{3}[-.\s]?\d{4}|\b\d{3}[-.\s]\d{3}[-.\s]\d{4}\b",
+            r"(?:\+1[-.\s\x1c-\x1f]?)?\(\d{3}\)[-.\s\x1c-\x1f]?\d{3}[-.\s\x1c-\x1f]?\d{4}|\+1[-.\s\x1c-\x1f]?\d{3}[-.\s\x1c-\x1f]?\d{3}[-.\s\x1c-\x1f]?\d{4}|\b\d{3}[-.\s\x1c-\x1f]\d{3}[-.\s\x1c-\x1f]\d{4}\b",
             ThreatLevel::Medium,
             "US phone number"
         ),
@@ -382,6 +393,62 @@ mod tests {
                 noms(texte).iter().any(|n| n == nom),
                 "{texte:?} : s long et signe kelvin sont s et k pour les deux moteurs"
             );
+        }
+    }
+
+    // 28/09/2026 : le \s de re admet U+001C..U+001F, celui de Rust non ; ces
+    // textes n'étaient masqués que par le repli Python.
+    #[test]
+    fn un_blanc_que_re_lit_comme_tel_ne_fait_pas_passer_un_secret() {
+        for blanc in ['\u{1c}', '\u{1d}', '\u{1e}', '\u{1f}'] {
+            for (texte, nom, pii) in [
+                (
+                    format!("Password{blanc}: 'correct horse'"),
+                    "password_assignment",
+                    false,
+                ),
+                (
+                    format!("API_KEY ={blanc}'correct horse battery'"),
+                    "generic_api_key",
+                    false,
+                ),
+                (
+                    format!("4111{blanc}1111{blanc}1111{blanc}1111"),
+                    "credit_card_visa",
+                    true,
+                ),
+                (
+                    format!("5555{blanc}5555 5555 4444"),
+                    "credit_card_mastercard",
+                    true,
+                ),
+                (
+                    format!("3782{blanc}822463{blanc}10005"),
+                    "credit_card_amex",
+                    true,
+                ),
+                (
+                    format!("+1{blanc}202{blanc}555{blanc}0199"),
+                    "us_phone",
+                    true,
+                ),
+                (
+                    format!("+1{blanc}(202){blanc}555{blanc}0199"),
+                    "us_phone",
+                    true,
+                ),
+            ] {
+                let masque = if pii {
+                    PIIScanner::new().redact(&texte)
+                } else {
+                    SecretScanner::new().redact(&texte)
+                };
+                assert_eq!(
+                    masque,
+                    format!("[REDACTED:{nom}]"),
+                    "{texte:?} : le repli Python le masque en entier, l'extension doit aussi"
+                );
+            }
         }
     }
 

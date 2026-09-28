@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import functools
 import re
+import unicodedata
 
 import pytest
 
@@ -191,11 +192,13 @@ class TestScanResult:
 # ---------------------------------------------------------------------------
 #
 # 28/09/2026 : scanner.py disait son repli « intentionally feature-equivalent »
-# à l'extension. Il ne l'était pas. La casse est tranchée (voir le commentaire
-# de SECRET_PATTERNS dans scanner.rs) et les deux fichiers portent désormais
-# les mêmes chaînes ; l'écart IPv4 reste à décider, montré par un xfail
-# strict : le jour où il se ferme, le test passe et échoue, pour qu'on retire
-# la marque au lieu de laisser une promesse périmée.
+# à l'extension. Il ne l'était pas. La casse et le blanc sont tranchés (voir
+# le commentaire de SECRET_PATTERNS dans scanner.rs) et les deux fichiers
+# portent désormais les mêmes chaînes. Ce que les deux moteurs lisent encore
+# autrement — l'IPv4, les bornes de mot, les chiffres d'Unicode 16, U+001C..
+# U+001F dans une URI de base, la position d'une trouvaille — est montré par
+# un xfail strict chacun : le jour où l'un se ferme, son test passe et
+# échoue, pour qu'on retire la marque au lieu de laisser une promesse périmée.
 
 
 def _trouves(scanner, texte: str) -> list[tuple[str, str]]:
@@ -290,6 +293,16 @@ def _variantes(temoin: str) -> list[str]:
     return sorted(variantes)
 
 
+def _par(classe, chemin: str):
+    """Un scanner qui passe par l'extension, ou par le repli forcé."""
+    objet = classe()
+    if chemin == "repli":
+        objet._rust_impl = None
+    elif objet._rust_impl is None:
+        pytest.skip("extension absente : le repli reste éprouvé")
+    return objet
+
+
 class TestLaCasseEstDecideeMotifParMotif:
     """§5 : un mot de passe en majuscules ne sort pas en clair, jamais.
 
@@ -298,15 +311,6 @@ class TestLaCasseEstDecideeMotifParMotif:
     par le repli. Les deux chemins sont éprouvés : l'extension ici, le repli
     forcé à côté.
     """
-
-    @staticmethod
-    def _scanner(classe, chemin):
-        objet = classe()
-        if chemin == "repli":
-            objet._rust_impl = None
-        elif objet._rust_impl is None:
-            pytest.skip("extension absente : le repli reste éprouvé")
-        return objet
 
     @pytest.mark.parametrize("chemin", ["extension", "repli"])
     @pytest.mark.parametrize(
@@ -330,7 +334,7 @@ class TestLaCasseEstDecideeMotifParMotif:
         self, chemin, texte, nom
     ):
         """§5 : le mot-clé qu'on tape, la majuscule d'un début de phrase."""
-        masque = self._scanner(SecretScanner, chemin).redact(texte)
+        masque = _par(SecretScanner, chemin).redact(texte)
         assert masque == f"[REDACTED:{nom}]", (
             f"{texte!r} sort {masque!r} par le {chemin} : le secret reste lisible"
         )
@@ -354,7 +358,7 @@ class TestLaCasseEstDecideeMotifParMotif:
         scan() et redact() sont deux chemins dans le repli : un IGNORECASE
         rendu au seul redact() masquait ce que scan() déclarait propre.
         """
-        scanner = self._scanner(SecretScanner, chemin)
+        scanner = _par(SecretScanner, chemin)
         trouves = scanner.scan(texte).findings
         assert not trouves, (
             f"{texte!r} masqué par le {chemin} ({trouves[0].pattern_name}) : ni "
@@ -364,6 +368,56 @@ class TestLaCasseEstDecideeMotifParMotif:
             f"{texte!r} sort {scanner.redact(texte)!r} du masque du {chemin}, que "
             "scan() déclare propre"
         )
+
+
+class TestLeBlancEstCeluiDeRe:
+    """§5 : un blanc que re lit comme tel ne fait pas passer un secret.
+
+    28/09/2026 : le \\s de re admet U+001C..U+001F, celui de Rust non.
+    « Password\\x1c: '…' » ou une carte coupée de \\x1c sortaient en clair
+    par l'extension, masqués par le seul repli.
+    """
+
+    @pytest.mark.parametrize("chemin", ["extension", "repli"])
+    @pytest.mark.parametrize("blanc", ["\x1c", "\x1d", "\x1e", "\x1f"])
+    @pytest.mark.parametrize(
+        ("gabarit", "classe", "nom"),
+        [
+            ("Password{b}: 'correct horse'", SecretScanner, "password_assignment"),
+            ("API_KEY ={b}'correct horse battery'", SecretScanner, "generic_api_key"),
+            ("4111{b}1111{b}1111{b}1111", PIIScanner, "credit_card_visa"),
+            ("5555{b}5555 5555 4444", PIIScanner, "credit_card_mastercard"),
+            ("3782{b}822463{b}10005", PIIScanner, "credit_card_amex"),
+            ("+1{b}202{b}555{b}0199", PIIScanner, "us_phone"),
+            ("+1{b}(202){b}555{b}0199", PIIScanner, "us_phone"),
+        ],
+    )
+    def test_un_separateur_de_controle_ne_fait_pas_passer_un_secret(
+        self, chemin, blanc, gabarit, classe, nom
+    ):
+        """§5 : un séparateur d'information (U+001C..U+001F) est un blanc pour re."""
+        texte = gabarit.format(b=blanc)
+        masque = _par(classe, chemin).redact(texte)
+        assert masque == f"[REDACTED:{nom}]", (
+            f"{texte!r} sort {masque!r} par le {chemin} : le secret reste lisible"
+        )
+
+
+# Un témoin par motif qui lit un blanc, une espace à chaque place où il le lit.
+TEMOINS_DU_BLANC = {
+    SecretScanner: [
+        "password = 'correct horse'",
+        'api_key : "correct horse battery"',
+    ],
+    PIIScanner: [
+        "4111 1111 1111 1111",
+        "5555 5555 5555 4444",
+        "3782 822463 10005",
+        "+1 (202) 555 0199",
+        "+1 202 555 0199",
+        "202 555 0199",
+    ],
+}
 
 
 class TestLeRepliFaitCommeLExtension:
@@ -404,6 +458,105 @@ class TestLeRepliFaitCommeLExtension:
             ["Serveur interne 10.0.0.1 joint.", "DNS public 8.8.8.8 ici."],
         )
         assert not ecarts, "le repli n'est pas équivalent :\n" + "\n".join(ecarts)
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason=(
+            "écart relevé le 28/09/2026, à trancher : le \\w de Rust, donc son "
+            "\\b, compte comme lettres les marques (Mn, Mc, Me), U+200C et "
+            "U+200D, les Pc autres que _, les lettres cerclées et 4 433 points "
+            "d'Unicode 16 ; celui de re, les 915 chiffres No (², ½, ①). Un "
+            "numéro collé à un é décomposé ou à U+200D n'est masqué que par le "
+            "repli, collé à ² que par l'extension. Aucune chaîne commune ne les "
+            "aligne : (?-u:\\b) n'existe pas dans re, (?a:\\b) pas dans Rust"
+        ),
+    )
+    def test_le_repli_et_l_extension_voient_les_memes_bornes_de_mot(self):
+        """§5 : un numéro de carte ne doit pas dépendre du moteur chargé."""
+        ecarts = _ecarts(
+            PIIScanner(),
+            [
+                "cle\u0301123-45-6789",
+                "carte\u200d4111 1111 1111 1111",
+                "x\u00b2123-45-6789",
+            ],
+        )
+        assert not ecarts, "le repli n'est pas équivalent :\n" + "\n".join(ecarts)
+
+    @pytest.mark.xfail(
+        tuple(map(int, unicodedata.unidata_version.split("."))) < (16,),
+        strict=True,
+        reason=(
+            "écart relevé le 28/09/2026 : regex-syntax 0.8.10 lit Unicode 16, "
+            f"re celui de Python ({unicodedata.unidata_version}) ; les 80 "
+            "chiffres qu'ajoute Unicode 16 (U+10D40, U+16130…) sont un \\d pour "
+            "l'extension seule, qui masque plus que le repli. Se ferme avec "
+            "Python 3.14"
+        ),
+    )
+    def test_le_repli_et_l_extension_lisent_les_memes_chiffres(self):
+        """§5 : le \\d des deux moteurs suit leur version d'Unicode."""
+        ecarts = _ecarts(PIIScanner(), ["\U0001613023-45-6789"])
+        assert not ecarts, "le repli n'est pas équivalent :\n" + "\n".join(ecarts)
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason=(
+            "écart relevé le 28/09/2026, à trancher : dans le corps d'une URI "
+            "de base, le [^\\s] de Rust admet U+001C..U+001F, celui de re non. "
+            "L'extension masque « redis://\\x1c… », le repli pas. Aligner "
+            "l'extension élargirait ce qui passe ; le repli s'alignerait par "
+            "« (?:[^\\s]|[\\x1c-\\x1f]) »"
+        ),
+    )
+    def test_le_repli_et_l_extension_lisent_le_meme_corps_d_uri(self):
+        """§5 : une URI de base ne doit pas dépendre du moteur chargé."""
+        ecarts = _ecarts(SecretScanner(), ["redis://\x1cadmin:correct@horse.example"])
+        assert not ecarts, "le repli n'est pas équivalent :\n" + "\n".join(ecarts)
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason=(
+            "écart relevé le 28/09/2026, à trancher : start et end comptent "
+            "des octets UTF-8 dans l'extension, des caractères dans le repli ; "
+            "audit.py les journalise tels quels"
+        ),
+    )
+    def test_le_repli_et_l_extension_situent_une_trouvaille_au_meme_endroit(self):
+        """§5 : une position journalisée doit désigner le même caractère."""
+        scanner = PIIScanner()
+        if scanner._rust_impl is None:
+            pytest.skip("extension absente : seul le repli s'applique")
+        texte = "Écrire à louis@example.com"
+
+        def positions(resultat):
+            return [(f.start, f.end) for f in resultat.findings]
+
+        assert positions(scanner.scan(texte)) == positions(
+            _scan_python(texte, PIIScanner.PATTERNS)
+        ), "l'extension et le repli ne situent pas l'adresse au même endroit"
+
+    @pytest.mark.parametrize("classe", [SecretScanner, PIIScanner])
+    def test_le_repli_et_l_extension_lisent_le_meme_blanc(self, classe):
+        """§5 : « Password\\x1c: '…' » n'était masqué que par le repli.
+
+        Chaque blanc de re, à chaque place où un témoin porte une espace :
+        l'extension doit rendre exactement ce que rend le repli.
+        """
+        blancs = [t.group() for t in re.finditer(r"\s", tout_unicode())]
+        ecarts = _ecarts(
+            classe(),
+            [
+                temoin[:rang] + blanc + temoin[rang + 1 :]
+                for temoin in TEMOINS_DU_BLANC[classe]
+                for rang, car in enumerate(temoin)
+                if car == " "
+                for blanc in blancs
+            ],
+        )
+        assert not ecarts, f"{len(ecarts)} écarts de blanc, dont :\n" + "\n".join(
+            ecarts[:10]
+        )
 
     @pytest.mark.parametrize("classe", [SecretScanner, PIIScanner])
     def test_le_repli_et_l_extension_lisent_la_casse_pareil(self, classe):

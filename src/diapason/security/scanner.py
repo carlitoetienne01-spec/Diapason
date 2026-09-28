@@ -26,8 +26,11 @@ class SecretScanner(BaseScanner):
         except (ImportError, AttributeError, RuntimeError):
             # Security must not disappear merely because the optional native
             # accelerator is unavailable.  The Python implementation below
-            # compiles the very strings of scanner.rs, just slower; the
-            # differences left are named in test_scanner.py.
+            # compiles the very strings of scanner.rs, just slower.  The two
+            # engines still differ on IPv4, on word boundaries (\b, \w), on
+            # the Unicode digits \d admits, on U+001C..U+001F inside a
+            # database URI, and on finding offsets (UTF-8 bytes in Rust):
+            # test_scanner.py names each one with a strict xfail.
             self._rust_impl = None
 
     # 28/09/2026 : chaque motif était compilé sous re.IGNORECASE, ceux de
@@ -36,7 +39,9 @@ class SecretScanner(BaseScanner):
     # chargée. Même chaîne des deux côtés désormais, la casse décidée motif
     # par motif (voir le commentaire de SECRET_PATTERNS dans scanner.rs) :
     # (?i:…) sur les mots-clés qu'on tape ; pour les jetons, la casse du
-    # format et la seule majuscule initiale d'un début de phrase.
+    # format et la seule majuscule initiale d'un début de phrase. Le blanc
+    # s'écrit [\s\x1c-\x1f] : c'est le \s de re, que celui de Rust n'atteint
+    # qu'avec U+001C..U+001F (même commentaire).
     PATTERNS: Dict[str, Tuple[str, ThreatLevel, str]] = {
         "openai_key": (
             r"[Ss]k-[A-Za-z0-9_-]{20,}",
@@ -59,7 +64,7 @@ class SecretScanner(BaseScanner):
             "GitHub token",
         ),
         "password_assignment": (
-            r"""(?i:password|passwd|pwd)\s*[=:]\s*['"]([^'"]{4,})['"]""",
+            r"""(?i:password|passwd|pwd)[\s\x1c-\x1f]*[=:][\s\x1c-\x1f]*['"]([^'"]{4,})['"]""",
             ThreatLevel.HIGH,
             "Password assignment",
         ),
@@ -84,7 +89,7 @@ class SecretScanner(BaseScanner):
             "Stripe key",
         ),
         "generic_api_key": (
-            r"""(?i:ap[iİı]_key|secret_key|auth_token)\s*[=:]\s*['"]([^'"]{8,})['"]""",
+            r"""(?i:ap[iİı]_key|secret_key|auth_token)[\s\x1c-\x1f]*[=:][\s\x1c-\x1f]*['"]([^'"]{8,})['"]""",
             ThreatLevel.HIGH,
             "Generic API key/secret",
         ),
@@ -136,17 +141,17 @@ class PIIScanner(BaseScanner):
             "US Social Security Number",
         ),
         "credit_card_visa": (
-            r"\b4\d{3}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b",
+            r"\b4\d{3}[-\s\x1c-\x1f]?\d{4}[-\s\x1c-\x1f]?\d{4}[-\s\x1c-\x1f]?\d{4}\b",
             ThreatLevel.CRITICAL,
             "Visa credit card",
         ),
         "credit_card_mastercard": (
-            r"\b5[1-5]\d{2}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b",
+            r"\b5[1-5]\d{2}[-\s\x1c-\x1f]?\d{4}[-\s\x1c-\x1f]?\d{4}[-\s\x1c-\x1f]?\d{4}\b",
             ThreatLevel.CRITICAL,
             "Mastercard credit card",
         ),
         "credit_card_amex": (
-            r"\b3[47]\d{2}[\s-]?\d{6}[\s-]?\d{5}\b",
+            r"\b3[47]\d{2}[-\s\x1c-\x1f]?\d{6}[-\s\x1c-\x1f]?\d{5}\b",
             ThreatLevel.CRITICAL,
             "Amex credit card",
         ),
@@ -154,7 +159,7 @@ class PIIScanner(BaseScanner):
             # Voir scanner.rs : dix chiffres quelconques ne sont pas un
             # numéro de téléphone. Il faut un indicatif +1, des parenthèses,
             # ou de vrais séparateurs entre les groupes.
-            r"(?:\+1[-.\s]?)?\(\d{3}\)[-.\s]?\d{3}[-.\s]?\d{4}|\+1[-.\s]?\d{3}[-.\s]?\d{3}[-.\s]?\d{4}|\b\d{3}[-.\s]\d{3}[-.\s]\d{4}\b",
+            r"(?:\+1[-.\s\x1c-\x1f]?)?\(\d{3}\)[-.\s\x1c-\x1f]?\d{3}[-.\s\x1c-\x1f]?\d{4}|\+1[-.\s\x1c-\x1f]?\d{3}[-.\s\x1c-\x1f]?\d{3}[-.\s\x1c-\x1f]?\d{4}|\b\d{3}[-.\s\x1c-\x1f]\d{3}[-.\s\x1c-\x1f]\d{4}\b",
             ThreatLevel.MEDIUM,
             "US phone number",
         ),
