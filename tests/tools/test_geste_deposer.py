@@ -73,7 +73,7 @@ def _attraper_un_projet():
         "/succes/projects",
         ressource_type="project",
         ressource_id="p1",
-        ressource_titre="Zéro à Héro",
+        ressource_titre="Carnet de voyage",
     )
     return pp.attraper()
 
@@ -104,7 +104,7 @@ class TestLaMainEstLeSeulReferent:
 class TestLaMainSeDitDansLeContexte:
     def test_le_contexte_nomme_ce_qui_est_tenu(self):
         _attraper_un_projet()
-        attendu = "Dans la main (geste) : le projet « Zéro à Héro »."
+        attendu = "Dans la main (geste) : le projet « Carnet de voyage »."
         assert pp.decrire(pp.tenu()) == attendu
 
     def test_la_main_et_l_ecran_ne_se_confondent_pas(self):

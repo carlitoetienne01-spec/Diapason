@@ -211,7 +211,7 @@ Quatre corrections, chacune testée :
   session chiffrée de phase 3, dans la limite de 2 Gio.
 - **Le fantôme est mort** : `held` venait de la session, le presse-papiers de
   son module, et les deux pouvaient se contredire. Le voyant annonçait « dans
-  ta main : Zéro à Héro » sur une main vide. Vider l'un vide désormais
+  ta main : Carnet de voyage » sur une main vide. Vider l'un vide désormais
   l'autre, et désarmer vide les deux.
 
 Et un cinquième défaut trouvé en le construisant : **un appareil joignable

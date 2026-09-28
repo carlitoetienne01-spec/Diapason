@@ -44,7 +44,7 @@ def magasin(tmp_path: Path) -> ViePhotosStore:
 
 @pytest.fixture
 def projet(magasin: ViePhotosStore) -> dict:
-    return magasin.create_project({"name": "La Cité"})
+    return magasin.create_project({"name": "La Forêt"})
 
 
 class TestLaSignature:

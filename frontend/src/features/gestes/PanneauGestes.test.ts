@@ -244,10 +244,10 @@ describe('ce que le panneau montre du geste', () => {
     poserLeContexte({
       diagnostic: {
         armed: true,
-        held: { type: 'project', id: 'p-1', title: 'Zéro à Héro' },
+        held: { type: 'project', id: 'p-1', title: 'Carnet de voyage' },
       },
     });
-    expect(texte(monter().arbre())).toContain('Dans ta main : Zéro à Héro');
+    expect(texte(monter().arbre())).toContain('Dans ta main : Carnet de voyage');
   });
 
   it('nomme le fichier préparé et permet de le retirer', () => {

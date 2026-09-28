@@ -464,7 +464,7 @@ describe('répondre à « vers lequel ? »', () => {
     armed: true,
     pendingDrop: {
       token: 'jeton-42',
-      object: { type: 'project', id: 'p-1', title: 'Zéro à Héro' },
+      object: { type: 'project', id: 'p-1', title: 'Carnet de voyage' },
       candidates: [
         { deviceId: 'mac-atelier', name: 'Mac de l’atelier' },
         { deviceId: 'iphone-poche', name: 'iPhone' },

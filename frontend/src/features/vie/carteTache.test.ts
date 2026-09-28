@@ -34,9 +34,9 @@ describe('le signe de priorité devant le titre', () => {
 
 describe('le monogramme de projet — la forme qui remplace la teinte en Ardéchine', () => {
   it('prend l’initiale du premier mot et celle du dernier', () => {
-    expect(monogrammeProjet('La Cité')).toBe('LC');
-    expect(monogrammeProjet('Zéro à Héro')).toBe('ZH');
-    expect(monogrammeProjet('English Mastery')).toBe('EM');
+    expect(monogrammeProjet('La Forêt')).toBe('LF');
+    expect(monogrammeProjet('Carnet de voyage')).toBe('CV');
+    expect(monogrammeProjet('Cours d’anglais')).toBe('CA');
   });
 
   it('prend deux lettres quand le nom n’a qu’un mot', () => {

@@ -40,9 +40,9 @@ export const SIGNES_PRIORITE: Record<ViePriority, SignePriorite> = {
 
 /**
  * Deux lettres pour un projet — l'initiale du premier mot et celle du
- * dernier : « La Cité » → « LC », « Zéro à Héro » → « ZH », « English
- * Mastery » → « EM » ; un seul mot donne ses deux premières lettres,
- * « Diapason » → « DI ». Pas de liste de mots vides : « La Cité » se
+ * dernier : « La Forêt » → « LF », « Carnet de voyage » → « CV », « Cours
+ * d’anglais » → « CA » ; un seul mot donne ses deux premières lettres,
+ * « Diapason » → « DI ». Pas de liste de mots vides : « La Forêt » se
  * reconnaît à son « L », et une liste qu'on n'entretient pas finit par
  * manger une initiale qu'on attendait. En Ardéchine, où toute couleur se
  * replie sur l'encre, la forme remplace la teinte : le monogramme dans une

@@ -55,8 +55,8 @@ describe('titreDiscussion', () => {
   });
 
   it('rend le titre de la conversation active, pas celui de la première', () => {
-    const liste = [conv('a', 'La Cité — permis'), conv('b', 'English Mastery')];
-    expect(titreDiscussion(liste, 'b', t)).toBe('English Mastery');
+    const liste = [conv('a', 'La Forêt — permis'), conv('b', 'Cours d’anglais')];
+    expect(titreDiscussion(liste, 'b', t)).toBe('Cours d’anglais');
   });
 
   it('un id inconnu (conversation supprimée dans l’autre vue) retombe sur le repli', () => {
@@ -130,21 +130,21 @@ describe('plusRecente', () => {
 
 describe('plierTexte', () => {
   it('retire les accents et la casse — au mini-panneau on tape vite, sans accent', () => {
-    expect(plierTexte('  La Cité — Permis ')).toBe('la cite — permis');
+    expect(plierTexte('  La Forêt — Permis ')).toBe('la foret — permis');
     expect(plierTexte('Élève')).toBe('eleve');
   });
 });
 
 describe('debutDeMot', () => {
   it('trouve la requête au début d’un mot, séparé par espace, tiret ou ponctuation', () => {
-    expect(debutDeMot('la cite — permis', 'per')).toBe(true);
-    expect(debutDeMot('la cite — permis', 'la')).toBe(true);
-    expect(debutDeMot('zero-a-heros', 'her')).toBe(true);
+    expect(debutDeMot('la foret — permis', 'per')).toBe(true);
+    expect(debutDeMot('la foret — permis', 'la')).toBe(true);
+    expect(debutDeMot('carnet-de-voyage', 'voy')).toBe(true);
     expect(debutDeMot('bilan (mars)', 'mar')).toBe(true);
   });
 
   it('ne compte pas une sous-chaîne au milieu d’un mot, même si elle apparaît deux fois', () => {
-    expect(debutDeMot('la cite — permis', 'mis')).toBe(false);
+    expect(debutDeMot('la foret — permis', 'mis')).toBe(false);
     expect(debutDeMot('permis permis', 'mis'), 'deux occurrences, aucune en tête de mot').toBe(
       false,
     );
@@ -157,8 +157,8 @@ describe('debutDeMot', () => {
 
 describe('classerDiscussions', () => {
   const NOW = 100_000;
-  const permis = conv('permis', 'La Cité — permis', { updatedAt: 90_000 });
-  const anglais = conv('anglais', 'English Mastery', { updatedAt: 95_000 });
+  const permis = conv('permis', 'La Forêt — permis', { updatedAt: 90_000 });
+  const anglais = conv('anglais', 'Cours d’anglais', { updatedAt: 95_000 });
   const bilan = conv('bilan', 'Bilan du permis', { updatedAt: 80_000, pinned: true });
   const compromis = conv('compromis', 'Un compromis', { updatedAt: 99_000 });
   const sansTitre = conv('vide', '', { updatedAt: 99_500 });
@@ -193,8 +193,8 @@ describe('classerDiscussions', () => {
   });
 
   it('ignore accents et casse dans la requête comme dans le titre', () => {
-    expect(classerDiscussions('CITE', [permis, anglais], NOW).map((c) => c.id)).toEqual(['permis']);
-    expect(classerDiscussions('cité', [permis, anglais], NOW).map((c) => c.id)).toEqual(['permis']);
+    expect(classerDiscussions('FORET', [permis, anglais], NOW).map((c) => c.id)).toEqual(['permis']);
+    expect(classerDiscussions('forêt', [permis, anglais], NOW).map((c) => c.id)).toEqual(['permis']);
   });
 
   it('un updatedAt dans le futur se lit « à l’instant », pas « en tête pour toujours »', () => {
@@ -226,14 +226,14 @@ describe('filtrerDiscussions', () => {
     content,
     timestamp: 1,
   });
-  const permis = conv('permis', 'La Cité — permis', {
+  const permis = conv('permis', 'La Forêt — permis', {
     updatedAt: 90_000,
     messages: [
-      msg('q1', 'user', 'Quelle est la date limite pour le permis haïtien ?'),
-      msg('r1', 'assistant', 'La date limite est le 27 octobre 2026, puis le 6 novembre 2027.'),
+      msg('q1', 'user', 'Quelle est la date limite pour le permis européen ?'),
+      msg('r1', 'assistant', 'La date limite est le 15 mars 2027, puis le 2 juin 2028.'),
     ],
   });
-  const anglais = conv('anglais', 'English Mastery', {
+  const anglais = conv('anglais', 'Cours d’anglais', {
     updatedAt: 95_000,
     messages: [msg('q2', 'user', 'Comment dit-on « permis » en anglais ?')],
   });
@@ -244,7 +244,8 @@ describe('filtrerDiscussions', () => {
   });
 
   it('trouve une discussion par un mot qui n’est que dans ses messages — le titre ne dit pas tout', () => {
-    // « la discussion où il m'a donné la date du permis » : « date » n'est
+    // Une discussion qu'on retrouve par une date donnée dans ses messages :
+    // « date » n'est
     // dans aucun titre, seulement dans les messages.
     const res = filtrerDiscussions([permis, anglais, bilan], 'date', NOW);
     expect(res.map((r) => r.conversation.id)).toEqual(['permis']);
@@ -258,7 +259,7 @@ describe('filtrerDiscussions', () => {
     const ex = res[0].extrait!;
     expect(ex.terme, 'accents et casse d’origine, pas ceux de la requête').toBe('date');
     expect(ex.avant).toBe('Quelle est la ');
-    expect(ex.apres).toBe(' limite pour le permis haïtien ?');
+    expect(ex.apres).toBe(' limite pour le permis européen ?');
     expect(ex.avant + ex.terme + ex.apres).toBe(permis.messages[0].content);
   });
 
@@ -331,10 +332,10 @@ describe('filtrerDiscussions', () => {
   });
 
   it('ignore accents et casse dans la requête comme dans les messages', () => {
-    expect(filtrerDiscussions([permis], 'HAITIEN', NOW).map((r) => r.conversation.id)).toEqual([
+    expect(filtrerDiscussions([permis], 'EUROPEEN', NOW).map((r) => r.conversation.id)).toEqual([
       'permis',
     ]);
-    expect(filtrerDiscussions([permis], 'haïtien', NOW)[0].extrait!.terme).toBe('haïtien');
+    expect(filtrerDiscussions([permis], 'européen', NOW)[0].extrait!.terme).toBe('européen');
   });
 });
 
@@ -451,15 +452,15 @@ describe('choisirAtterrissage', () => {
 
   it('un fil choisi exprès n’est pas « chaud » : la règle seule l’abandonnerait — d’où la garde de l’appelant', () => {
     // Contre-revue du 17 sept. 2026 : selectConversation ne date pas
-    // `updatedAt`, donc « Zéro à Héro » ouvert par ⌘J il y a une seconde
-    // pèse un jour, et « La Cité » (6 min) gagne. La règle est juste pour une
+    // `updatedAt`, donc « Carnet de voyage » ouvert par ⌘J il y a une
+    // seconde pèse un jour, et « La Forêt » (6 min) gagne. La règle est juste pour une
     // VRAIE ouverture ; c'est à l'appelant de ne la rejouer qu'alors, et
     // jamais quand on tient le fil (tientLeFil).
-    const laCite = avec('lacite', 'La Cité', 6 * MIN);
-    const zero = avec('zero', 'Zéro à Héro', 24 * 60 * MIN);
-    expect(choisirAtterrissage([laCite, zero], 'zero', NOW)).toEqual({
+    const foret = avec('foret', 'La Forêt', 6 * MIN);
+    const carnet = avec('carnet', 'Carnet de voyage', 24 * 60 * MIN);
+    expect(choisirAtterrissage([foret, carnet], 'carnet', NOW)).toEqual({
       type: 'reprendre',
-      id: 'lacite',
+      id: 'foret',
     });
   });
 });
@@ -493,7 +494,7 @@ describe('doitAfficherLeFil', () => {
 
 describe('titreARenommer', () => {
   it('commet un titre nouveau, sans ses blancs', () => {
-    expect(titreARenommer('  Permis haïtien ', 'Ancien')).toBe('Permis haïtien');
+    expect(titreARenommer('  Permis européen ', 'Ancien')).toBe('Permis européen');
   });
 
   it('ne commet ni un champ vidé ni un titre inchangé', () => {

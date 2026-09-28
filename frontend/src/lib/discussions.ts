@@ -84,7 +84,7 @@ export function plusRecente(conversations: readonly Conversation[]): Conversatio
 
 /**
  * Plie un texte pour la recherche : sans accents, sans casse, sans blancs
- * aux extrémités. « Permis » et « permis », « Cité » et « cite » se valent —
+ * aux extrémités. « Permis » et « permis », « Forêt » et « foret » se valent —
  * dans le mini-panneau on tape vite, souvent sans accent.
  */
 export function plierTexte(texte: string): string {
@@ -100,7 +100,7 @@ export function plierTexte(texte: string): string {
 const CARACTERE_DE_MOT = /[\p{L}\p{N}]/u;
 
 /**
- * La requête commence-t-elle un MOT du titre ? « per » trouve « La Cité —
+ * La requête commence-t-elle un MOT du titre ? « per » trouve « La Forêt —
  * permis » ; « mis » ne le trouve qu'en simple sous-chaîne, classée après.
  */
 export function debutDeMot(titrePlie: string, requetePliee: string): boolean {
@@ -160,9 +160,9 @@ export function classerDiscussions(
 // ── Recherche dans les messages ──────────────────────────────────────────
 //
 // 17 sept. 2026, chantier « discussions dans le mini-panneau ». Le titre est
-// les 50 premiers caractères de la première question (store.ts) : « la
-// discussion où il m'a donné la date du permis » était introuvable, le mot
-// « date » n'étant jamais dans un titre. Les messages sont déjà dans le
+// les 50 premiers caractères de la première question (store.ts) : une
+// discussion qu'on cherchait par une date donnée dans ses messages était
+// introuvable, le mot « date » n'étant jamais dans un titre. Les messages sont déjà dans le
 // store ; à trois conversations, un index FTS côté serveur serait une
 // promesse sans usage (§5). La recherche est donc ici, pure, et le même
 // résultat se lit pareil sous le titre du fil et dans la barre latérale.
@@ -420,8 +420,8 @@ export interface Occupation {
 /**
  * L'utilisateur tient-il le fil ? Alors on n'atterrit PAS, quel que soit le
  * fil chaud. Contre-revue du 17 sept. 2026 : le panneau se dépliait sur
- * « La Cité » (chaude) alors qu'on avait tapé « et la suite du plan ? » dans
- * « Zéro à Héro » — le brouillon restait dans le champ sous le mauvais titre
+ * « La Forêt » (chaude) alors qu'on avait tapé « et la suite du plan ? » dans
+ * « Carnet de voyage » — le brouillon restait dans le champ sous le mauvais titre
  * et serait parti dans le mauvais fil (§100). Une réponse en cours tient le
  * fil de la même façon : on ne quitte pas ce qu'on est en train de lire.
  */

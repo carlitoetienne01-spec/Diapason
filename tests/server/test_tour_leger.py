@@ -52,7 +52,7 @@ class TestCeQuiEstLeger:
             # Revue du 20/09/2026 : des noms du quotidien renvoyaient au 27b.
             "Quel cours j'ai demain ?",
             "C'est quoi le plan aujourd'hui ?",
-            "As-tu reçu un courriel de La Cité ?",
+            "As-tu reçu un courriel de l'école ?",
             "Quand a été créé ce projet ?",
             "C'est quoi la différence par rapport à hier ?",
         ],
@@ -66,7 +66,7 @@ class TestCeQuiEstLeger:
             "Prepare moi un programme pour la programmation",
             "Explique-moi la relativité générale",
             "Pourquoi le ciel est-il bleu ?",
-            "Rédige une lettre de motivation pour La Cité",
+            "Rédige une lettre de motivation pour le club",
             "Donne-moi 30 exercices de conjugaison",
             "Why is the sky blue?",
             "Write a poem about autumn",
@@ -101,7 +101,7 @@ class TestCeQuiEstLeger:
         # sur le 9b, qui évinçait le 27b et prolongeait la lettre autrement.
         lettre = [
             Message(
-                role=Role.USER, content="Rédige une lettre de motivation pour La Cité"
+                role=Role.USER, content="Rédige une lettre de motivation pour le club"
             ),
             Message(role=Role.ASSISTANT, content="Madame, Monsieur…"),
         ]
@@ -127,7 +127,7 @@ class TestCeQuiEstLeger:
     def test_une_question_neuve_apres_une_lettre_redevient_legere(self):
         fil = [
             Message(
-                role=Role.USER, content="Rédige une lettre de motivation pour La Cité"
+                role=Role.USER, content="Rédige une lettre de motivation pour le club"
             ),
             Message(role=Role.ASSISTANT, content="Madame, Monsieur…"),
             Message(role=Role.USER, content="Quelle est la capitale du Canada ?"),

@@ -25,11 +25,11 @@ class TestCeQuiEntre:
             "/succes/projects",
             ressource_type="project",
             ressource_id="p1",
-            ressource_titre="Zéro à Héro",
+            ressource_titre="Carnet de voyage",
         )
         assert vue is not None
         assert ca.decrire(vue) == (
-            "Dans Diapason : les Projets, le projet « Zéro à Héro » ouvert(e)."
+            "Dans Diapason : les Projets, le projet « Carnet de voyage » ouvert(e)."
         )
 
     def test_un_ecran_sans_ressource_reste_un_ecran(self):

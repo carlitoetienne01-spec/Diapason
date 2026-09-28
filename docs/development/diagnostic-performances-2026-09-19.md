@@ -1371,7 +1371,7 @@ initiale avec le temps nécessaire pour rédiger plusieurs centaines de lignes.
 |---|---:|---:|---:|---:|
 | Question courte | 0,399 s | 1,984 s | 0,371 s | 18,3 jetons/s |
 | Même question, entrée identique | 0,094 s | 1,673 s | 0,082 s | 18,4 jetons/s |
-| Historique « Anglais », nouveau préfixe | 15,873 s | 16,694 s | 15,857 s | 17,1 jetons/s |
+| Historique réel, nouveau préfixe | 15,873 s | 16,694 s | 15,857 s | 17,1 jetons/s |
 | Exactement la même entrée | 0,116 s | 0,903 s | 0,099 s | 17,8 jetons/s |
 | Une seconde changée dans la date du préfixe | 16,252 s | 17,023 s | 16,213 s | 18,2 jetons/s |
 | Répétition de la dernière entrée, avec concurrence extérieure | délai dépassé | 100 s | non disponible | non disponible |

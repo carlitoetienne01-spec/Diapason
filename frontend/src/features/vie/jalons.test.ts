@@ -20,7 +20,7 @@ const tache = (
   ({ id, title: id, projectId, done: false, date: '', order: 0, ...extra }) as VieTask;
 
 const PROJETS = [
-  projet('parcours', 'tree', 'Zéro à Héro'),
+  projet('parcours', 'tree', 'Carnet de voyage'),
   projet('anglais', 'tree', 'English'),
   projet('maison', 'flat', 'Maison'),
 ];
@@ -70,7 +70,7 @@ describe('jalonsEnAttente', () => {
     expect(
       jalonsEnAttente(taches, PROJETS).map((x) => [x.projet.name, x.total]),
     ).toEqual([
-      ['Zéro à Héro', 2],
+      ['Carnet de voyage', 2],
       ['English', 1],
     ]);
   });
