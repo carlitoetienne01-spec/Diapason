@@ -346,7 +346,7 @@ describe('Le pont se branche sur la fenêtre que la coquille a préparée', () =
     const ecouteurs: Array<(e: MouseEvent) => void> = [];
     const fenetre: Record<string, unknown> = {
       DiapasonNatif: canal,
-      location: { origin: 'https://atelier.exemple.ts.net' },
+      location: { origin: 'https://mac.exemple.ts.net' },
     };
     const doc = {
       documentElement: { setAttribute: (n: string, v: string) => (attributs[n] = v) },
@@ -433,7 +433,7 @@ describe('Le canal lié à l’origine du Mac (constat 2, 26/09/2026)', () => {
     };
     const fenetre: Record<string, unknown> = {
       DiapasonNatif: canal,
-      location: { origin: 'https://atelier.exemple.ts.net' },
+      location: { origin: 'https://mac.exemple.ts.net' },
     };
     const attributs: Record<string, string> = {};
     const doc = {
@@ -503,7 +503,7 @@ describe('Le canal lié à l’origine du Mac (constat 2, 26/09/2026)', () => {
 });
 
 describe('Quels liens la coquille ouvre', () => {
-  const mac = 'https://atelier.exemple.ts.net';
+  const mac = 'https://mac.exemple.ts.net';
   it('une autre origine en http(s) : oui', () => {
     expect(doitPasserParLaCoquille('https://exemple.org/a', mac)).toBe(true);
     expect(doitPasserParLaCoquille('http://exemple.org', mac)).toBe(true);

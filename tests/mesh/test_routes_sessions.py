@@ -176,7 +176,7 @@ class TestLAdresseAffichee:
         from diapason.core.paths import get_config_dir
 
         (get_config_dir() / "config.toml").write_text(
-            '[tailnet]\nadresse = "atelier.tail6efbba.ts.net"\n', encoding="utf-8"
+            '[tailnet]\nadresse = "mac.tail0000.ts.net"\n', encoding="utf-8"
         )
         load_config.cache_clear()
         try:
@@ -186,4 +186,4 @@ class TestLAdresseAffichee:
             ).json()
         finally:
             load_config.cache_clear()
-        assert invitation["tailnetAddress"] == "https://atelier.tail6efbba.ts.net"
+        assert invitation["tailnetAddress"] == "https://mac.tail0000.ts.net"

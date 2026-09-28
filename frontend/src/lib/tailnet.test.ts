@@ -94,7 +94,7 @@ describe('cleDeSonde — reconnaître une route au gabarit près', () => {
   });
 
   it('lit une adresse absolue', () => {
-    expect(cleDeSonde('GET', 'https://atelier.tail6efbba.ts.net/v1/account/status')).toBe(
+    expect(cleDeSonde('GET', 'https://mac.tail0000.ts.net/v1/account/status')).toBe(
       'GET /v1/account/status',
     );
   });

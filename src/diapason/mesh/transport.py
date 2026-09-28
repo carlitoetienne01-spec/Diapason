@@ -73,11 +73,12 @@ class RemoteRefusal(TransportError):
 # cannot tell the two apart. The kernel can: Tailscale installs a route for
 # each PEER through its own interface, so a packet to a tailnet peer leaves
 # from our own 100.64/10 address, and a packet to any other 100.x leaves
-# from the LAN address towards the provider. Seen on atelier, 26/09/2026:
-# the phone (100.74.116.36) is reached from 100.90.245.46, while
-# 100.100.1.1 leaves from 192.168.0.104 via en0. The first version of this
-# block accepted the whole /10, and join.py, which reads the same
-# function, let a pairing go out over a carrier's NAT under local_only.
+# from the LAN address towards the provider. Seen on the owner's Mac,
+# 26/09/2026: the phone, a tailnet peer, is reached from the Mac's own
+# 100.x address, while 100.100.1.1 leaves from 192.168.0.104 via en0. The
+# first version of this block accepted the whole /10, and join.py, which
+# reads the same function, let a pairing go out over a carrier's NAT under
+# local_only.
 # What remains: a machine whose OWN interface sits in a carrier's /10 (no
 # router in between) would still pass.
 _TAILNET_V4 = ipaddress.ip_network("100.64.0.0/10")
