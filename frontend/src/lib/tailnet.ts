@@ -68,6 +68,7 @@ export const SONDES_REFUSEES = [
   'GET /v1/triggers/poll',
   'GET /v1/vie/sync/operations',
   'GET /v1/vie/sync/status',
+  'GET /v1/voice/profile',
   'GET /webhooks/whatsapp',
   'POST /v1/context/view',
 ] as const;
