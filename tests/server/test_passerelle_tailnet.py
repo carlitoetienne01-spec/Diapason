@@ -1832,6 +1832,75 @@ class TestLaBoucleResteLibre:
         assert appels["n"] > 1, "la surveillance n'a pas tourné"
         assert trou < _TROU_TOLERE_S, f"la boucle a gelé {trou:.2f} s"
 
+    def test_pendant_la_lecture_du_motif_de_fermeture(self, monde):
+        """Revue du 28/09/2026 : le motif d'une fermeture se lit dans le
+        registre, un SQLite. L'appeler en ligne sur la boucle, sans
+        asyncio.to_thread, laissait les 121 tests de ce fichier verts —
+        et chaque coupure aurait figé la voix et les flux du chat."""
+        import asyncio
+
+        passerelle = monde.passerelle(_app_d_un_flux_long(), intervalle_s=0.05)
+        jeton = _ouvrir_une_session(TestClient(passerelle, base_url=ICI), monde)
+        lecture = passerelle._motif_de_fermeture
+        appels = {"n": 0}
+
+        def lente(*args):
+            appels["n"] += 1
+            time.sleep(_LENT_S)
+            return lecture(*args)
+
+        passerelle._motif_de_fermeture = lente
+
+        async def scenario():
+            instants: list[float] = []
+            arret = asyncio.Event()
+            premier = asyncio.Event()
+            fin = asyncio.Event()
+            demande_lue = False
+
+            async def coeur():
+                while True:
+                    instants.append(time.monotonic())
+                    if arret.is_set():
+                        return
+                    await asyncio.sleep(0.01)
+
+            async def recevoir():
+                nonlocal demande_lue
+                if not demande_lue:
+                    demande_lue = True
+                    return {"type": "http.request", "body": b"", "more_body": False}
+                await fin.wait()
+                return {"type": "http.disconnect"}
+
+            async def envoyer(message):
+                if message["type"] == "http.response.body":
+                    premier.set()
+                    if not message.get("more_body"):
+                        fin.set()
+
+            async def fermer_en_route():
+                await premier.wait()
+                await asyncio.to_thread(monde.sessions.close_device_sessions, PHONE)
+
+            battre = asyncio.ensure_future(coeur())
+            fermeture = asyncio.ensure_future(fermer_en_route())
+            await asyncio.sleep(0.05)
+            try:
+                await asyncio.wait_for(
+                    passerelle(_portee_http("/v1/models", jeton), recevoir, envoyer), 6
+                )
+            finally:
+                fin.set()
+            await fermeture
+            arret.set()
+            await battre
+            return max(b - a for a, b in zip(instants, instants[1:]))
+
+        trou = asyncio.run(scenario())
+        assert appels["n"] == 1, "la coupure devait lire son motif une fois"
+        assert trou < _TROU_TOLERE_S, f"la boucle a gelé {trou:.2f} s"
+
 
 class TestLeCycleDeVie:
     def test_la_passerelle_ne_relance_pas_le_cycle_de_vie_de_l_app(self, monde):
