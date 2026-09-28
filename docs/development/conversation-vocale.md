@@ -503,6 +503,11 @@ Le choix `speech.realtime.stt_backend = "mlx-whisper"` utilise un processus
 isolé installé explicitement par `scripts/install-mlx-recognition.py`.
 Les poids et la configuration ont une révision et des SHA-256 fixés ; aucun
 téléchargement au premier mot. Le défaut portable reste `faster-whisper`.
+Depuis le 28 septembre 2026, le témoin `installed.json` tombe avant que le
+modèle ne change et n'est réécrit qu'après vérification ; un fichier refusé
+est retiré, pour que la relance le retélécharge, et `--model-source` vérifie
+la source avant de remplacer quoi que ce soit. Les fichiers en trop ne sont
+pas refusés ici : mlx-whisper 0.4.3 ouvre ses deux fichiers par leur nom.
 Le processus reçoit uniquement le PCM déjà filtré par un tube local,
 applique les mêmes seuils anti-hallucination et ne journalise aucun mot.
 La dictée, le modèle de réponse, son contexte et les voix A/B sont inchangés.
