@@ -185,6 +185,14 @@ trusted local deployment that accepts this risk.
 | `slack_token` | HIGH | `xoxb-`, `xoxp-`, `xoxo-`, `xoxr-`, `xoxs-` followed by token |
 | `generic_api_key` | HIGH | `api_key = "..."`, `secret_key = "..."`, `auth_token = "..."` |
 
+Case is decided pattern by pattern (2026-09-28). A keyword people type
+(`password`, `api_key`, `postgres://`…) matches in any case:
+`Password: "…"` and `PASSWORD = '…'` are redacted. A token keeps the case
+of its format, plus only the capital a sentence start gives it (`Sk-…`,
+`Ghp_…`), which leaves the key usable; an all-caps `SK-…` is no longer a
+key and is not redacted. The Rust extension and the Python fallback carry
+the same pattern strings.
+
 ### Direct Usage
 
 ```python title="secret_scanner.py"

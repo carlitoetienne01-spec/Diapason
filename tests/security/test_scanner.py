@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import functools
+import re
+
 import pytest
 
 from diapason.security.scanner import PIIScanner, SecretScanner, _scan_python
 from diapason.security.types import ThreatLevel
+from tests.security.test_guardrails_reserve import motifs_rust, tout_unicode
 
 # ---------------------------------------------------------------------------
 # SecretScanner tests
@@ -181,11 +185,12 @@ class TestScanResult:
 # Le repli Python face à l'extension
 # ---------------------------------------------------------------------------
 #
-# 28/09/2026 : scanner.py dit son repli « intentionally feature-equivalent »
-# à l'extension. Il ne l'est pas, et ces tests le MONTRENT sans le corriger :
-# la décision (quel côté a raison, quel nom garder) reste à prendre. strict :
-# le jour où l'écart se ferme, le test passe et échoue, pour qu'on retire la
-# marque au lieu de laisser une promesse périmée.
+# 28/09/2026 : scanner.py disait son repli « intentionally feature-equivalent »
+# à l'extension. Il ne l'était pas. La casse est tranchée (voir le commentaire
+# de SECRET_PATTERNS dans scanner.rs) et les deux fichiers portent désormais
+# les mêmes chaînes ; l'écart IPv4 reste à décider, montré par un xfail
+# strict : le jour où il se ferme, le test passe et échoue, pour qu'on retire
+# la marque au lieu de laisser une promesse périmée.
 
 
 def _trouves(scanner, texte: str) -> list[tuple[str, str]]:
@@ -212,8 +217,147 @@ def _ecarts(scanner, textes: list[str]) -> list[str]:
     ]
 
 
+# Un témoin par motif, dans la casse de son format. Les valeurs ont des
+# espaces et les jetons sont assemblés : un balayage de secrets du dépôt ne
+# doit pas les prendre pour de vraies clés.
+_CORPS = "abcdefghijklmnopqrstuvwxyz0123456789ABCD"
+TEMOINS = {
+    SecretScanner: [
+        "sk-" + _CORPS,
+        "sk-ant-" + _CORPS,
+        "AKIA" + "ABCDEFGHIJKLMNOP",
+        "gh" + "p_" + _CORPS,
+        "github" + "_pat_" + _CORPS,
+        'password = "correct horse battery"',
+        "passwd: 'correct horse battery'",
+        'pwd="correct horse"',
+        "postgres://admin:correct@horse.example.com/prod",
+        "mysql://root:correct@horse.example.com/app",
+        "mongodb://u:correct@horse.example.com",
+        "redis://:correct@horse.example.com:6379",
+        "-----BEGIN RSA PRIVATE KEY-----",
+        "xo" + "xb-1234567890-abcdef",
+        "pk" + "_test_" + _CORPS,
+        "api_key = 'correct horse battery'",
+        'secret_key: "correct horse battery"',
+        "auth_token='correct horse battery'",
+    ],
+    # i, k et s : les lettres que re.IGNORECASE étend hors de l'ASCII.
+    PIIScanner: ["écrire à louis.kirk@example.com demain"],
+}
+
+
+@functools.cache
+def _casses_de_re(lettre: str) -> str:
+    """Chaque caractère que re.IGNORECASE confond avec ``lettre``."""
+    return "".join(
+        t.group() for t in re.finditer(re.escape(lettre), tout_unicode(), re.I)
+    )
+
+
+def _variantes(temoin: str) -> list[str]:
+    """Le témoin recassé en bloc, puis lettre par lettre, sur toute l'orbite
+    que re.IGNORECASE lui connaît (İ et ı pour i, K pour k, ſ pour s)."""
+    variantes = {
+        temoin.upper(),
+        temoin.lower(),
+        temoin.capitalize(),
+        temoin.title(),
+        temoin.swapcase(),
+    }
+    for rang, lettre in enumerate(temoin):
+        for autre in _casses_de_re(lettre):
+            variantes.add(temoin[:rang] + autre + temoin[rang + 1 :])
+    return sorted(variantes)
+
+
+class TestLaCasseEstDecideeMotifParMotif:
+    """§5 : un mot de passe en majuscules ne sort pas en clair, jamais.
+
+    28/09/2026 : « Password: "…" » et « PASSWORD = '…' » passaient EN CLAIR
+    par l'extension, celle que le flux applique, et n'étaient masqués que
+    par le repli. Les deux chemins sont éprouvés : l'extension ici, le repli
+    forcé à côté.
+    """
+
+    @staticmethod
+    def _scanner(classe, chemin):
+        objet = classe()
+        if chemin == "repli":
+            objet._rust_impl = None
+        elif objet._rust_impl is None:
+            pytest.skip("extension absente : le repli reste éprouvé")
+        return objet
+
+    @pytest.mark.parametrize("chemin", ["extension", "repli"])
+    @pytest.mark.parametrize(
+        ("texte", "nom"),
+        [
+            ('Password: "correct horse battery"', "password_assignment"),
+            ("PASSWORD = 'correct horse battery'", "password_assignment"),
+            ("PassWd:'correct horse battery'", "password_assignment"),
+            ("api_KEY='correct horse battery'", "generic_api_key"),
+            ('Secret_Key: "correct horse battery"', "generic_api_key"),
+            ("AUTH_TOKEN = 'correct horse battery'", "generic_api_key"),
+            ("AP\u0130_KEY = 'correct horse battery'", "generic_api_key"),
+            ("Postgres://admin:correct@horse.example.com/prod", "db_connection_string"),
+            ("RED\u0130S://:correct@horse.example.com", "db_connection_string"),
+            ("Sk-" + _CORPS, "openai_key"),
+            ("G" + "hp_" + _CORPS, "github_token"),
+            ("Xo" + "xb-1234567890-abcdef", "slack_token"),
+        ],
+    )
+    def test_un_secret_qui_reste_utilisable_est_masque_dans_toute_casse(
+        self, chemin, texte, nom
+    ):
+        """§5 : le mot-clé qu'on tape, la majuscule d'un début de phrase."""
+        masque = self._scanner(SecretScanner, chemin).redact(texte)
+        assert masque == f"[REDACTED:{nom}]", (
+            f"{texte!r} sort {masque!r} par le {chemin} : le secret reste lisible"
+        )
+
+    @pytest.mark.parametrize("chemin", ["extension", "repli"])
+    @pytest.mark.parametrize(
+        "texte",
+        [
+            "SK-" + _CORPS.upper(),
+            "RISK-ASSESSMENT-FRAMEWORK-2026",
+            "akia" + "0123456789abcdef",
+            "DISK_TEST_ABCDEFGHIJKLMNOPQRSTUV",
+            "-----begin rsa private key-----",
+        ],
+    )
+    def test_un_jeton_recasse_ailleurs_qu_en_tete_n_est_plus_une_cle(
+        self, chemin, texte
+    ):
+        """§5 : un (?i) complet masquait de la prose pour une clé détruite."""
+        trouves = self._scanner(SecretScanner, chemin).scan(texte).findings
+        assert not trouves, (
+            f"{texte!r} masqué par le {chemin} ({trouves[0].pattern_name}) : ni "
+            "la casse de son format, ni une majuscule de début de phrase"
+        )
+
+
 class TestLeRepliFaitCommeLExtension:
     """§5 : un repli qui se dit équivalent doit l'être, ou cesser de le dire."""
+
+    def test_les_deux_fichiers_portent_les_memes_chaines(self):
+        """§5 : une chaîne corrigée d'un seul côté rouvrirait l'écart de casse."""
+        rust = {m.nom: m.source for m in motifs_rust()}
+        python = {
+            nom: source
+            for classe in (SecretScanner, PIIScanner)
+            for nom, (source, _niveau, _description) in classe.PATTERNS.items()
+        }
+        # L'écart IPv4 est montré à part, xfail, en attendant d'être tranché.
+        rust.pop("ipv4_address")
+        python.pop("ipv4_public")
+        differents = sorted(
+            f"{nom} : scanner.rs {rust.get(nom)!r}, scanner.py {python.get(nom)!r}"
+            for nom in rust.keys() | python.keys()
+            if rust.get(nom) != python.get(nom)
+        )
+        assert not differents, "les deux tables divergent :\n" + "\n".join(differents)
 
     @pytest.mark.xfail(
         strict=True,
@@ -233,19 +377,17 @@ class TestLeRepliFaitCommeLExtension:
         )
         assert not ecarts, "le repli n'est pas équivalent :\n" + "\n".join(ecarts)
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "écart relevé le 28/09/2026, à trancher : _scan_python compile "
-            "chaque motif avec re.IGNORECASE, scanner.rs est sensible à la "
-            'casse — « Password: "…" » passe EN CLAIR par l\'extension, celle '
-            "que le flux applique"
-        ),
-    )
-    def test_le_repli_et_l_extension_lisent_la_casse_pareil(self):
-        """§5 : « Password: "…" » n'est masqué que si l'extension manque."""
+    @pytest.mark.parametrize("classe", [SecretScanner, PIIScanner])
+    def test_le_repli_et_l_extension_lisent_la_casse_pareil(self, classe):
+        """§5 : « Password: "…" » n'était masqué que si l'extension manquait.
+
+        Chaque témoin, recassé en bloc puis lettre par lettre sur toute
+        l'orbite de re.IGNORECASE : l'extension doit rendre exactement ce que
+        rend le repli.
+        """
         ecarts = _ecarts(
-            SecretScanner(),
-            ['Password: "correct horse battery"', "SK-abcdefghijklmnopqrstuvwxyz"],
+            classe(), [v for temoin in TEMOINS[classe] for v in _variantes(temoin)]
         )
-        assert not ecarts, "le repli n'est pas équivalent :\n" + "\n".join(ecarts)
+        assert not ecarts, f"{len(ecarts)} écarts de casse, dont :\n" + "\n".join(
+            ecarts[:10]
+        )

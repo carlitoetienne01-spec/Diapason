@@ -25,18 +25,26 @@ class SecretScanner(BaseScanner):
             self._rust_impl = _rust.SecretScanner()
         except (ImportError, AttributeError, RuntimeError):
             # Security must not disappear merely because the optional native
-            # accelerator is unavailable.  The Python implementation below is
-            # intentionally feature-equivalent, just slower.
+            # accelerator is unavailable.  The Python implementation below
+            # compiles the very strings of scanner.rs, just slower; the
+            # differences left are named in test_scanner.py.
             self._rust_impl = None
 
+    # 28/09/2026 : chaque motif était compilé sous re.IGNORECASE, ceux de
+    # scanner.rs ne l'étaient pas — et c'est l'extension que le flux
+    # applique : « Password: "…" » sortait en clair dès qu'elle était
+    # chargée. Même chaîne des deux côtés désormais, la casse décidée motif
+    # par motif (voir le commentaire de SECRET_PATTERNS dans scanner.rs) :
+    # (?i:…) sur les mots-clés qu'on tape ; pour les jetons, la casse du
+    # format et la seule majuscule initiale d'un début de phrase.
     PATTERNS: Dict[str, Tuple[str, ThreatLevel, str]] = {
         "openai_key": (
-            r"sk-[A-Za-z0-9_-]{20,}",
+            r"[Ss]k-[A-Za-z0-9_-]{20,}",
             ThreatLevel.CRITICAL,
             "OpenAI API key",
         ),
         "anthropic_key": (
-            r"sk-ant-[A-Za-z0-9_-]{20,}",
+            r"[Ss]k-ant-[A-Za-z0-9_-]{20,}",
             ThreatLevel.CRITICAL,
             "Anthropic API key",
         ),
@@ -46,17 +54,17 @@ class SecretScanner(BaseScanner):
             "AWS access key",
         ),
         "github_token": (
-            r"(?:ghp|gho|ghs|ghr|github_pat)_[A-Za-z0-9_]{36,}",
+            r"[Gg](?:hp|ho|hs|hr|ithub_pat)_[A-Za-z0-9_]{36,}",
             ThreatLevel.CRITICAL,
             "GitHub token",
         ),
         "password_assignment": (
-            r"""(?:password|passwd|pwd)\s*[=:]\s*['"]([^'"]{4,})['"]""",
+            r"""(?i:password|passwd|pwd)\s*[=:]\s*['"]([^'"]{4,})['"]""",
             ThreatLevel.HIGH,
             "Password assignment",
         ),
         "db_connection_string": (
-            r"(?:postgres|mysql|mongodb|redis)://[^\s]{10,}",
+            r"(?i:postgres|mysql|mongodb|red[iİı]s)://[^\s]{10,}",
             ThreatLevel.HIGH,
             "Database connection string",
         ),
@@ -66,17 +74,17 @@ class SecretScanner(BaseScanner):
             "Private key",
         ),
         "slack_token": (
-            r"xox[bpors]-[A-Za-z0-9\-]{10,}",
+            r"[Xx]ox[bpors]-[A-Za-z0-9\-]{10,}",
             ThreatLevel.HIGH,
             "Slack token",
         ),
         "stripe_key": (
-            r"(?:sk|pk)_(?:test|live)_[A-Za-z0-9]{20,}",
+            r"[SsPp]k_(?:test|live)_[A-Za-z0-9]{20,}",
             ThreatLevel.CRITICAL,
             "Stripe key",
         ),
         "generic_api_key": (
-            r"""(?:api_key|secret_key|auth_token)\s*[=:]\s*['"]([^'"]{8,})['"]""",
+            r"""(?i:ap[iİı]_key|secret_key|auth_token)\s*[=:]\s*['"]([^'"]{8,})['"]""",
             ThreatLevel.HIGH,
             "Generic API key/secret",
         ),
@@ -114,6 +122,10 @@ class PIIScanner(BaseScanner):
 
     PATTERNS: Dict[str, Tuple[str, ThreatLevel, str]] = {
         "email": (
+            # Sans (?i), comme dans scanner.rs : la classe nomme déjà les deux
+            # casses ASCII. re.IGNORECASE n'y ajoutait que İ, ı, ſ et K
+            # (U+212A), qu'une adresse ASCII ne contient pas ; une adresse
+            # internationalisée (« josé@… ») échappe aux deux moteurs.
             r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}",
             ThreatLevel.MEDIUM,
             "Email address",
@@ -175,7 +187,7 @@ def _scan_python(
 
     result = ScanResult()
     for name, (pattern, level, description) in patterns.items():
-        for match in re.finditer(pattern, text, flags=re.IGNORECASE):
+        for match in re.finditer(pattern, text):
             result.findings.append(
                 ScanFinding(
                     pattern_name=name,
@@ -195,12 +207,7 @@ def _redact_python(
 ) -> str:
     result = text
     for name, (pattern, _level, _description) in patterns.items():
-        result = re.sub(
-            pattern,
-            f"[REDACTED:{name}]",
-            result,
-            flags=re.IGNORECASE,
-        )
+        result = re.sub(pattern, f"[REDACTED:{name}]", result)
     return result
 
 

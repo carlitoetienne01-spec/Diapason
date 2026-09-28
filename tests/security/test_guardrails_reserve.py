@@ -25,10 +25,11 @@ motif doit tomber dans l'une de trois classes :
 from __future__ import annotations
 
 import functools
+import itertools
 import re
 import string
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
@@ -119,9 +120,10 @@ class Motif:
 
 
 def motifs_python() -> list[Motif]:
-    # _scan_python compile chaque motif avec re.IGNORECASE.
+    # _scan_python compile chaque motif tel quel : depuis le 28/09/2026, sa
+    # casse est écrite dans la chaîne (« (?i:…) »), plus dans un drapeau.
     return [
-        Motif("scanner.py", f"{classe.__name__}.PATTERNS", nom, source, re.IGNORECASE)
+        Motif("scanner.py", f"{classe.__name__}.PATTERNS", nom, source, 0)
         for classe in (SecretScanner, PIIScanner)
         for nom, (source, _niveau, _description) in classe.PATTERNS.items()
     ]
@@ -145,7 +147,8 @@ def motifs_rust() -> list[Motif]:
             f"scanner.rs {table} : un motif n'est pas lu (chaîne non brute ?) ; "
             "la réserve du flux ne serait pas vérifiée pour lui"
         )
-        # La regex de Rust est sensible à la casse, sauf (?i) que re lit aussi.
+        # La regex de Rust est sensible à la casse, sauf sous un (?i) que re
+        # lit aussi — pas tout à fait pareil : voir mesure_rust_atome().
         motifs += [
             Motif("scanner.rs", table, nom, source, 0) for nom, _dieses, source in lus
         ]
@@ -500,19 +503,18 @@ def tete_litterale(noeuds) -> int:
     return tete
 
 
-def casses(tete) -> list[bool]:
-    """Pour chaque littéral des mots-clés : se lit-il sans égard à la casse ?
+def en_regex(chemin) -> str:
+    """Un mot-clé réécrit atome par atome, chacun sous ses propres drapeaux.
 
-    Lu littéral par littéral, pas sur les drapeaux globaux : un « (?-i:…) »
-    autour des mots-clés de _OPEN_ASSIGNMENT les rendrait sensibles à la
-    casse sous un re.IGNORECASE qui dirait le contraire.
+    Lu atome par atome, pas sur les drapeaux globaux : un « (?-i:…) » autour
+    d'un mot-clé de _OPEN_ASSIGNMENT le rendrait sensible à la casse sous un
+    re.IGNORECASE qui dirait le contraire.
     """
-    return [
-        bool(drapeaux & re.IGNORECASE)
-        for op, av, lu_sous in tete
-        for sous_op, _av, drapeaux in noeuds([(op, av)], lu_sous)
-        if sous_op in (sre.LITERAL, sre.IN)
-    ]
+    return "".join(
+        f"(?{'i' if drapeaux & re.IGNORECASE else '-i'}:"
+        f"{re.escape(chr(av)) if op is sre.LITERAL else classe(av)})"
+        for op, av, drapeaux in chemin
+    )
 
 
 @dataclass(frozen=True)
@@ -573,9 +575,11 @@ def maillon(op, av, drapeaux: int) -> Maillon | None:
 class Forme:
     """« Mots-clés littéraux, puis maillons » : la forme d'une affectation."""
 
-    mots_cles: frozenset[str]
-    casse: bool  # un mot-clé au moins se lit sans égard à la casse
+    mots_cles: frozenset[str]  # tels qu'écrits
     maillons: tuple[Maillon, ...]
+    # Chaque mot-clé en suite d'atomes (op, av, drapeaux), branches dépliées :
+    # sa casse se lit atome par atome, dans le moteur du motif.
+    chemins: tuple = field(compare=False)
 
 
 def forme_du_motif(motif: Motif) -> Forme | None:
@@ -595,7 +599,23 @@ def forme_du_motif(motif: Motif) -> Forme | None:
     maillons = [maillon(*noeud) for noeud in noeuds[tete:]]
     if not tete or None in maillons:
         return None
-    return Forme(mots(noeuds[:tete]), any(casses(noeuds[:tete])), tuple(maillons))
+    return Forme(mots(noeuds[:tete]), tuple(maillons), tuple(chemins(noeuds[:tete])))
+
+
+def chemins(noeuds) -> list[tuple]:
+    """Les mots-clés de ``noeuds`` en suites d'atomes, une par alternative."""
+    suites = [()]
+    for op, av, drapeaux in noeuds:
+        if op is sre.BRANCH:
+            options = [
+                chemin
+                for branche in av[1]
+                for chemin in chemins(list(aplatir(branche, drapeaux)))
+            ]
+        else:
+            options = [((op, av, drapeaux),)]
+        suites = [debut + suite for debut in suites for suite in options]
+    return suites
 
 
 def chaine(noeuds) -> list[tuple[bool, Maillon]] | None:
@@ -625,7 +645,7 @@ def chaine(noeuds) -> list[tuple[bool, Maillon]] | None:
     return lus
 
 
-def retenue() -> tuple[frozenset[str], bool, list[tuple[bool, Maillon]]]:
+def retenue() -> tuple[re.Pattern, list[tuple[bool, Maillon]]]:
     """_OPEN_ASSIGNMENT lu comme mots-clés, puis une chaîne de maillons."""
     racine = sre_parse.parse(_OPEN_ASSIGNMENT.pattern, _OPEN_ASSIGNMENT.flags)
     noeuds = list(aplatir(racine, racine.state.flags))
@@ -640,7 +660,8 @@ def retenue() -> tuple[frozenset[str], bool, list[tuple[bool, Maillon]]]:
         "étoiles, entrées facultatives emboîtées, \\Z » que ce test sait lire : "
         "la démonstration ne s'applique plus, apprends-lui cette forme."
     )
-    return mots(noeuds[:tete]), all(casses(noeuds[:tete])), lus
+    mots_cles = "|".join(map(en_regex, chemins(noeuds[:tete])))
+    return re.compile(f"(?:{mots_cles})"), lus
 
 
 @functools.cache
@@ -725,7 +746,7 @@ def debordement(motif: Motif, forme: Forme, rang: int, cible: Maillon) -> str | 
     """Un caractère que le maillon ``rang`` admet et que ``cible`` refuse."""
     m = forme.maillons[rang]
     mesure = None
-    if motif.fichier == "scanner.rs" and m.categorie:
+    if motif.fichier == "scanner.rs" and (m.categorie or m.drapeaux & re.IGNORECASE):
         if (m.classe, m.drapeaux) not in _MESURES:
             _MESURES[m.classe, m.drapeaux] = mesure_rust(motif, rang)
         mesure = _MESURES[m.classe, m.drapeaux]
@@ -733,6 +754,108 @@ def debordement(motif: Motif, forme: Forme, rang: int, cible: Maillon) -> str | 
         return hors_de(m.en_ligne(), cible.en_ligne())
     return next(
         (c for c in sorted(mesure) if not re.fullmatch(cible.en_ligne(), c)), None
+    )
+
+
+def ecrit(atome) -> str:
+    """L'atome tel qu'écrit : son littéral, ou le premier de sa classe."""
+    op, av, _drapeaux = atome
+    return chr(av) if op is sre.LITERAL else chr(av[0][1])
+
+
+@functools.cache
+def _lu_par_re(source: str, ignore_la_casse: bool) -> frozenset[str]:
+    drapeaux = re.IGNORECASE if ignore_la_casse else 0
+    return frozenset(t.group() for t in re.finditer(source, tout_unicode(), drapeaux))
+
+
+def lecture_re(atome) -> frozenset[str]:
+    """Les caractères que re admet pour cet atome, sur tout Unicode."""
+    op, av, drapeaux = atome
+    source = re.escape(chr(av)) if op is sre.LITERAL else classe(av)
+    return _lu_par_re(source, bool(drapeaux & re.IGNORECASE))
+
+
+@functools.cache
+def blocs_sans_surrogats() -> tuple[str, ...]:
+    """Tout Unicode par blocs de 65 536, sans les surrogats qu'une chaîne
+    Rust ne porte pas ; par blocs pour la mémoire, comme mesure_rust()."""
+    tout = tout_unicode()
+    tout = tout[:0xD800] + tout[0xE000:]
+    return tuple(tout[i : i + 0x10000] for i in range(0, len(tout), 0x10000))
+
+
+def mesure_rust_atome(
+    motif: Motif, forme: Forme, chemin: tuple, rang: int
+) -> frozenset[str] | None:
+    """Les caractères que l'extension admet à l'atome ``rang`` d'un mot-clé.
+
+    Mesurés, pas déduits : le (?i) de Rust ne suit que le repliement simple
+    d'Unicode, re.IGNORECASE lit en plus İ (U+0130) et ı (U+0131) comme un i.
+    Une sonde par point de code, hors surrogats, le reste du mot-clé tel
+    qu'écrit et une affectation minimale autour. None sans extension.
+    """
+    scanner = {"SECRET_PATTERNS": SecretScanner, "PII_PATTERNS": PIIScanner}[
+        motif.table
+    ]()
+    if scanner._rust_impl is None:
+        return None
+    avant = "".join(map(ecrit, chemin[:rang]))
+    apres = "".join(map(ecrit, chemin[rang + 1 :])) + "".join(
+        representant(m) * max(m.bas, 1) for m in forme.maillons
+    )
+    admis = set()
+    for points in blocs_sans_surrogats():
+        # Tissé par un seul join sur les points de code : bâtir chaque sonde
+        # en Python prenait les quatre cinquièmes de la mesure (cProfile,
+        # 28/09/2026).
+        texte = avant + (apres + "\n" + avant).join(points) + apres
+        for trouve in scanner.scan(texte).findings:
+            lu = trouve.matched_text
+            if (
+                trouve.pattern_name == motif.nom
+                and len(lu) == len(avant) + 1 + len(apres)
+                and lu.startswith(avant)
+                and lu.endswith(apres)
+            ):
+                admis.add(lu[len(avant)])
+    assert ecrit(chemin[rang]) in admis, (
+        f"{motif} : la sonde de l'atome {rang} de {''.join(map(ecrit, chemin))!r} "
+        f"ne trouve même pas {ecrit(chemin[rang])!r} ; elle ne mesure rien, "
+        "corrige-la avant de conclure"
+    )
+    return frozenset(admis)
+
+
+# Une lettre se lit de la même façon dans tout mot-clé : une mesure par
+# atome, partagée entre les deux affectations. Mesurée dans un mot, elle
+# contient au moins son orbite de casse ; la réemployer ailleurs ne peut
+# qu'ajouter des mots à vérifier, jamais en ôter.
+_MESURES_ATOMES: dict[tuple[str, int], frozenset[str] | None] = {}
+
+
+def lecture(motif: Motif, forme: Forme, chemin: tuple, rang: int) -> frozenset[str]:
+    """Ce que le moteur du motif admet à l'atome ``rang`` du mot-clé."""
+    op, av, drapeaux = chemin[rang]
+    if motif.fichier == "scanner.rs" and drapeaux & re.IGNORECASE:
+        cle = (repr((op, av)), drapeaux & re.IGNORECASE)
+        if cle not in _MESURES_ATOMES:
+            _MESURES_ATOMES[cle] = mesure_rust_atome(motif, forme, chemin, rang)
+        if _MESURES_ATOMES[cle] is not None:
+            return _MESURES_ATOMES[cle]
+    # Sans (?i), un littéral n'admet que lui-même dans les deux moteurs ; sans
+    # extension, scanner.rs n'est appliqué nulle part.
+    return lecture_re(chemin[rang])
+
+
+def langage(motif: Motif, forme: Forme) -> frozenset[str]:
+    """Chaque mot-clé que le moteur du motif admet, dans toutes ses casses."""
+    return frozenset(
+        "".join(mot)
+        for chemin in forme.chemins
+        for mot in itertools.product(
+            *(sorted(lecture(motif, forme, chemin, j)) for j in range(len(chemin)))
+        )
     )
 
 
@@ -779,8 +902,8 @@ class TestRetenueDesAffectations:
 
         1. t − s < longueur du mot-clé ≤ réserve : t − réserve < s ;
         2. sinon texte[s:t] = mot-clé · maillons complets · maillon entamé.
-           Si _OPEN_ASSIGNMENT connaît ce mot-clé (en ignorant la casse chaque
-           fois que le motif l'ignore) et loge chaque maillon, dans l'ordre,
+           Si _OPEN_ASSIGNMENT accepte ce mot-clé dans chacune des casses que
+           le moteur du motif admet, et loge chaque maillon, dans l'ordre,
            dans sa propre chaîne, il accepte texte[s:t] jusqu'à \\Z : sa
            recherche, qui rend la correspondance la plus à gauche, commence
            en s ou avant.
@@ -788,9 +911,11 @@ class TestRetenueDesAffectations:
         Le dernier maillon, s'il est un caractère unique (le guillemet
         fermant), n'entre dans aucun début strict : il n'a rien à loger.
         Chaque inclusion de classes se vérifie sur les 1 114 112 points de
-        code ; une catégorie de scanner.rs (\\s) se mesure dans l'extension.
+        code ; une catégorie de scanner.rs (\\s), comme toute lettre ou classe
+        sous son (?i), se mesure dans l'extension : son repliement n'est pas
+        celui de re (28/09/2026, İ et ı).
         """
-        mots_retenus, casse_retenue, lus = retenue()
+        tete_retenue, lus = retenue()
         fautes = []
         for motif in tous_les_motifs():
             if motif.nom not in AFFECTATIONS:
@@ -803,23 +928,18 @@ class TestRetenueDesAffectations:
                     "ou apprends à ce test à lire sa forme."
                 )
                 continue
-            if motif.fichier == "scanner.rs" and (
-                forme.casse or any(m.drapeaux & re.IGNORECASE for m in forme.maillons)
-            ):
+            # Les mots-clés tels qu'écrits d'abord : ils nomment le défaut
+            # mieux que la première de leurs casses.
+            non_retenus = sorted(
+                (m for m in langage(motif, forme) if not tete_retenue.fullmatch(m)),
+                key=lambda m: (m not in forme.mots_cles, m),
+            )
+            if non_retenus:
                 fautes.append(
-                    f"{motif} ignore la casse : le (?i) de Rust ne se lit pas "
-                    "comme celui de re, apprends à ce test à le mesurer."
-                )
-            inconnus = sorted(forme.mots_cles - mots_retenus)
-            if inconnus:
-                fautes.append(
-                    f"{motif} : _OPEN_ASSIGNMENT (guardrails.py) ne connaît pas "
-                    f"{inconnus} ; le flux diffuserait ce début d'affectation."
-                )
-            if forme.casse and not casse_retenue:
-                fautes.append(
-                    f"{motif} ignore la casse, _OPEN_ASSIGNMENT non : "
-                    f"« {max(forme.mots_cles).upper()} = '… » partirait dans le flux."
+                    f"{motif} : _OPEN_ASSIGNMENT (guardrails.py) ne retient pas "
+                    f"{len(non_retenus)} des mots-clés que le motif admet, dont "
+                    f"{non_retenus[:3]} ; « {non_retenus[0]} = '… » partirait "
+                    "dans le flux."
                 )
             trop_longs = sorted(m for m in forme.mots_cles if len(m) > _STREAM_HOLDBACK)
             if trop_longs:

@@ -22,17 +22,51 @@ macro_rules! pattern {
     };
 }
 
+// La casse, décidée motif par motif le 28/09/2026. Ces motifs étaient tous
+// sensibles à la casse ici, alors que le repli Python (scanner.py) les
+// compilait sous re.IGNORECASE. Or c'est cette extension que le flux
+// applique : « Password: "correct horse battery" », « PASSWORD = '…' » ou
+// « API_KEY='…' » sortaient EN CLAIR dès qu'elle était chargée, et n'étaient
+// masqués que lorsqu'elle manquait. scanner.py porte désormais les mêmes
+// chaînes, sans drapeau global, et la même règle :
+//
+// - un MOT-CLÉ qu'un humain tape (le nom d'une affectation, un schéma d'URI,
+//   insensible à la casse selon la RFC 3986 §3.1) se lit sans égard à la
+//   casse, par un « (?i:…) » borné au mot-clé. Ce que le repli masquait doit
+//   l'être ici aussi : restreindre ce qui passe en clair, jamais l'élargir.
+//
+// - un JETON garde la casse que son émetteur lui fixe, à une exception près :
+//   la majuscule initiale qu'une correction automatique pose en début de
+//   phrase (« Sk-… », « Ghp_… », « Xoxb-… »). Elle laisse le corps intact,
+//   la clé reste utilisable : [Ss]k-, [Gg]hp_, [Xx]ox, [SsPp]k_. Toute autre
+//   casse recasse aussi le corps, en base62 sensible à la casse, et détruit
+//   la clé ; un (?i) complet y masquait en revanche de la prose, mesuré :
+//   « RISK-ASSESSMENT-FRAMEWORK-2026 » devenait une clé OpenAI, et
+//   « DISK_TEST_ABCDEFGHIJKLMNOPQRSTUV » une clé Stripe.
+//   AKIA commence déjà par une capitale et reste tel quel : l'identifiant
+//   AWS n'est pas le secret, et un (?i) trouvait 9 « clés » dans 16 Mo de
+//   base64 aléatoire, contre 0 — autant de passages d'une image corrompus.
+//   L'en-tête PEM reste en capitales (RFC 7468 §2) : LibreSSL 3.3.6 refuse
+//   « -----begin rsa private key----- », « no start line ». Le repli a
+//   perdu son IGNORECASE dans le même commit.
+//
+// Le « i » s'écrit [iİı] dans un mot-clé : le re de Python, sous IGNORECASE,
+// lit aussi İ (U+0130) et ı (U+0131) comme un i — la majuscule turque de
+// « api_key » est « APİ_KEY » —, alors que le (?i) de Rust ne suit que le
+// repliement simple d'Unicode et les refuse. Mesuré sur les 1 114 112 points
+// de code : c'est la seule lettre ASCII où les deux moteurs divergent (k et s
+// admettent K U+212A et ſ U+017F des deux côtés).
 static SECRET_PATTERNS: Lazy<Vec<PatternDef>> = Lazy::new(|| {
     vec![
         pattern!(
             "openai_key",
-            r"sk-[A-Za-z0-9_-]{20,}",
+            r"[Ss]k-[A-Za-z0-9_-]{20,}",
             ThreatLevel::Critical,
             "OpenAI API key"
         ),
         pattern!(
             "anthropic_key",
-            r"sk-ant-[A-Za-z0-9_-]{20,}",
+            r"[Ss]k-ant-[A-Za-z0-9_-]{20,}",
             ThreatLevel::Critical,
             "Anthropic API key"
         ),
@@ -44,19 +78,19 @@ static SECRET_PATTERNS: Lazy<Vec<PatternDef>> = Lazy::new(|| {
         ),
         pattern!(
             "github_token",
-            r"(?:ghp|gho|ghs|ghr|github_pat)_[A-Za-z0-9_]{36,}",
+            r"[Gg](?:hp|ho|hs|hr|ithub_pat)_[A-Za-z0-9_]{36,}",
             ThreatLevel::Critical,
             "GitHub token"
         ),
         pattern!(
             "password_assignment",
-            r#"(?:password|passwd|pwd)\s*[=:]\s*['"]([^'"]{4,})['"]"#,
+            r#"(?i:password|passwd|pwd)\s*[=:]\s*['"]([^'"]{4,})['"]"#,
             ThreatLevel::High,
             "Password assignment"
         ),
         pattern!(
             "db_connection_string",
-            r"(?:postgres|mysql|mongodb|redis)://[^\s]{10,}",
+            r"(?i:postgres|mysql|mongodb|red[iİı]s)://[^\s]{10,}",
             ThreatLevel::High,
             "Database connection string"
         ),
@@ -68,19 +102,19 @@ static SECRET_PATTERNS: Lazy<Vec<PatternDef>> = Lazy::new(|| {
         ),
         pattern!(
             "slack_token",
-            r"xox[bpors]-[A-Za-z0-9\-]{10,}",
+            r"[Xx]ox[bpors]-[A-Za-z0-9\-]{10,}",
             ThreatLevel::High,
             "Slack token"
         ),
         pattern!(
             "stripe_key",
-            r"(?:sk|pk)_(?:test|live)_[A-Za-z0-9]{20,}",
+            r"[SsPp]k_(?:test|live)_[A-Za-z0-9]{20,}",
             ThreatLevel::Critical,
             "Stripe key"
         ),
         pattern!(
             "generic_api_key",
-            r#"(?:api_key|secret_key|auth_token)\s*[=:]\s*['"]([^'"]{8,})['"]"#,
+            r#"(?i:ap[iİı]_key|secret_key|auth_token)\s*[=:]\s*['"]([^'"]{8,})['"]"#,
             ThreatLevel::High,
             "Generic API key/secret"
         ),
@@ -258,5 +292,146 @@ mod tests {
         let scanner = SecretScanner::new();
         let result = scanner.scan("Hello, this is safe text.");
         assert!(result.clean());
+    }
+
+    fn noms(texte: &str) -> Vec<String> {
+        SecretScanner::new()
+            .scan(texte)
+            .findings
+            .into_iter()
+            .map(|f| f.pattern_name)
+            .collect()
+    }
+
+    // 28/09/2026 : chacun de ces textes sortait en clair par l'extension,
+    // alors que le repli Python le masquait. Voir le commentaire de
+    // SECRET_PATTERNS. Des valeurs à espaces : un balayage de secrets ne les
+    // prend pas pour de vraies clés.
+    #[test]
+    fn un_mot_cle_de_secret_se_lit_dans_toutes_les_casses() {
+        let cas = [
+            (r#"Password: "correct horse""#, "password_assignment"),
+            ("PASSWORD = 'correct horse'", "password_assignment"),
+            ("PassWd:'correct horse'", "password_assignment"),
+            ("PWD=\"correct horse\"", "password_assignment"),
+            ("api_KEY='correct horse'", "generic_api_key"),
+            ("API_KEY: \"correct horse\"", "generic_api_key"),
+            ("Secret_Key = 'correct horse'", "generic_api_key"),
+            ("AUTH_TOKEN='correct horse'", "generic_api_key"),
+            (
+                "Postgres://admin:correct@horse.example.com/prod",
+                "db_connection_string",
+            ),
+            (
+                "MYSQL://root:correct@horse.example.com/app",
+                "db_connection_string",
+            ),
+            (
+                "MongoDB://u:correct@horse.example.com",
+                "db_connection_string",
+            ),
+            (
+                "REDIS://:correct@horse.example.com:6379",
+                "db_connection_string",
+            ),
+        ];
+        for (texte, nom) in cas {
+            assert!(
+                noms(texte).iter().any(|n| n == nom),
+                "{texte:?} doit être reconnu comme {nom} : le repli Python le masque"
+            );
+            let masque = SecretScanner::new().redact(texte);
+            assert!(
+                masque.contains(&format!("[REDACTED:{nom}]")) && !masque.contains("correct"),
+                "{texte:?} doit sortir masqué, pas {masque:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn le_i_d_un_mot_cle_admet_les_i_turcs_que_le_repli_admet() {
+        // re.IGNORECASE lit İ (U+0130) et ı (U+0131) comme un i ; le (?i) de
+        // Rust non. Sans le [iİı], « APİ_KEY » fuyait par l'extension seule.
+        for (texte, nom) in [
+            ("AP\u{130}_KEY = 'correct horse'", "generic_api_key"),
+            ("ap\u{131}_key = 'correct horse'", "generic_api_key"),
+            (
+                "RED\u{130}S://:correct@horse.example.com",
+                "db_connection_string",
+            ),
+            (
+                "red\u{131}s://:correct@horse.example.com",
+                "db_connection_string",
+            ),
+        ] {
+            assert!(
+                noms(texte).iter().any(|n| n == nom),
+                "{texte:?} : le repli Python le masque, l'extension doit aussi"
+            );
+        }
+        // K (U+212A) et ſ (U+017F) : le repliement simple d'Unicode les
+        // donne déjà aux deux moteurs.
+        for (texte, nom) in [
+            (
+                "PA\u{17F}\u{17F}WORD = 'correct horse'",
+                "password_assignment",
+            ),
+            ("API_\u{212A}EY = 'correct horse'", "generic_api_key"),
+        ] {
+            assert!(
+                noms(texte).iter().any(|n| n == nom),
+                "{texte:?} : s long et signe kelvin sont s et k pour les deux moteurs"
+            );
+        }
+    }
+
+    #[test]
+    fn un_jeton_admet_la_majuscule_d_un_debut_de_phrase() {
+        // La correction automatique capitalise « sk-… » tapé en tête de
+        // phrase ; le corps reste intact, la clé reste utilisable.
+        let corps = "abcdefghijklmnopqrstuvwxyz0123456789ABCD";
+        for (texte, nom) in [
+            (format!("Sk-{corps}"), "openai_key"),
+            (format!("Sk-ant-{corps}"), "anthropic_key"),
+            (format!("Ghp_{corps}"), "github_token"),
+            (format!("Github_pat_{corps}"), "github_token"),
+            (format!("Xoxb-{corps}"), "slack_token"),
+            (format!("Pk_test_{corps}"), "stripe_key"),
+        ] {
+            assert!(
+                noms(&texte).iter().any(|n| n == nom),
+                "{texte:?} doit être reconnu comme {nom} : la clé reste utilisable"
+            );
+        }
+    }
+
+    #[test]
+    fn un_jeton_garde_la_casse_que_son_emetteur_lui_fixe() {
+        // Toute autre casse recasse le corps et détruit la clé ; un (?i)
+        // complet masquait en revanche de la prose, ces textes-ci entre
+        // autres.
+        for texte in [
+            "SK-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+            "sK-abcdefghijklmnopqrstuvwxyz",
+            "RISK-ASSESSMENT-FRAMEWORK-2026",
+            "akia0123456789abcdef",
+            "GHP_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+            "XOXB-1234567890-ABCDEF",
+            "DISK_TEST_ABCDEFGHIJKLMNOPQRSTUV",
+            "-----begin rsa private key-----",
+        ] {
+            assert!(
+                noms(texte).is_empty(),
+                "{texte:?} n'a pas la casse de son format : {:?}",
+                noms(texte)
+            );
+        }
+        // Seul le préfixe est contraint : le corps d'une clé, écrit
+        // [A-Za-z0-9_-], garde ses deux casses.
+        assert_eq!(
+            SecretScanner::new().redact("sk-ABCDEFGHIJKLMNOPQRSTUVWXYZ"),
+            "[REDACTED:openai_key]",
+            "le corps d'une clé garde ses deux casses"
+        );
     }
 }

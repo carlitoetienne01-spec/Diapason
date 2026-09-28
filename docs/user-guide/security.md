@@ -186,6 +186,14 @@ explicitement de confiance, qui accepte ce risque.
 | `slack_token` | HIGH | `xoxb-`, `xoxp-`, `xoxo-`, `xoxr-`, `xoxs-` suivis du jeton |
 | `generic_api_key` | HIGH | `api_key = "..."`, `secret_key = "..."`, `auth_token = "..."` |
 
+La casse est décidée motif par motif (28/09/2026). Un mot-clé qu'on tape
+(`password`, `api_key`, `postgres://`…) se lit dans toutes les casses :
+`Password: "…"` et `PASSWORD = '…'` sont masqués. Un jeton garde la casse
+de son format, plus la seule majuscule initiale d'un début de phrase
+(`Sk-…`, `Ghp_…`), qui laisse la clé utilisable ; `SK-…` en capitales n'est
+plus une clé et n'est pas masqué. L'extension Rust et le repli Python
+portent les mêmes chaînes.
+
 ### L'usage direct
 
 ```python title="secret_scanner.py"
