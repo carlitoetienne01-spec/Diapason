@@ -1542,6 +1542,9 @@ class VoiceRealtimeConfig:
     # 2026) : medium partout rendait la voix lente à répondre — « c'était
     # mieux avant ». Vide = hérite de [speech] model.
     stt_model: str = ""
+    # 27/09/2026 : choix explicite de l'oreille Metal après installation ;
+    # garder le moteur portable par défaut, sans téléchargement au premier mot.
+    stt_backend: str = "faster-whisper"
     # Comma-separated tool ids; empty = defaults (open_anything, apps, browser, …)
     tools: str = ""
     # Ne répondre qu'à la voix ENRÔLÉE du propriétaire. L'empreinte s'apprend

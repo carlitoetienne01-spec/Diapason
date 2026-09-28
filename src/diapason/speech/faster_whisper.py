@@ -135,10 +135,8 @@ class FasterWhisperBackend(SpeechBackend):
         # "Karli 2-1" in the first place — a post-hoc replacement cannot
         # recover a name the recogniser never proposed.
         self._use_dictionary_hints = use_dictionary_hints
-        # Realtime turns are short and already segmented by the microphone
-        # gate. Greedy decoding is much faster here, while Silero VAD rejects
-        # the low-level noise that Whisper otherwise turns into stock phrases
-        # or hotwords (the observed silent turn became "Google Chrome").
+        # Silero rejects the low-level noise that Whisper otherwise turns
+        # into stock phrases or hotwords (a silent turn became "Google Chrome").
         self._realtime = bool(realtime)
 
     # Brand names the intent layer keys on. "youtube" absent from the
@@ -340,7 +338,12 @@ class FasterWhisperBackend(SpeechBackend):
             if self._realtime:
                 kwargs.update(
                     {
-                        "beam_size": 1,
+                        # 27/09/2026 : le début synthétique « Diapason »
+                        # devenait « D'y a pas ont ». Garder 400 ms avant
+                        # la parole détectée, puis comparer 3 hypothèses,
+                        # retrouve le nom sans lui souffler de vocabulaire.
+                        # Banc : 1,51 → 1,56 s ; 6 phrases/variantes fidèles.
+                        "beam_size": 3,
                         "best_of": 1,
                         "condition_on_previous_text": False,
                         "vad_filter": True,
@@ -348,7 +351,7 @@ class FasterWhisperBackend(SpeechBackend):
                             "threshold": 0.5,
                             "min_speech_duration_ms": 250,
                             "min_silence_duration_ms": 160,
-                            "speech_pad_ms": 80,
+                            "speech_pad_ms": 400,
                         },
                     }
                 )
@@ -406,6 +409,24 @@ class FasterWhisperBackend(SpeechBackend):
         except Exception as exc:
             self._last_error = str(exc)
             raise
+
+        if self._realtime:
+            # 27/09/2026 : le vrai micro prenait 5–6 s, le son synthétique
+            # environ 1 s. Whisper peut recommencer son décodage quand il
+            # doute. Conserver ces reprises de qualité, mais rendre visible
+            # la température finalement retenue, sans journaliser les mots.
+            temperatures = [
+                valeur
+                for seg in segments_list
+                if isinstance(valeur := getattr(seg, "temperature", None), (int, float))
+            ]
+            logger.info(
+                "local voice timing: stage=stt_decode segments=%d "
+                "fallback_segments=%d max_temperature=%.1f",
+                len(segments_list),
+                sum(t > 0 for t in temperatures),
+                max(temperatures, default=0.0),
+            )
 
         # Remember a detected language so the next utterance can skip the
         # detection pass — but only on evidence strong enough to bet a whole

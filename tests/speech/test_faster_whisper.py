@@ -68,12 +68,87 @@ def test_realtime_transcription_uses_fast_vad_decode_without_hotwords():
         backend.transcribe(b"not a wav")
 
     kwargs = mock_model.transcribe.call_args.kwargs
-    assert kwargs["beam_size"] == 1
+    assert kwargs["beam_size"] == 3
     assert kwargs["best_of"] == 1
     assert kwargs["condition_on_previous_text"] is False
     assert kwargs["vad_filter"] is True
     assert kwargs["vad_parameters"]["min_speech_duration_ms"] >= 250
     assert "hotwords" not in kwargs
+
+
+def test_les_reprises_sont_mesurees_sans_exposer_les_paroles(caplog):
+    """§100 : observer le repli du décodeur sans modifier ses contrôles."""
+    import logging
+    from types import SimpleNamespace
+
+    caplog.set_level(logging.INFO, logger="diapason.speech.faster_whisper")
+    segments = [
+        SimpleNamespace(
+            text=texte, start=i, end=i + 1, avg_logprob=-0.3, temperature=temperature
+        )
+        for i, (texte, temperature) in enumerate(
+            [("Ma phrase privée", 0.0), (" reste intacte.", 0.4)]
+        )
+    ]
+    modele = MagicMock()
+    modele.transcribe.return_value = (
+        iter(segments),
+        SimpleNamespace(language="fr", language_probability=0.99, duration=2.0),
+    )
+    with patch("diapason.speech.faster_whisper.WhisperModel", return_value=modele):
+        backend = FasterWhisperBackend(
+            language="fr", use_dictionary_hints=False, realtime=True
+        )
+        resultat = backend.transcribe(b"audio de test")
+
+    assert resultat.text == "Ma phrase privée reste intacte.", "les mots sont conservés"
+    assert "temperature" not in modele.transcribe.call_args.kwargs, (
+        "la mesure ne désactive pas les reprises natives du décodeur"
+    )
+    mesures = [r.message for r in caplog.records if "stage=stt_decode" in r.message]
+    assert len(mesures) == 1, "une mesure résume le décodage terminé"
+    assert "fallback_segments=1 max_temperature=0.4" in mesures[0]
+    assert "privée" not in caplog.text, "aucune transcription au journal"
+
+
+def test_la_marge_vocale_ne_rognait_plus_la_premiere_syllabe(monkeypatch):
+    """§100 : le VAD amputait 320 ms que le pré-roll avait pourtant conservées."""
+    import io
+    import wave
+
+    import numpy as np
+
+    vad = pytest.importorskip("faster_whisper.vad")
+    # La voix devient certaine à 416 ms ; son attaque douce la précède.
+    # Simuler la décision neuronale rend la frontière reproductible, sans
+    # télécharger de poids ni prétendre tester l'audition d'un humain.
+    probabilites = np.array([0.0] * 13 + [0.99] * 19, dtype="float32")
+    monkeypatch.setattr(vad, "get_vad_model", lambda: lambda _: probabilites)
+    audio = io.BytesIO()
+    with wave.open(audio, "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(16000)
+        wav.writeframes(b"\1\0" * 16000)
+    debuts = []
+
+    def transcrire(samples, **kwargs):
+        segments = vad.get_speech_timestamps(
+            samples, vad.VadOptions(**kwargs["vad_parameters"])
+        )
+        debuts.append(segments[0]["start"] / 16000)
+        return iter(()), MagicMock(
+            language="fr", language_probability=0.99, duration=1.0
+        )
+
+    modele = MagicMock()
+    modele.transcribe.side_effect = transcrire
+    backend = FasterWhisperBackend(
+        language="fr", use_dictionary_hints=False, realtime=True
+    )
+    monkeypatch.setattr(backend, "_ensure_model", lambda: modele)
+    backend.transcribe(audio.getvalue())
+    assert debuts[0] <= 0.1, "le premier son doux doit rester dans l'audio de Whisper"
 
 
 def test_faster_whisper_transcribe_temp_file_reopenable_and_removed():
