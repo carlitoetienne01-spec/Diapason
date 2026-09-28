@@ -505,14 +505,8 @@ def create_app(
     from diapason.server.compression_api import CompressionDesReponses
 
     app.add_middleware(CompressionDesReponses)
-
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=_origins,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    # CORSMiddleware, lui, est ajouté EN DERNIER (voir plus bas) : le plus
+    # extérieur, pour que tout refus d'un middleware reste lisible.
 
     # Store dependencies in app state
     app.state.engine = engine
@@ -661,6 +655,50 @@ def create_app(
             app.add_middleware(AuthMiddleware, api_key=api_key)
         except Exception as exc:
             logger.debug("Auth middleware init skipped: %s", exc)
+
+    # 28/09/2026 : CORSMiddleware était ajouté juste après la compression,
+    # donc SOUS AuthMiddleware et RateLimitMiddleware — le dernier ajouté est
+    # le plus extérieur. Un 401 « Invalid API key » sortait sans en-tête CORS :
+    # la fenêtre Tauri (tauri://localhost, en cross-origin vers
+    # 127.0.0.1:8000) ne pouvait pas le lire, fetch() rejetait « Load
+    # failed », et le chat le présentait comme un serveur injoignable
+    # (frontend/src/lib/coupureDuFlux.ts) — « Renvoyer » rejouait le même
+    # refus. Le 25/08, _too_many n'avait réparé que le 429. Ajouté ici, en
+    # dernier, CORS pose ses en-têtes sur le refus de TOUT middleware.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    # Et la 500 : ServerErrorMiddleware reste toujours hors de CORS. Une
+    # exception avant la réponse (le chat qui choisit son modèle ou prépare
+    # sa trousse) arrivait donc à la fenêtre sans en-tête — « Load failed »
+    # encore, lu comme « serveur injoignable ». Même corps qu'avant, même
+    # liste d'origines que CORS ; Starlette relève l'exception après la
+    # réponse, et le journal d'uvicorn la garde.
+    _cors_des_erreurs = CORSMiddleware(
+        app=None, allow_origins=_origins, allow_credentials=True
+    )
+
+    async def _erreur_lisible(request, _exc):  # noqa: ANN001, ANN202
+        from starlette.responses import PlainTextResponse
+
+        origine = request.headers.get("origin")
+        entetes = {}
+        if origine and _cors_des_erreurs.is_allowed_origin(origine):
+            entetes = {
+                "Access-Control-Allow-Origin": origine,
+                "Access-Control-Allow-Credentials": "true",
+                "Vary": "Origin",
+            }
+        return PlainTextResponse(
+            "Internal Server Error", status_code=500, headers=entetes
+        )
+
+    app.add_exception_handler(Exception, _erreur_lisible)
 
     # Mount webhook routes (always — SendBlue may be configured dynamically)
     if webhook_config:

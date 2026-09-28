@@ -74,6 +74,13 @@ export async function lireLeCorps<T>(lecteur: {
 // Les mots des moteurs pour une requête que le réseau a fait échouer, sans
 // statut HTTP. Ancrés : « Chat request failed: 502 » (un Mac arrêté derrière
 // `tailscale serve`) est une réponse, pas une coupure, et garde sa phrase.
+//
+// « Load failed » avant toute réponse ne veut dire « injoignable » que si
+// chaque refus du serveur reste LISIBLE par la fenêtre Tauri, qui l'appelle
+// en cross-origin. Revue du 28/09/2026 : un 401 d'AuthMiddleware ou une 500
+// partaient sans en-tête CORS, et une clé périmée se lisait « serveur
+// arrêté » ; server/app.py pose désormais CORS en dernier et sur la 500
+// (tests/server/test_app_refus_lisibles.py).
 const MOTS_DU_TRANSPORT: ReadonlyArray<{ motif: RegExp; pendant: ConnexionPerdue['during'] }> = [
   // Chromium (la WebView d'Android, Chrome) : le corps s'est interrompu.
   { motif: /^network error$/i, pendant: 'response' },
