@@ -1526,14 +1526,23 @@ la passerelle) : jamais les Réglages Système du Mac.
 | Échec | État d'Android | Phrase | Bouton |
 |---|---|---|---|
 | refus ou indisponible | (en attente) | « Diapason demande à Android pourquoi… » | non |
-| refus ou indisponible | `refuseDefinitivement` | Android ne demande plus : réglages › Autorisations › Micro | oui |
+| refus ou indisponible | `refuseDefinitivement` | refusé, et Android ne le demandera « sans doute » plus : réglages › Autorisations › Micro | oui |
 | refus ou indisponible | `refuse`, `aDemander` | touchez Parler et acceptez si Android le demande ; sinon les réglages | oui |
 | refus ou indisponible | `restreint` | restreint par le système | non |
-| refus | `accorde` | le téléphone a refusé sans vous la poser (verrou, autre adresse, demande simultanée) : réessayez | non |
-| refus | `verbeInconnu` / rien | Paramètres › Applis › Diapason › Autorisations › Micro, en texte | non |
+| refus | `accorde` | Android autorise, l'app du téléphone a refusé sans vous la poser : réessayez, notez le détail — aucune cause devinée | non |
+| refus | `verbeInconnu` / rien | Paramètres › Applis › l'app Diapason utilisée (« Diapason dev » en développement) › Autorisations › Micro, en texte | non |
 | indisponible | `verbeInconnu` | l'app du téléphone est trop ancienne : installez la nouvelle | non |
 | indisponible | `accorde` | un appel ou une autre app l'utilise peut-être | non |
-| aucun micro, page, échec audio, inconnu | — | leur phrase | non |
+| aucun micro, page, échec audio, inconnu | — | leur phrase ; au téléphone, échec audio et inconnu renvoient au détail affiché, pas aux journaux | non |
+
+Revue du 28/09 (après le banc) : le « définitif » de permission_handler
+peut être SUR-déclaré — la préférence
+`sp_permission_handler_permission_was_denied_before` survit aux remises à
+zéro faites par Android (banc 5 bis : `refuseDefinitivement` rendu, et
+l'invite montrée au toucher suivant) ; il était déjà sous-déclaré après un
+refus fait hors de permission_handler. D'où « sans doute », et le bouton
+dans les deux cas. Les chemins à suivre à la main nomment « Diapason dev » :
+l'app de production s'installe à côté et porte le nom « Diapason ».
 
 Sous la phrase, en petit : « Détail : NotReadableError · Could not start
 audio source » (nom · message, 120 signes au plus) — au téléphone

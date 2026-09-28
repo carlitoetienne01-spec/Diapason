@@ -177,6 +177,13 @@ describe('TestLeMessageAuTelephone — l’état d’Android décide, jamais les
     }
   });
 
+  it('un échec audio ou inconnu au téléphone a sa phrase, qui renvoie au détail affiché', () => {
+    // 28/09/2026, revue : la phrase du bureau renvoyait « aux journaux », que
+    // personne ne peut ouvrir sur le téléphone.
+    expect(auTelephone('echecAudio', 'inconnu')).toEqual({ code: 'microphone-phone-audio-failed', reglages: false });
+    expect(auTelephone('inconnu', 'inconnu')).toEqual({ code: 'microphone-phone-failed', reglages: false });
+  });
+
   it('au retour des réglages, un micro accordé se dit — sans relancer quoi que ce soit', () => {
     expect(messageApresLesReglages('refus', 'accorde')).toEqual({ code: 'microphone-phone-now-allowed', reglages: false });
     expect(messageApresLesReglages('refus', 'refuseDefinitivement').reglages).toBe(true);
@@ -197,6 +204,46 @@ describe('TestChaqueCodeASaPhrase', () => {
   it('un code inconnu retombe sur « la séance n’a pas pu démarrer », jamais sur le code', () => {
     expect(cleErreurVocale('microphone-inexistant')).toBe('talk.sessionFailed');
     expect(cleErreurVocale('constructor'), 'une propriété du prototype n’est pas un code').toBe('talk.sessionFailed');
+  });
+
+  const cleDe = (code: string) => cleErreurVocale(code) as keyof typeof MESSAGES.fr;
+  const auTelephone = CODES_DU_MICRO.filter((c) => c.startsWith('microphone-phone-'));
+
+  it('les phrases du téléphone ne renvoient jamais à des journaux qu’il n’a pas', () => {
+    for (const code of auTelephone) {
+      expect(MESSAGES.fr[cleDe(code)], code).not.toMatch(/journaux/);
+      expect(MESSAGES.en[cleDe(code)], code).not.toMatch(/\blogs?\b/);
+    }
+  });
+
+  it('un chemin à suivre à la main nomme aussi « Diapason dev », l’app que Carlito utilise', () => {
+    // 28/09/2026, revue : « Paramètres › Applis › Diapason » désignait l'app
+    // de production, installée À CÔTÉ de « Diapason dev » (build.gradle.kts).
+    for (const cle of ['talk.micro.telephone.refuseSansEtat', 'talk.micro.reglagesIndisponibles', 'talk.micro.reglagesEchec'] as const) {
+      expect(MESSAGES.fr[cle], cle).toContain('« Diapason dev »');
+      expect(MESSAGES.en[cle], cle).toContain('“Diapason dev”');
+    }
+    for (const [cle, texte] of Object.entries(MESSAGES.fr)) {
+      expect(texte, `${cle} mène à la mauvaise app`).not.toMatch(/Applis › Diapason ›/);
+    }
+    for (const [cle, texte] of Object.entries(MESSAGES.en)) {
+      expect(texte, `${cle} leads to the wrong app`).not.toMatch(/Apps › Diapason ›/);
+    }
+  });
+
+  it('le refus d’une coquille qui a eu l’accord d’Android ne devine aucune cause (§34)', () => {
+    const cle = cleDe('microphone-phone-refused-by-app');
+    expect(MESSAGES.fr[cle], 'deux causes impossibles énumérées').not.toMatch(/verrouill|autre adresse|simultan/);
+    expect(MESSAGES.en[cle]).not.toMatch(/locked|another address|simultaneous/);
+  });
+
+  it('le refus « définitif » n’affirme pas qu’Android ne demandera plus (banc 5 bis)', () => {
+    // permission_handler le rend aussi quand Android montrerait l'invite.
+    const cle = cleDe('microphone-phone-denied-forever');
+    expect(MESSAGES.fr[cle]).not.toMatch(/ne demande plus/);
+    expect(MESSAGES.fr[cle]).toContain('sans doute');
+    expect(MESSAGES.en[cle]).not.toMatch(/no longer asks/);
+    expect(MESSAGES.en[cle]).toContain('probably');
   });
 
   it('les phrases du téléphone ne nomment jamais les Réglages Système du Mac', () => {

@@ -26,6 +26,8 @@ export const ERREURS_VOCALES = {
   'microphone-phone-busy-unknown': 'talk.micro.telephone.occupeSansEtat',
   'microphone-phone-missing': 'talk.micro.telephone.aucun',
   'microphone-phone-page': 'talk.micro.telephone.page',
+  'microphone-phone-audio-failed': 'talk.micro.telephone.echecAudio',
+  'microphone-phone-failed': 'talk.micro.telephone.echec',
   'microphone-phone-now-allowed': 'talk.micro.telephone.maintenantAutorise',
   'voice-session-failed': 'talk.sessionFailed',
   'voice-closed-inactivity': 'talk.closedInactivity',

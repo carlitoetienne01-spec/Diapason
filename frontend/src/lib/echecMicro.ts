@@ -209,6 +209,8 @@ export const CODES_DU_MICRO = [
   'microphone-phone-busy-unknown',
   'microphone-phone-missing',
   'microphone-phone-page',
+  'microphone-phone-audio-failed',
+  'microphone-phone-failed',
   'microphone-phone-now-allowed',
 ] as const;
 export type CodeDuMicro = (typeof CODES_DU_MICRO)[number];
@@ -258,13 +260,24 @@ export function messageDuMicro({
     // qu'il écrit lui-même : un refus fait par la dictée de l'Entité reste
     // `refuse` alors qu'Android ne demande plus. Le texte de `refuse` ne
     // promet donc jamais d'invite, et le bouton y figure aussi.
+    //
+    // L'erreur inverse existe aussi (banc 5 bis du 28/09/2026) : les
+    // drapeaux de RECORD_AUDIO effacés côté Android, `etat` rendait encore
+    // `refuseDefinitivement` — la préférence
+    // `sp_permission_handler_permission_was_denied_before` survit à toute
+    // remise à zéro — et le toucher suivant de « Parler » MONTRAIT l'invite.
+    // Le texte du refus définitif ne dit donc pas « Android ne demande
+    // plus », seulement qu'il ne le demandera sans doute plus.
     if (etat === 'refuseDefinitivement') return avec('microphone-phone-denied-forever');
     if (etat === 'refuse' || etat === 'aDemander') return avec('microphone-phone-denied');
     // `restreint` vient d'iOS : aucun réglage de l'app ne le lève.
     if (etat === 'restreint') return sans('microphone-phone-restricted');
     if (classe === 'refus') {
-      // Android a accordé, et pourtant non : c'est la coquille qui a refusé
-      // (cadenas, page d'une autre adresse, demande simultanée).
+      // Android a accordé, et pourtant non : c'est la coquille qui a refusé.
+      // Seule la coquille qui connaît `micro` rend `accorde` ; elle sérialise
+      // les demandes simultanées et ne lie son pont qu'aux pages du Mac. La
+      // phrase ne devine donc aucune cause (revue du 28/09/2026 : elle en
+      // énumérait deux devenues impossibles) et renvoie au détail affiché.
       return sans(etat === 'accorde' ? 'microphone-phone-refused-by-app' : 'microphone-phone-denied-unknown');
     }
     // Une coquille qui ne connaît pas `micro` est antérieure à
@@ -275,8 +288,11 @@ export function messageDuMicro({
   }
   if (classe === 'aucunMicro') return sans('microphone-phone-missing');
   if (classe === 'pageSansMicro') return sans('microphone-phone-page');
-  if (classe === 'echecAudio') return sans('microphone-audio-failed');
-  return sans('microphone-failed');
+  // 28/09/2026 (revue) : les phrases du bureau renvoient « aux journaux ».
+  // Un téléphone n'en a aucun qu'on puisse ouvrir ; le détail est affiché
+  // juste en dessous.
+  if (classe === 'echecAudio') return sans('microphone-phone-audio-failed');
+  return sans('microphone-phone-failed');
 }
 
 /**

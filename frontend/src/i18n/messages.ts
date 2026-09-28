@@ -151,13 +151,13 @@ export const MESSAGES = {
     'talk.micro.telephone.refuse':
       'Android did not give Diapason the microphone. Tap Talk and accept if Android asks; if it asks nothing, open the settings and allow the microphone.',
     'talk.micro.telephone.refuseDefinitivement':
-      'Android no longer asks: the microphone is refused to Diapason. Open the settings, then Permissions › Microphone › Allow.',
+      'Diapason is denied the microphone, and Android will probably not ask again: open the settings, then Permissions › Microphone › Allow.',
     'talk.micro.telephone.restreint':
       'The phone’s system restricts the microphone: Diapason cannot lift that restriction.',
     'talk.micro.telephone.refuseParLApp':
-      'The phone refused this request without asking you (app locked, page from another address, or a simultaneous request): try again.',
+      'Android allows the microphone, but the phone app refused this request without asking you. Try again; if it happens again, note the detail below.',
     'talk.micro.telephone.refuseSansEtat':
-      'Android did not give Diapason the microphone. Open Settings › Apps › Diapason › Permissions › Microphone, and allow it.',
+      'Android did not give Diapason the microphone. Open Settings › Apps, choose the Diapason app you are using (“Diapason dev” for the development version), then Permissions › Microphone, and allow it.',
     'talk.micro.telephone.occupe':
       'Android could not open the microphone: a call or another app may be using it. Try again once it is free.',
     'talk.micro.telephone.appTropAncienne':
@@ -168,13 +168,17 @@ export const MESSAGES = {
       'Android reports no usable microphone. Restart the phone if it happens again.',
     'talk.micro.telephone.page':
       'This page has no access to the phone’s microphone: it is not served securely, or “Android System WebView” is too old (update it from the Play Store).',
+    'talk.micro.telephone.echecAudio':
+      'The microphone opened, but preparing the sound failed. Try again; if it happens again, note the detail below.',
+    'talk.micro.telephone.echec':
+      'The microphone could not start, for a reason Diapason does not recognise. Try again; if it happens again, note the detail below.',
     'talk.micro.telephone.maintenantAutorise':
       'The microphone is now allowed: tap Talk to try again.',
     'talk.micro.ouvrirReglages': 'Open settings',
     'talk.micro.reglagesIndisponibles':
-      'This version of the phone app cannot open its settings: open Settings › Apps › Diapason › Permissions › Microphone.',
+      'This version of the phone app cannot open its settings: open Settings › Apps, choose the Diapason app you are using (“Diapason dev” for the development version), then Permissions › Microphone.',
     'talk.micro.reglagesEchec':
-      'Android’s settings could not open: open Settings › Apps › Diapason › Permissions › Microphone.',
+      'Android’s settings could not open: open Settings › Apps, choose the Diapason app you are using (“Diapason dev” for the development version), then Permissions › Microphone.',
     'talk.micro.detail': 'Detail: {technique}',
     'talk.sessionFailed':
       'The voice session could not start. Try again; technical details are available in the logs.',
@@ -1851,13 +1855,13 @@ export const MESSAGES = {
     'talk.micro.telephone.refuse':
       'Android n’a pas donné le micro à Diapason. Touchez Parler et acceptez si Android le demande ; s’il ne demande rien, ouvrez les réglages et autorisez le micro.',
     'talk.micro.telephone.refuseDefinitivement':
-      'Android ne demande plus : le micro est refusé à Diapason. Ouvrez les réglages, puis Autorisations › Micro › Autoriser.',
+      'Le micro est refusé à Diapason, et Android ne le demandera sans doute plus : ouvrez les réglages, puis Autorisations › Micro › Autoriser.',
     'talk.micro.telephone.restreint':
       'Le micro est restreint par le système du téléphone : Diapason ne peut pas lever cette restriction.',
     'talk.micro.telephone.refuseParLApp':
-      'Le téléphone a refusé cette demande sans vous la poser (app verrouillée, page d’une autre adresse, ou demande simultanée) : réessayez.',
+      'Android autorise le micro, mais l’app du téléphone a refusé cette demande sans vous la poser. Réessayez ; si cela se répète, notez le détail ci-dessous.',
     'talk.micro.telephone.refuseSansEtat':
-      'Android n’a pas donné le micro à Diapason. Ouvrez Paramètres › Applis › Diapason › Autorisations › Micro, et autorisez-le.',
+      'Android n’a pas donné le micro à Diapason. Ouvrez Paramètres › Applis, choisissez l’app Diapason que vous utilisez (« Diapason dev » en version de développement), puis Autorisations › Micro, et autorisez-le.',
     'talk.micro.telephone.occupe':
       'Android n’a pas pu ouvrir le micro : un appel ou une autre app l’utilise peut-être. Réessayez une fois qu’il est libre.',
     'talk.micro.telephone.appTropAncienne':
@@ -1868,13 +1872,17 @@ export const MESSAGES = {
       'Android ne signale aucun micro utilisable. Redémarrez le téléphone si cela se répète.',
     'talk.micro.telephone.page':
       'Cette page n’a pas accès au micro du téléphone : elle n’est pas servie de façon sécurisée, ou « Android System WebView » est trop ancien (mettez-le à jour dans le Play Store).',
+    'talk.micro.telephone.echecAudio':
+      'Le micro s’est ouvert, mais la préparation du son a échoué. Réessayez ; si cela se répète, notez le détail ci-dessous.',
+    'talk.micro.telephone.echec':
+      'Le micro n’a pas pu s’ouvrir, pour une raison que Diapason ne reconnaît pas. Réessayez ; si cela se répète, notez le détail ci-dessous.',
     'talk.micro.telephone.maintenantAutorise':
       'Le micro est maintenant autorisé : touchez Parler pour réessayer.',
     'talk.micro.ouvrirReglages': 'Ouvrir les réglages',
     'talk.micro.reglagesIndisponibles':
-      'Cette version de l’app du téléphone ne sait pas ouvrir ses réglages : ouvrez Paramètres › Applis › Diapason › Autorisations › Micro.',
+      'Cette version de l’app du téléphone ne sait pas ouvrir ses réglages : ouvrez Paramètres › Applis, choisissez l’app Diapason que vous utilisez (« Diapason dev » en version de développement), puis Autorisations › Micro.',
     'talk.micro.reglagesEchec':
-      'Les réglages d’Android n’ont pas pu s’ouvrir : ouvrez Paramètres › Applis › Diapason › Autorisations › Micro.',
+      'Les réglages d’Android n’ont pas pu s’ouvrir : ouvrez Paramètres › Applis, choisissez l’app Diapason que vous utilisez (« Diapason dev » en version de développement), puis Autorisations › Micro.',
     'talk.micro.detail': 'Détail : {technique}',
     'talk.sessionFailed':
       'La séance vocale n’a pas pu démarrer. Réessayez ; les détails techniques restent disponibles dans les journaux.',
