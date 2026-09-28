@@ -52,6 +52,8 @@
 .resonance-terminer { color: var(--res-texte); background: color-mix(in srgb, var(--color-bg) 24%, transparent); border-color: var(--res-bord); }
 .resonance-terminer:hover { background: color-mix(in srgb, var(--color-bg) 50%, transparent); }
 .resonance-erreur { color: var(--res-erreur); margin-top: 18px; max-width: 60ch; font-size: 13px; overflow-wrap: anywhere; }
+/* « Le micro est maintenant autorisé » : une bonne nouvelle, pas une erreur (28/09/2026). */
+.resonance-erreur[data-ton='nouvelle'] { color: var(--res-texte); }
 .resonance-pied { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 16px 28px 20px; color: var(--res-secondaire); font-size: 11px; }
 .resonance-source { display: flex; align-items: center; gap: 8px; }
 .resonance-temoin { display: block; width: 5px; height: 5px; border-radius: 50%; background: var(--res-secondaire); }

@@ -47,3 +47,14 @@ export function cleErreurVocale(code: string): MessageKey {
     ? ERREURS_VOCALES[code as keyof typeof ERREURS_VOCALES]
     : 'talk.sessionFailed';
 }
+
+/**
+ * 28/09/2026, revue : au retour des Paramètres d'Android, « Le micro est
+ * maintenant autorisé » passe par le même canal que les erreurs, et
+ * s'affichait dans leur couleur. Le ton se décide ici, pour la barre de la
+ * Discussion et pour l'orbe ; la phrase reste dans la même zone `alert`,
+ * pour que son changement soit annoncé à TalkBack.
+ */
+export function tonDuCodeVocal(code: string): 'erreur' | 'nouvelle' {
+  return code === 'microphone-phone-now-allowed' ? 'nouvelle' : 'erreur';
+}

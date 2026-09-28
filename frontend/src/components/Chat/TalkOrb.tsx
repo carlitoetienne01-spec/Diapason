@@ -1,4 +1,4 @@
-import { cleErreurVocale } from '../../lib/erreursVocales';
+import { cleErreurVocale, tonDuCodeVocal } from '../../lib/erreursVocales';
 import { Suspense, lazy, useEffect, useId, useRef, useState } from 'react';
 import { AudioLines, Check, Copy, Info, Mic, Monitor, Square, X } from 'lucide-react';
 import '@fontsource-variable/geist';
@@ -218,7 +218,7 @@ export function TalkOrb({
             disabled={!serviceReady || checkingService} onClick={() => agir(onStartConversation)}>
             {t('talk.conversation.start')}
           </button>}
-          {error && <p className="resonance-erreur" role="alert">
+          {error && <p className="resonance-erreur" role="alert" data-ton={tonDuCodeVocal(error)}>
             {t(cleErreurVocale(error))}
           </p>}
           {error && onOuvrirReglagesMicro && <DetailDuMicro micro={micro} onOuvrirReglages={onOuvrirReglagesMicro}

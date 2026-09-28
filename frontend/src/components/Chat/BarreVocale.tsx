@@ -4,7 +4,7 @@ import type { useConversationVocale } from '../../hooks/useConversationVocale';
 import { useVoixPartagee } from '../../hooks/contexteVoix';
 import { useTranslation } from '../../i18n/useTranslation';
 import { cleEtatVocal } from '../../lib/etatVocal';
-import { cleErreurVocale } from '../../lib/erreursVocales';
+import { cleErreurVocale, tonDuCodeVocal } from '../../lib/erreursVocales';
 import { DetailDuMicro } from './DetailDuMicro';
 import { niveauOndeVocale } from '../../lib/niveauOndeVocale';
 import { deconnecterBrancheAudio } from '../../lib/connexionAudio';
@@ -78,7 +78,8 @@ export function BarreVocale({ voix, onClavier }: { voix: ReturnType<typeof useCo
       </div>
     </div>
     {voix.conversationSeule && <p className="mt-1 text-xs">{t('talk.conversation.start')}</p>}
-    {erreur && <p role="alert" className="mt-2 text-xs" style={{ color: 'var(--color-error)' }}>{erreur}</p>}
+    {erreur && <p role="alert" className="mt-2 text-xs"
+      style={{ color: tonDuCodeVocal(voix.error ?? '') === 'nouvelle' ? 'var(--color-text)' : 'var(--color-error)' }}>{erreur}</p>}
     {erreur && <DetailDuMicro micro={voix.micro} onOuvrirReglages={() => void voix.ouvrirReglagesMicro()} />}
   </div>;
 }

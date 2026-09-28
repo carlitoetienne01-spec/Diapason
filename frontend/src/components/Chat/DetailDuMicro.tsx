@@ -1,6 +1,7 @@
+import { useEffect, useRef } from 'react';
 import type { MicroEnEchec } from '../../hooks/useVoiceLive';
 import { useTranslation } from '../../i18n/useTranslation';
-import { vueDuDetailDuMicro } from './vueDuMicro';
+import { doitReprendreLeFocus, vueDuDetailDuMicro } from './vueDuMicro';
 
 /**
  * Sous la phrase d'un micro qui ne s'est pas ouvert : le détail technique et
@@ -28,9 +29,20 @@ export function DetailDuMicro({
 }) {
   const { t } = useTranslation();
   const vue = vueDuDetailDuMicro(micro, t);
+  // Le bouton retiré au retour des Paramètres emportait le focus avec lui :
+  // le détail, juste sous la phrase annoncée, le reprend.
+  const conteneur = useRef<HTMLDivElement>(null);
+  const avaitUnBouton = useRef(false);
+  const bouton = !!vue?.bouton;
+  useEffect(() => {
+    const avant = avaitUnBouton.current;
+    avaitUnBouton.current = bouton;
+    if (doitReprendreLeFocus(avant, bouton, document.activeElement, document.body)) conteneur.current?.focus();
+  }, [bouton]);
   if (!vue) return null;
   return (
-    <div className={`detail-du-micro mt-2 flex flex-col items-start gap-2 ${classeConteneur}`}>
+    <div ref={conteneur} tabIndex={-1}
+      className={`detail-du-micro mt-2 flex flex-col items-start gap-2 focus:outline-none ${classeConteneur}`}>
       {vue.detail && (
         <p className="text-[11px] leading-snug opacity-80" style={{ overflowWrap: 'anywhere' }}>
           {vue.detail}

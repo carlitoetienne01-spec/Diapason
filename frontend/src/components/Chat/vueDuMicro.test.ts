@@ -4,9 +4,11 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
 import { translate } from '../../i18n/translate';
+import { ERREURS_VOCALES, tonDuCodeVocal } from '../../lib/erreursVocales';
 import {
   DUREE_TOAST_AVEC_BOUTON_MS,
   DUREE_TOAST_MS,
+  doitReprendreLeFocus,
   optionsDuToastDictee,
   texteDeLAvis,
   vueDuDetailDuMicro,
@@ -93,6 +95,37 @@ describe('TestLeToastDeLaDictee — la même décision que la barre et l’orbe'
   });
 });
 
+/**
+ * 28/09/2026, revue (sonde P3) : au retour des Paramètres avec le micro
+ * accordé, le bouton qui avait le focus quittait le DOM — focus sur <body>,
+ * TalkBack repartait du haut — et « Le micro est maintenant autorisé »
+ * s'affichait dans la couleur des erreurs.
+ */
+describe('TestLeRetourDesReglages — le focus reste là, la bonne nouvelle n’est pas une erreur', () => {
+  const corps = { nom: 'body' } as unknown as Element;
+  const champ = { nom: 'textarea' } as unknown as Element;
+
+  it('le bouton disparu et le focus tombé sur <body> : le détail le reprend', () => {
+    expect(doitReprendreLeFocus(true, false, corps, corps)).toBe(true);
+    expect(doitReprendreLeFocus(true, false, null, corps)).toBe(true);
+  });
+
+  it('on n’arrache jamais le focus à qui l’a pris, ni sans bouton disparu', () => {
+    expect(doitReprendreLeFocus(true, false, champ, corps), 'le focus volé au champ où l’on écrit').toBe(false);
+    expect(doitReprendreLeFocus(false, false, corps, corps), 'un focus pris au premier affichage').toBe(false);
+    expect(doitReprendreLeFocus(true, true, corps, corps)).toBe(false);
+    expect(doitReprendreLeFocus(false, true, corps, corps)).toBe(false);
+  });
+
+  it('seul « le micro est maintenant autorisé » a le ton d’une bonne nouvelle', () => {
+    expect(tonDuCodeVocal('microphone-phone-now-allowed')).toBe('nouvelle');
+    for (const code of Object.keys(ERREURS_VOCALES).filter((c) => c !== 'microphone-phone-now-allowed')) {
+      expect(tonDuCodeVocal(code), code).toBe('erreur');
+    }
+    expect(tonDuCodeVocal('code-inconnu')).toBe('erreur');
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Le branchement, lu comme du texte (à la manière de telephoneSeulement.test.ts).
 
@@ -105,11 +138,26 @@ const source = (fichier: string) => sansCommentaires(lire(fichier)).replace(/\s+
 describe('TestLeBranchementDuDetailDuMicro — la barre, l’orbe et la dictée le montrent', () => {
   it('DetailDuMicro rend ce que décide vueDuDetailDuMicro, et rien d’autre', () => {
     const code = source('DetailDuMicro.tsx');
-    expect(code).toContain('const vue = vueDuDetailDuMicro(micro, t); if (!vue) return null;');
+    expect(code).toContain('const vue = vueDuDetailDuMicro(micro, t);');
+    expect(code).toContain('if (!vue) return null;');
     expect(code, 'le bouton ne dépend plus de la vue (MU1d)').toContain('{vue.bouton && ( <button type="button" onClick={onOuvrirReglages}');
     expect(code).toContain('{vue.detail && (');
     expect(code, 'la réponse de la coquille, dans la même annonce que l’avis').toContain('{vue.avis && ( <p role="status" className="text-xs"> {vue.avis} {vue.reponse && (');
     expect(code, 'une décision prise dans le composant échappe aux tests').not.toMatch(/micro\.(reglages|technique|avis)/);
+  });
+
+  it('le détail reprend le focus que le bouton emportait', () => {
+    const code = source('DetailDuMicro.tsx');
+    expect(code).toContain('<div ref={conteneur} tabIndex={-1}');
+    expect(code).toContain('if (doitReprendreLeFocus(avant, bouton, document.activeElement, document.body)) conteneur.current?.focus();');
+    expect(code).toContain('}, [bouton]);');
+  });
+
+  it('la barre et l’orbe donnent son ton à la bonne nouvelle', () => {
+    expect(source('BarreVocale.tsx'))
+      .toContain("style={{ color: tonDuCodeVocal(voix.error ?? '') === 'nouvelle' ? 'var(--color-text)' : 'var(--color-error)' }}");
+    expect(source('TalkOrb.tsx')).toContain('<p className="resonance-erreur" role="alert" data-ton={tonDuCodeVocal(error)}>');
+    expect(source('TalkOrb.css')).toContain(".resonance-erreur[data-ton='nouvelle'] { color: var(--res-texte); }");
   });
 
   it('la barre de la Discussion montre le détail et le bouton sous sa phrase (MU4)', () => {

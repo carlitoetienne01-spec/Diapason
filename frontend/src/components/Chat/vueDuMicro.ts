@@ -66,6 +66,23 @@ export function vueDuDetailDuMicro(micro: MicroAAfficher | null, t: Traduire): V
 }
 
 /**
+ * Faut-il rendre le focus au détail ? 28/09/2026, revue : au retour des
+ * Paramètres avec le micro accordé, « Ouvrir les réglages » — qui avait le
+ * focus, puisqu'on venait de le toucher — quittait le DOM, et le focus
+ * tombait sur <body> : TalkBack reprenait la lecture du haut de la page.
+ * Seulement quand c'est le bouton qui vient de disparaître ET que personne
+ * d'autre n'a pris le focus : on ne l'arrache jamais au champ où l'on écrit.
+ */
+export function doitReprendreLeFocus(
+  boutonAvant: boolean,
+  boutonApres: boolean,
+  actif: Element | null,
+  corps: Element | null,
+): boolean {
+  return boutonAvant && !boutonApres && (actif === null || actif === corps);
+}
+
+/**
  * La durée du toast de la dictée. 8 s pour une phrase seule, comme avant le
  * 28/09/2026. 15 s quand un bouton attend le pouce : la phrase la plus longue
  * et son détail font une quarantaine de mots, une dizaine de secondes de
