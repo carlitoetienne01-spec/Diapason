@@ -16,6 +16,9 @@ mode normal pour réaliser un essai.
   l'exécuteur. Les options du client ne peuvent pas rouvrir les outils.
 - Aucun contexte du bureau ni mémoire personnelle injectée ; les échanges
   temporaires ne nourrissent pas les traces et la mémoire du propriétaire.
+- Aucun message du fil de Discussion (28/09/2026) : ouvert depuis le menu +,
+  ce mode recevait les seize derniers messages du propriétaire. Le client ne
+  les envoie plus ; la route et `LocalVoiceSession` ignorent `history`.
 - Aucune lecture, écriture ou réinitialisation de l'empreinte vocale.
 - Fournisseur local uniquement ; mode refusé au téléphone.
 - Limites de durée et d'inactivité de `VoiceLiveBridge` conservées.

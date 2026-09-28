@@ -366,7 +366,8 @@ describe('§5 — une recherche vide se voit aussi au panneau vocal', () => {
 
 describe('§78 / §100 — une conversation entre IA reste limitée à sa session', () => {
   async function inviter(confirmer = true) {
-    await rendu().start({ conversationOnly: true });
+    // Comme le menu + de Discussion, qui joint le fil en cours.
+    await rendu().start({ conversationOnly: true, history: [{ role: 'user', content: 'Mon rendez-vous médical' }] });
     const socket = Socket.tous[Socket.tous.length - 1];
     await socket.onopen();
     banc.capture.mock.calls[banc.capture.mock.calls.length - 1][2](new ArrayBuffer(640));
@@ -378,6 +379,7 @@ describe('§78 / §100 — une conversation entre IA reste limitée à sa sessio
     expect(JSON.parse(socket.send.mock.calls[0][0])).toMatchObject({
       provider: 'local', conversationOnly: true, enable_tools: false, include_memory: false,
     });
+    expect('history' in JSON.parse(socket.send.mock.calls[0][0])).toBe(false);
     expect(banc.micro).toHaveBeenCalledWith({ audio: { echoCancellation: false, noiseSuppression: false, channelCount: 1 } });
     expect(rendu().conversationSeule).toBe(true);
     const envoyer = banc.capture.mock.calls[0][2];

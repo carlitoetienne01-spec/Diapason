@@ -429,9 +429,12 @@ def test_la_conversation_invitee_force_le_mode_sans_memoire_ni_outils(monkeypatc
                 "enable_tools": True,
                 "tools": "open_anything",
                 "instructions": "INSTRUCTIONS PERSONNELLES",
+                # 28/09/2026 : le menu + de Discussion joint le fil en cours.
+                "history": [{"role": "user", "content": "Mon rendez-vous médical"}],
             }
         )
         assert ws.receive_json()["type"] == "ready"
+    assert "historique" not in capture, "la voix invitée n'entend pas le fil du chat"
     assert capture["enable_tools"] is False, "aucun outil"
     assert capture["allowed_tools"] == [], "aucun élargissement du client"
     assert capture["instructions"] == "", "aucune instruction personnelle"

@@ -250,7 +250,15 @@ async def websocket_voice_live(websocket: WebSocket) -> None:
         try:
             from diapason.speech.realtime.historique_chat import lire_historique_chat
 
-            historique = lire_historique_chat(raw.get("history"))
+            # 28/09/2026 : le menu + de Discussion ouvre la conversation entre
+            # IA en joignant les seize derniers messages du fil. La voix
+            # invitée pouvait alors demander « de quoi parlions-nous ? » et
+            # entendre les messages du propriétaire, que ce mode promet de
+            # taire (conversation-vocale.md). Le champ est ignoré, pas refusé :
+            # un client d'avant ce correctif doit encore pouvoir démarrer.
+            historique = (
+                [] if conversation_seule else lire_historique_chat(raw.get("history"))
+            )
             session = create_realtime_session(
                 provider,
                 model=model or "",

@@ -1129,7 +1129,12 @@ class LocalVoiceSession(RealtimeVoiceSession):
         self._barge_samples = 0
         from diapason.speech.realtime.historique_chat import lire_historique_chat
 
-        self._history: List[dict] = lire_historique_chat(historique)
+        # 28/09/2026 : la route écarte déjà l'historique de la voix invitée ;
+        # la séance le refuse aussi, pour qu'un autre appelant de
+        # LocalVoiceSession ne rouvre pas le fil du propriétaire.
+        self._history: List[dict] = (
+            [] if conversation_seule else lire_historique_chat(historique)
+        )
         # 27/09/2026 : importer 16 messages saturait immédiatement la fenêtre
         # glissante. Chaque tour en retirait le début, et relisait 2 000 à
         # 3 000 jetons : 8–10 s avant le premier mot du modèle dans le chat.

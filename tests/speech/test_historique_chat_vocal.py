@@ -22,6 +22,18 @@ def test_le_contexte_est_copie_sans_pouvoirs_supplementaires():
     )
 
 
+def test_la_voix_invitee_n_herite_pas_du_fil_du_proprietaire():
+    """28/09/2026 : la conversation entre IA promet de taire le contexte du
+    bureau (conversation-vocale.md). Le menu + de Discussion lui joignait les
+    seize derniers messages : « de quoi parlions-nous ? » les aurait récités
+    à l'autre voix."""
+    session = LocalVoiceSession(
+        conversation_seule=True,
+        historique=[{"role": "user", "content": "Mon rendez-vous médical"}],
+    )
+    assert session._history == [], "aucun message du propriétaire dans la séance"
+
+
 @pytest.mark.parametrize(
     "valeur",
     [
@@ -59,7 +71,6 @@ async def test_un_chat_plein_garde_son_prefixe_sur_plusieurs_echanges():
         tts=lambda _: b"\0\0" * 240,
         llm=repondre,
         enable_tools=False,
-        conversation_seule=True,
         historique=historique,
     )
     try:

@@ -342,7 +342,8 @@ export function useVoiceLive() {
             provider: chosen,
             voice: voixChoisie,
             ...(opts?.model ? { model: opts.model } : {}),
-            ...(opts?.history ? { history: opts.history } : {}),
+            // 28/09/2026 : la voix invitée n'entend pas le fil du propriétaire.
+            ...(opts?.history && !conversationOnly ? { history: opts.history } : {}),
             include_memory: !conversationOnly,
             ...(conversationOnly ? { conversationOnly: true, enable_tools: false } : {}),
           }),
