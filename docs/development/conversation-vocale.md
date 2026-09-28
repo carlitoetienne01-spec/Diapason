@@ -147,6 +147,14 @@ lien : avant de télécharger ou de copier, le script retire chaque lien de
 relance effaçait le fichier extérieur refusé, puis le téléchargement
 réécrivait encore le codec derrière un `speech_tokenizer` lié).
 
+`model/` lui-même, ou un dossier au-dessus (`voices/qwen3`, `voices`), ne
+doit pas être un lien : tout ce qui précède le suivrait, et un `model/` lié
+à un dossier partagé y verrait effacer tout ce qui n'est pas Orion.
+L'installation est refusée avant la première écriture (`mkdir` et `uv venv`
+compris) ; rien n'est écrit ni retiré derrière le lien, et le message
+demande de le remplacer par un vrai dossier. Seul le témoin tombe, quand
+il est lui-même dans un vrai dossier (`model/` seul lié).
+
 `README.md` et `.gitattributes` sont les deux noms que l'ancienne version
 du script posait, et qu'une installation faite avant le 28 septembre 2026
 contient encore ; aucun chargeur ne les ouvre. Les refuser rendait Orion
@@ -526,7 +534,8 @@ Les liens symboliques sous `model/`, eux, sont retirés (le lien seul, jamais
 sa cible) avant tout téléchargement et toute copie : sans métadonnées dans
 `model/`, le hub recopiait son cache dans le fichier de l'utilisateur
 derrière un `weights.safetensors` lié, que la vérification déclarait ensuite
-conforme.
+conforme. Même règle que pour Orion si `model/`, `whisper-mlx` ou `speech`
+est lui-même un lien : refus avant toute écriture.
 Le processus reçoit uniquement le PCM déjà filtré par un tube local,
 applique les mêmes seuils anti-hallucination et ne journalise aucun mot.
 La dictée, le modèle de réponse, son contexte et les voix A/B sont inchangés.

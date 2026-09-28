@@ -17,6 +17,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import shutil
 import subprocess
 import sys
 import types
@@ -324,6 +325,83 @@ class TestRienNeSortDuDossierDeLOreille:
             "une installation réussie ne doit laisser aucun lien dans model/"
         )
         assert moteur_installe(), "la copie saine rend l'oreille disponible"
+
+
+def _arbre(dossier: Path) -> dict[str, bytes | None]:
+    """Tout ce qu'il y a sous ``dossier`` : chemins, et octets des fichiers."""
+    return {
+        p.relative_to(dossier).as_posix(): None if p.is_dir() else p.read_bytes()
+        for p in dossier.rglob("*")
+    }
+
+
+class TestUnModeleLieEstRefuseSansRienToucher:
+    """28/09/2026 : model/ lui-même lié n'était pas un lien « sous model/ ».
+
+    La vérification retirait le poids refusé dans sa cible, le hub y
+    recopiait son cache, la copie y écrivait, le témoin tombait à travers.
+    """
+
+    PRECIEUX = b"un autre poids, precieux"
+
+    @pytest.mark.parametrize(
+        "chemin", ["speech/whisper-mlx/model", "speech/whisper-mlx", "speech"]
+    )
+    @pytest.mark.parametrize("parcours", ["telechargement", "copie"])
+    def test_un_dossier_lie_sur_le_chemin_du_modele_est_refuse_sans_rien_toucher(
+        self, banc, tmp_path, chemin, parcours
+    ):
+        """§5 — refuser l'installation, jamais suivre le lien.
+
+        Installée par copie, l'oreille n'a aucune métadonnée du hub : le
+        téléchargement recopierait le poids par-dessus celui de l'utilisateur,
+        la copie le remplacerait. Ce qu'il y a derrière le lien doit rester
+        identique, octet pour octet, témoin compris.
+        """
+        _ecrire(banc.source, CONTENUS)
+        banc.lancer("--model-source", str(banc.source))
+        (banc.modele / "weights.safetensors").write_bytes(self.PRECIEUX)
+        lie = tmp_path / "maison" / chemin
+        ailleurs = tmp_path / "disque_externe"
+        shutil.move(lie, ailleurs)
+        lie.symlink_to(ailleurs, target_is_directory=True)
+        avant = _arbre(ailleurs)
+        arguments = ("--model-source", str(banc.source)) if parcours == "copie" else ()
+
+        with pytest.raises(RuntimeError, match="Installation refusée") as refus:
+            banc.lancer(*arguments)
+
+        assert str(lie) in str(refus.value), f"le lien doit être nommé : {refus.value}"
+        assert "vrai dossier" in str(refus.value) and "relancez" in str(refus.value), (
+            f"le refus doit dire quoi faire : {refus.value}"
+        )
+        assert _arbre(ailleurs) == avant, (
+            "rien ne doit être écrit ni retiré derrière le lien"
+        )
+        assert lie.is_symlink(), "le lien de l'utilisateur n'est pas à défaire ici"
+        assert banc.telechargements == 0, "rien ne doit être téléchargé"
+        if chemin.endswith("model"):
+            assert not banc.temoin.exists(), (
+                "model/ seul lié : le témoin, dans un vrai dossier, doit tomber"
+            )
+            assert not moteur_installe(), "l'oreille ne doit pas se dire disponible"
+
+    def test_une_premiere_installation_ne_cree_rien_dans_un_dossier_lie(
+        self, banc, tmp_path
+    ):
+        """§5 — mkdir et uv venv écrivaient déjà à travers le lien."""
+        speech = tmp_path / "maison/speech"
+        shutil.rmtree(speech)
+        partage = tmp_path / "partage"
+        _ecrire(partage, {"a_moi.txt": b"a garder"})
+        speech.symlink_to(partage, target_is_directory=True)
+
+        with pytest.raises(RuntimeError, match="Installation refusée"):
+            banc.lancer()
+
+        assert _arbre(partage) == {"a_moi.txt": b"a garder"}, (
+            "le dossier partagé ne doit rien recevoir"
+        )
 
 
 class TestLaCopieLocaleDeLOreille:

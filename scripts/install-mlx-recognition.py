@@ -96,6 +96,38 @@ def _sans_lien(modele: Path, operation: str) -> None:
         )
 
 
+def _dossiers_lies(chemin: Path) -> list[Path]:
+    return [dossier for dossier in (chemin, *chemin.parents) if dossier.is_symlink()]
+
+
+def _refuser_un_modele_lie(modele: Path, temoin: Path) -> None:
+    # 28/09/2026 : model/ LUI-MÊME lié (ou whisper-mlx, ou speech) passait,
+    # et tout le suivait : verifier() retirait le poids refusé dans sa cible,
+    # le hub y recopiait son cache, la copie y écrivait, et le témoin tombait
+    # à travers lui. get_config_dir() rend un chemin résolu, mais rien
+    # n'empêche un lien entre lui et model/ : chaque dossier est examiné, et
+    # on refuse avant la première écriture (mkdir et uv venv compris).
+    lies = _dossiers_lies(modele)
+    if not lies:
+        return
+    suite = "Rien n'a été écrit ni retiré derrière ce lien, pas même le témoin."
+    if not _dossiers_lies(temoin.parent):
+        # model/ seul est lié : le témoin est dans un vrai dossier. Le
+        # laisser ferait dire « installée » sur un modèle hors de model/.
+        temoin.unlink(missing_ok=True)
+        suite = (
+            "Rien n'a été écrit ni retiré derrière ce lien ; le témoin "
+            "d'installation est retiré."
+        )
+    raise RuntimeError(
+        f"Installation refusée — lien symbolique : {', '.join(map(str, lies))}. "
+        "Le modèle serait téléchargé, vérifié et remplacé dans le dossier qu'il "
+        f"désigne, qui n'est pas le sien. {suite} Remplacez ce lien par un vrai "
+        "dossier (en y déplaçant son contenu s'il s'agit bien de cette oreille), "
+        "puis relancez le script."
+    )
+
+
 def verifier(modele: Path) -> None:
     refuses = _non_conformes(modele)
     if not refuses:
@@ -154,6 +186,9 @@ def main() -> None:
     from diapason.core.paths import get_config_dir
 
     racine = get_config_dir() / "speech" / "whisper-mlx"
+    modele = racine / "model"
+    temoin = racine / "installed.json"
+    _refuser_un_modele_lie(modele, temoin)
     racine.mkdir(parents=True, exist_ok=True)
     python = racine / "runtime/bin/python"
     uv = shutil.which("uv")
@@ -177,8 +212,6 @@ def main() -> None:
         ],
         check=True,
     )
-    modele = racine / "model"
-    temoin = racine / "installed.json"
     # 28/09/2026 : un refus laissait l'ancien installed.json, et
     # reconnaissance_mlx.moteur_installe() disait l'oreille prête sur un
     # fichier qu'on venait de refuser (§5). Le témoin tombe désormais avant

@@ -194,6 +194,41 @@ def _sans_lien(modele: Path, operation: str) -> None:
         )
 
 
+def _dossiers_lies(chemin: Path) -> list[Path]:
+    return [dossier for dossier in (chemin, *chemin.parents) if dossier.is_symlink()]
+
+
+def _refuser_un_modele_lie(modele: Path, temoin: Path) -> None:
+    # 28/09/2026 : un lien SOUS model/ était défait, mais model/ LUI-MÊME
+    # lié (ou voices/qwen3, ou voices) passait : c'est la racine, pas un lien
+    # « sous model/ ». Tout le suivait — _hors_table() parcourait sa cible,
+    # verifier() y retirait tout ce qui n'est pas la table, le téléchargement
+    # et la copie y écrivaient. Un model/ lié à un dossier partagé (~/models)
+    # y aurait effacé tout ce qui n'est pas Orion. get_config_dir() rend un
+    # chemin résolu, mais rien n'empêche un lien entre lui et model/ : chaque
+    # dossier est examiné, et on refuse avant la première écriture (mkdir et
+    # uv venv compris) au lieu de suivre.
+    lies = _dossiers_lies(modele)
+    if not lies:
+        return
+    suite = "Rien n'a été écrit ni retiré derrière ce lien, pas même le témoin."
+    if not _dossiers_lies(temoin.parent):
+        # model/ seul est lié : le témoin est dans un vrai dossier. Le
+        # laisser ferait dire « installé » sur un modèle hors de model/.
+        temoin.unlink(missing_ok=True)
+        suite = (
+            "Rien n'a été écrit ni retiré derrière ce lien ; le témoin "
+            "d'installation est retiré."
+        )
+    raise RuntimeError(
+        f"Installation refusée — lien symbolique : {', '.join(map(str, lies))}. "
+        "Le modèle serait téléchargé, vérifié et nettoyé dans le dossier qu'il "
+        f"désigne, qui n'est pas le sien. {suite} Remplacez ce lien par un vrai "
+        "dossier (en y déplaçant son contenu s'il s'agit bien de ce moteur), "
+        "puis relancez le script."
+    )
+
+
 def verifier(modele: Path, temoin: Path) -> None:
     liens = _liens(modele)
     refuses = _non_conformes(modele)
@@ -283,10 +318,11 @@ def main() -> None:
     from diapason.core.paths import get_config_dir
 
     root = get_config_dir() / "voices/qwen3"
-    root.mkdir(parents=True, exist_ok=True)
-    python = root / "runtime/bin/python"
     modele = root / "model"
     temoin = root / "installed.json"
+    _refuser_un_modele_lie(modele, temoin)
+    root.mkdir(parents=True, exist_ok=True)
+    python = root / "runtime/bin/python"
     uv = shutil.which("uv")
     if not uv:
         parser.error("uv doit être installé pour préparer le venv séparé.")

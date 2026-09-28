@@ -735,6 +735,95 @@ class TestAucuneSuppressionNeSuitUnLien:
         assert not moteur_installe(), "la voix ne doit pas se dire disponible"
 
 
+def _arbre(dossier: Path) -> dict[str, bytes | None]:
+    """Tout ce qu'il y a sous ``dossier`` : chemins, et octets des fichiers."""
+    return {
+        p.relative_to(dossier).as_posix(): None if p.is_dir() else p.read_bytes()
+        for p in dossier.rglob("*")
+    }
+
+
+class TestUnModeleLieEstRefuseSansRienToucher:
+    """28/09/2026 : model/ lui-même lié n'était pas un lien « sous model/ ».
+
+    Tout le suivait : la vérification retirait dans sa cible ce qui n'est
+    pas la table, le téléchargement et la copie y écrivaient. Un model/ lié
+    à un dossier partagé y aurait effacé tout ce qui n'est pas Orion.
+    """
+
+    CODEC_PRECIEUX = b"un autre codec, precieux"
+
+    @pytest.mark.parametrize("chemin", ["voices/qwen3/model", "voices/qwen3", "voices"])
+    @pytest.mark.parametrize("parcours", ["relance", "telechargement", "copie"])
+    def test_un_dossier_lie_sur_le_chemin_du_modele_est_refuse_sans_rien_toucher(
+        self, banc, tmp_path, chemin, parcours
+    ):
+        """§5 — refuser l'installation, jamais suivre le lien.
+
+        Chaque parcours y aurait écrit ou supprimé : la relance retire
+        a_moi.txt (hors table) et le codec refusé, le téléchargement et la
+        copie réécrivent le codec. Ce qu'il y a derrière le lien doit rester
+        identique, octet pour octet, témoin compris.
+        """
+        _ecrire(banc.source, CONTENUS)
+        banc.lancer("--model-source", str(banc.source))
+        _ecrire(
+            banc.modele,
+            {
+                "a_moi.txt": b"a garder",
+                "speech_tokenizer/model.safetensors": self.CODEC_PRECIEUX,
+            },
+        )
+        if parcours == "telechargement":
+            banc.temoin.unlink()
+        lie = tmp_path / "maison" / chemin
+        ailleurs = tmp_path / "disque_externe"
+        shutil.move(lie, ailleurs)
+        lie.symlink_to(ailleurs, target_is_directory=True)
+        avant = _arbre(ailleurs)
+        arguments = ("--model-source", str(banc.source)) if parcours == "copie" else ()
+
+        with pytest.raises(RuntimeError, match="Installation refusée") as refus:
+            banc.lancer(*arguments)
+
+        assert str(lie) in str(refus.value), f"le lien doit être nommé : {refus.value}"
+        assert "vrai dossier" in str(refus.value) and "relancez" in str(refus.value), (
+            f"le refus doit dire quoi faire : {refus.value}"
+        )
+        assert _arbre(ailleurs) == avant, (
+            "rien ne doit être écrit ni retiré derrière le lien"
+        )
+        assert lie.is_symlink(), "le lien de l'utilisateur n'est pas à défaire ici"
+        assert banc.telechargements == [], "rien ne doit être téléchargé"
+        if chemin.endswith("model"):
+            assert not banc.temoin.exists(), (
+                "model/ seul lié : le témoin, dans un vrai dossier, doit tomber"
+            )
+            assert not moteur_installe(), "la voix ne doit pas se dire disponible"
+
+    def test_une_premiere_installation_ne_cree_rien_dans_un_dossier_lie(
+        self, banc, tmp_path
+    ):
+        """§5 — mkdir et uv venv écrivaient déjà à travers le lien.
+
+        Un voices lié à un dossier partagé recevait qwen3/ avant qu'une
+        seule vérification n'ait lieu : le refus doit précéder la première
+        écriture, pas seulement la première suppression.
+        """
+        voices = tmp_path / "maison/voices"
+        shutil.rmtree(voices)
+        partage = tmp_path / "partage"
+        _ecrire(partage, {"a_moi.txt": b"a garder"})
+        voices.symlink_to(partage, target_is_directory=True)
+
+        with pytest.raises(RuntimeError, match="Installation refusée"):
+            banc.lancer()
+
+        assert _arbre(partage) == {"a_moi.txt": b"a garder"}, (
+            "le dossier partagé ne doit rien recevoir"
+        )
+
+
 class TestUnFichierRefuseEstRetelecharge:
     def test_le_vrai_hub_ne_ressert_plus_un_fichier_refuse(self, tmp_path, monkeypatch):
         """§5 — refuser un fichier sans le retirer bloquait l'installation.
