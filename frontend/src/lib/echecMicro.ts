@@ -78,8 +78,11 @@ const AUCUN_MICRO = new Set([
   'ConstraintNotSatisfiedError',
 ]);
 // `SecurityError` n'est pas un refus : Chrome ne la rend que pour une origine
-// non sécurisée (INVALID_SECURITY_ORIGIN). La ranger avec le refus
-// renverrait la personne vers des réglages qui n'y peuvent rien.
+// non sécurisée (INVALID_SECURITY_ORIGIN, seul cas de UserMediaRequest::Fail,
+// relu le 28/09/2026) ; un refus de la coquille ou d'Android arrive en
+// NotAllowedError. La ranger avec le refus renverrait la personne vers des
+// réglages qui n'y peuvent rien. Écart assumé au contrat du 28/09, écrit au
+// §6 de docs/development/diapason-mobile.md.
 const PAGE_SANS_MICRO = new Set(['TypeError', 'SecurityError']);
 
 function lireNomEtMessage(erreur: unknown): { nom: string; message: string } {

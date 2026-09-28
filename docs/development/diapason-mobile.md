@@ -1516,6 +1516,20 @@ classé dans l'audit à quelques pour cent chacun.
   (« L'app du téléphone a répondu : « … » »).
 - Autre action : `ok: false`, `actionInconnue` (jamais affiché brut).
 - Coquille antérieure : `verbeInconnu`. Elle n'a pas MODIFY_AUDIO_SETTINGS.
+- **Écart assumé au texte de référence (revue du 28/09)** : le contrat
+  rangeait `SecurityError` avec le refus, donc avec la lecture de l'état
+  d'Android. La page la range en « page sans micro », sans lire l'état.
+  Dans Blink (`user_media_request.cc`, `UserMediaRequest::Fail`, relu le
+  28/09 sur la branche principale de Chromium), `SecurityError` ne vient
+  QUE de `INVALID_SECURITY_ORIGIN` ; un refus — celui de la coquille
+  (`request.deny()`), celui d'Android, ou
+  `ANDROID_CANT_REQUEST_PERMISSION` — arrive en `NotAllowedError`. Lire
+  l'état sur une `SecurityError` mènerait à « Android autorise, l'app a
+  refusé » ou au bouton des réglages : deux remèdes qui n'y peuvent rien.
+  Le détail affiché (`SecurityError · …`) dira la cause si elle survient.
+  Le classement est l'affaire de la page seule : la coquille n'en dépend
+  pas, et rien ne change de son côté. Le texte de référence du contrat
+  est à amender dans ce sens.
 
 ### Ce que dit la page (fait, branche `chantier/micro-telephone-front`)
 
