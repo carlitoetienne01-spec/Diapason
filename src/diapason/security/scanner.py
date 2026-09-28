@@ -41,7 +41,9 @@ class SecretScanner(BaseScanner):
     # (?i:…) sur les mots-clés qu'on tape ; pour les jetons, la casse du
     # format et la seule majuscule initiale d'un début de phrase. Le blanc
     # s'écrit [\s\x1c-\x1f] : c'est le \s de re, que celui de Rust n'atteint
-    # qu'avec U+001C..U+001F (même commentaire).
+    # qu'avec U+001C..U+001F. Le ['"]? d'une affectation lit le guillemet
+    # fermant d'une clé JSON ou d'un dict, qui fuyait par les deux moteurs
+    # (même commentaire).
     PATTERNS: Dict[str, Tuple[str, ThreatLevel, str]] = {
         "openai_key": (
             r"[Ss]k-[A-Za-z0-9_-]{20,}",
@@ -64,7 +66,7 @@ class SecretScanner(BaseScanner):
             "GitHub token",
         ),
         "password_assignment": (
-            r"""(?i:password|passwd|pwd)[\s\x1c-\x1f]*[=:][\s\x1c-\x1f]*['"]([^'"]{4,})['"]""",
+            r"""(?i:password|passwd|pwd)['"]?[\s\x1c-\x1f]*[=:][\s\x1c-\x1f]*['"]([^'"]{4,})['"]""",
             ThreatLevel.HIGH,
             "Password assignment",
         ),
@@ -89,7 +91,7 @@ class SecretScanner(BaseScanner):
             "Stripe key",
         ),
         "generic_api_key": (
-            r"""(?i:ap[iİı]_key|secret_key|auth_token)[\s\x1c-\x1f]*[=:][\s\x1c-\x1f]*['"]([^'"]{8,})['"]""",
+            r"""(?i:ap[iİı]_key|secret_key|auth_token)['"]?[\s\x1c-\x1f]*[=:][\s\x1c-\x1f]*['"]([^'"]{8,})['"]""",
             ThreatLevel.HIGH,
             "Generic API key/secret",
         ),

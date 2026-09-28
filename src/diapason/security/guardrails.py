@@ -42,8 +42,12 @@ _STREAM_BOUNDARY = " \t\r\n\f\v"
 # An assignment may contain arbitrarily much whitespace and a multiline
 # quoted value. Retain its beginning until the closing quote makes it
 # scannable, even when that beginning lies outside the fixed holdback.
+# 2026-09-28: the scanners now read a quoted key ('{"password": "…"}', a
+# JSON object or a Python dict), whose closing quote sits between the
+# keyword and the separator; ['"]* retains it too.
+# test_guardrails_reserve.py proves it from both patterns' grammar.
 _OPEN_ASSIGNMENT = re.compile(
-    r"""(?:password|passwd|pwd|api_key|secret_key|auth_token)\s*"""
+    r"""(?:password|passwd|pwd|api_key|secret_key|auth_token)['"]*\s*"""
     r"""(?:[=:]\s*(?:['"][^'"]*)?)?\Z""",
     re.IGNORECASE,
 )

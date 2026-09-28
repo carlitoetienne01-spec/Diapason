@@ -263,6 +263,8 @@ TEMOINS = {
         "api_key = 'correct horse battery'",
         'secret_key: "correct horse battery"',
         "auth_token='correct horse battery'",
+        '{"password": "correct horse battery"}',
+        "{'api_key': 'correct horse battery'}",
     ],
     # i, k et s : les lettres que re.IGNORECASE étend hors de l'ASCII.
     PIIScanner: ["écrire à louis.kirk@example.com demain"],
@@ -403,11 +405,62 @@ class TestLeBlancEstCeluiDeRe:
         )
 
 
+class TestUneCleEntreGuillemets:
+    """§5 : un mot de passe rangé dans un objet JSON ne sort pas en clair.
+
+    28/09/2026 : « {"password": "…"} », comme « {'api_key': '…'} » dans un
+    dict Python, passait par les DEUX moteurs : le guillemet fermant de la clé
+    s'intercalait entre le mot-clé et « : ».
+    """
+
+    @pytest.mark.parametrize("chemin", ["extension", "repli"])
+    @pytest.mark.parametrize(
+        ("texte", "masque"),
+        [
+            (
+                '{"password": "correct horse battery"}',
+                '{"[REDACTED:password_assignment]}',
+            ),
+            ('{"Password":"correct horse"}', '{"[REDACTED:password_assignment]}'),
+            ("{'api_key': 'correct horse battery'}", "{'[REDACTED:generic_api_key]}"),
+            (
+                '{"AUTH_TOKEN" : "correct horse battery"}',
+                '{"[REDACTED:generic_api_key]}',
+            ),
+            (
+                "- 'secret_key': \"correct horse battery\"",
+                "- '[REDACTED:generic_api_key]",
+            ),
+        ],
+    )
+    def test_une_cle_entre_guillemets_est_masquee(self, chemin, texte, masque):
+        """§5 : la clé d'un objet, pas seulement le nom d'une variable."""
+        rendu = _par(SecretScanner, chemin).redact(texte)
+        assert rendu == masque, (
+            f"{texte!r} sort {rendu!r} par le {chemin} : le secret reste lisible"
+        )
+
+    @pytest.mark.parametrize("chemin", ["extension", "repli"])
+    @pytest.mark.parametrize(
+        "texte",
+        [
+            'le champ "password" reste vide',
+            "{'password': None}",
+            '{"api_key": ""}',
+        ],
+    )
+    def test_une_cle_sans_valeur_citee_reste_intacte(self, chemin, texte):
+        """§5 : le guillemet admis ne fait pas d'un mot une affectation."""
+        rendu = _par(SecretScanner, chemin).redact(texte)
+        assert rendu == texte, f"{texte!r} sort {rendu!r} par le {chemin}"
+
+
 # Un témoin par motif qui lit un blanc, une espace à chaque place où il le lit.
 TEMOINS_DU_BLANC = {
     SecretScanner: [
         "password = 'correct horse'",
         'api_key : "correct horse battery"',
+        '{"password" : "correct horse"}',
     ],
     PIIScanner: [
         "4111 1111 1111 1111",

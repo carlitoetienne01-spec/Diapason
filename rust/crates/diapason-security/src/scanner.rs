@@ -66,6 +66,13 @@ macro_rules! pattern {
 // URI de base garde son [^\s] : celui de Rust admet déjà U+001C..U+001F, et
 // l'exclure élargirait ce qui passe. Ce que le repli y masque de moins est
 // nommé dans test_scanner.py.
+//
+// Une clé entre guillemets passait en clair par les DEUX moteurs (28/09/2026) :
+// « {"password": "…"} » en JSON, « {'api_key': '…'} » dans un dict Python.
+// Le guillemet fermant de la clé s'intercalait entre le mot-clé et [=:] ;
+// ['"]? l'admet. L'ouvrant reste hors du motif, qui garde son mot-clé en
+// tête — la retenue du flux (_OPEN_ASSIGNMENT) s'y ancre : le masque rend
+// « {"[REDACTED:password_assignment]} ».
 static SECRET_PATTERNS: Lazy<Vec<PatternDef>> = Lazy::new(|| {
     vec![
         pattern!(
@@ -94,7 +101,7 @@ static SECRET_PATTERNS: Lazy<Vec<PatternDef>> = Lazy::new(|| {
         ),
         pattern!(
             "password_assignment",
-            r#"(?i:password|passwd|pwd)[\s\x1c-\x1f]*[=:][\s\x1c-\x1f]*['"]([^'"]{4,})['"]"#,
+            r#"(?i:password|passwd|pwd)['"]?[\s\x1c-\x1f]*[=:][\s\x1c-\x1f]*['"]([^'"]{4,})['"]"#,
             ThreatLevel::High,
             "Password assignment"
         ),
@@ -124,7 +131,7 @@ static SECRET_PATTERNS: Lazy<Vec<PatternDef>> = Lazy::new(|| {
         ),
         pattern!(
             "generic_api_key",
-            r#"(?i:ap[iİı]_key|secret_key|auth_token)[\s\x1c-\x1f]*[=:][\s\x1c-\x1f]*['"]([^'"]{8,})['"]"#,
+            r#"(?i:ap[iİı]_key|secret_key|auth_token)['"]?[\s\x1c-\x1f]*[=:][\s\x1c-\x1f]*['"]([^'"]{8,})['"]"#,
             ThreatLevel::High,
             "Generic API key/secret"
         ),
@@ -449,6 +456,51 @@ mod tests {
                     "{texte:?} : le repli Python le masque en entier, l'extension doit aussi"
                 );
             }
+        }
+    }
+
+    // 28/09/2026 : une clé entre guillemets passait par les deux moteurs.
+    #[test]
+    fn une_cle_entre_guillemets_ne_fait_pas_passer_son_secret() {
+        for (texte, masque) in [
+            (
+                r#"{"password": "correct horse battery"}"#,
+                r#"{"[REDACTED:password_assignment]}"#,
+            ),
+            (
+                r#"{"Password":"correct horse"}"#,
+                r#"{"[REDACTED:password_assignment]}"#,
+            ),
+            (
+                "{'api_key': 'correct horse battery'}",
+                "{'[REDACTED:generic_api_key]}",
+            ),
+            (
+                r#"{"AUTH_TOKEN" : "correct horse battery"}"#,
+                r#"{"[REDACTED:generic_api_key]}"#,
+            ),
+            (
+                r#"- 'secret_key': "correct horse battery""#,
+                "- '[REDACTED:generic_api_key]",
+            ),
+        ] {
+            assert_eq!(
+                SecretScanner::new().redact(texte),
+                masque,
+                "{texte:?} : le secret d'une clé entre guillemets doit sortir masqué"
+            );
+        }
+        // Le guillemet admis ne fait pas d'un mot une affectation.
+        for texte in [
+            r#"le champ "password" reste vide"#,
+            "{'password': None}",
+            r#"{"api_key": ""}"#,
+        ] {
+            assert!(
+                noms(texte).is_empty(),
+                "{texte:?} n'a pas de valeur citée : {:?}",
+                noms(texte)
+            );
         }
     }
 

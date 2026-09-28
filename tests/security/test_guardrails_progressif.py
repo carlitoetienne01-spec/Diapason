@@ -138,6 +138,36 @@ class TestFrontieresDuFlux:
         alerts = [e for e in bus.history if e.event_type == EventType.SECURITY_ALERT]
         assert len(alerts) == 1, "une seule alerte par réponse, pas une par fragment"
 
+    @pytest.mark.parametrize("python", [False, True], ids=["rust", "python"])
+    async def test_une_cle_entre_guillemets_coupee_n_importe_ou_reste_masquee(
+        self, python
+    ):
+        """§5 : « {"password"   : "…"} » coupé après sa clé ne part pas.
+
+        28/09/2026 : les scanners lisent désormais une clé entre guillemets ;
+        _OPEN_ASSIGNMENT doit la retenir dès son mot-clé, même quand plus de
+        blancs que la réserve la séparent de sa valeur.
+        """
+        objets = scanners(python)
+        for secret in (
+            '{"password"' + " " * 60 + ': "correct horse battery"}',
+            "{'api_key'" + " \n" * 40 + ":" + " " * 60 + "'correct horse battery'}",
+        ):
+            for coupure in range(1, len(secret)):
+                debut = AVANT + secret[:coupure]
+                fin = secret[coupure:] + APRES
+                engine = GuardrailsEngine(
+                    Moteur([StreamChunk(content=debut), StreamChunk(content=fin)]),
+                    scanners=objets,
+                    scan_input=False,
+                )
+                attendu = engine._redact_text(debut + fin)
+                assert "correct horse" not in attendu, "l'essai doit masquer le secret"
+                assert "".join(await recevoir(engine, True)) == attendu, (
+                    f"coupé après {secret[:coupure]!r}, le flux diffuse la clé "
+                    "avant que sa valeur ne la fasse reconnaître"
+                )
+
     @pytest.mark.parametrize("riche", [True, False])
     async def test_la_prose_avec_un_mot_password_n_est_pas_masquee(self, riche):
         texte = AVANT + "password est un mot anglais. api_key aussi. " + APRES
