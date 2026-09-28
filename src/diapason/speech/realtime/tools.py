@@ -201,8 +201,10 @@ _TOOL_MODULES: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
     ),
     (
         "diapason.tools.diapason_app",
-        (("diapason_app", "DiapasonAppTool"),
-         ("diapason_app_delete", "DiapasonAppDeleteTool")),
+        (
+            ("diapason_app", "DiapasonAppTool"),
+            ("diapason_app_delete", "DiapasonAppDeleteTool"),
+        ),
     ),
     (
         "diapason.tools.browser_tabs",
