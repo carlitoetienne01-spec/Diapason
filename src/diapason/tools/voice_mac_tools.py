@@ -488,7 +488,7 @@ _PARENTE_FR_EN = {
 }
 
 # Deux dialectes constatés sur la vraie base (24 août 2026) : gcontacts
-# écrit « Phone: +509… », apple_contacts « Phone +1941… » — SANS deux-points,
+# écrit « Phone: +… », apple_contacts « Phone +1… » — SANS deux-points,
 # label optionnel (« Phone Mobile: … »). On capte le numéro lui-même.
 _LIGNE_PHONE_RE = re.compile(r"^Phone[^\n]*?[\s:](\+?[\d][\d\s.\-()]*)$", re.M)
 _LIGNE_EMAIL_RE = re.compile(r"^Email[^\n]*?[\s:]\s*(\S+@\S+)$", re.M)
@@ -582,10 +582,11 @@ def _resolve_contact(name: str, *, db_path: str | None = None) -> list[dict]:
                     "AND title LIKE ? COLLATE NOCASE",
                     (f"%{terme}%",),
                 ).fetchall()
-                # LIKE %mom% attrape aussi « JOSCHAVIA MOMPREMIER » (constaté
-                # sur la vraie base, 24 août 2026). On classe : titre exact
-                # (émojis et ponctuation retirés) > mot entier > sous-chaîne,
-                # et on ne garde que le meilleur rang présent.
+                # LIKE %mom% attrape aussi un nom de famille qui commence par
+                # « Mom » (constaté sur la vraie base, 24 août 2026). On
+                # classe : titre exact (émojis et ponctuation retirés) > mot
+                # entier > sous-chaîne, et on ne garde que le meilleur rang
+                # présent.
                 lignes = _ne_garder_que_les_plus_exacts(terme, lignes)
                 for titre, contenu in lignes:
                     if titre in fiches:
