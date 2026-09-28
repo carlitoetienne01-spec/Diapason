@@ -38,6 +38,11 @@ export function useSpeech() {
   const streamRef = useRef<MediaStream | null>(null);
   // Le numéro de la dernière demande du micro ; un relâcher l'incrémente.
   const demandeRef = useRef(0);
+  // Le numéro du dernier APPUI ; seul un nouvel appui l'incrémente. Distinct
+  // de `demandeRef` : le doigt qui se lève pour répondre « Refuser » à
+  // l'invite d'Android incrémente la demande AVANT que getUserMedia ne
+  // rejette — garder l'échec sur la demande taisait précisément ce refus.
+  const appuiRef = useRef(0);
 
   // Check if speech backend is available on mount
   useEffect(() => {
@@ -53,14 +58,22 @@ export function useSpeech() {
    * même classement et les mêmes phrases que « Parler » (lib/echecMicro.ts).
    * L'état d'Android est attendu AVANT de parler : un toast dit une chose,
    * une fois.
+   *
+   * 28/09/2026 (revue) : la réponse de micro/etat n'était pas rapportée à
+   * son appui. Un premier appui refusé, un relâcher, un second appui que
+   * l'invite accorde : la réponse tardive du premier posait « Android n'a
+   * pas donné le micro à Diapason » et « Ouvrir les réglages » PENDANT que
+   * le micro enregistrait (§5) — sur toute la fenêtre de 10 s d'une
+   * coquille lente.
    */
-  const signalerEchecMicro = useCallback(async (erreur: unknown, etape: EtapeDuMicro) => {
+  const signalerEchecMicro = useCallback(async (erreur: unknown, etape: EtapeDuMicro, appui: number) => {
     const echec = classerEchecMicro(erreur, etape);
     console.error('[dictée] le micro ne s’est pas ouvert', { classe: echec.classe, technique: echec.technique }, erreur);
     const auTelephone = serviParLeTailnet();
     const etat: EtatMicroLu = auTelephone && doitLireEtatAndroid(echec.classe)
       ? await lireEtatDuMicro(demanderMicro)
       : 'inconnu';
+    if (appui !== appuiRef.current) return;
     const message = messageDuMicro({ classe: echec.classe, auTelephone, etat });
     setMicro({ technique: auTelephone ? echec.technique : null, reglages: message.reglages });
     setError(traduire(cleErreurVocale(message.code)));
@@ -70,6 +83,7 @@ export function useSpeech() {
     setError(null);
     setMicro(null);
     const demande = ++demandeRef.current;
+    const appui = ++appuiRef.current;
 
     let stream: MediaStream;
     try {
@@ -78,7 +92,7 @@ export function useSpeech() {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (err) {
       setState('idle');
-      await signalerEchecMicro(err, 'avantLeFlux');
+      await signalerEchecMicro(err, 'avantLeFlux', appui);
       return;
     }
 
@@ -114,7 +128,7 @@ export function useSpeech() {
       stream.getTracks().forEach((piste) => piste.stop());
       streamRef.current = null;
       setState('idle');
-      await signalerEchecMicro(err, 'apresLeFlux');
+      await signalerEchecMicro(err, 'apresLeFlux', appui);
     }
   }, [signalerEchecMicro]);
 

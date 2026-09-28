@@ -158,3 +158,42 @@ describe('§78 — relâcher pendant l’invite d’Android n’allume pas le mi
     expect(rendu().state, 'l’annulation ne vaut que pour la demande relâchée').toBe('recording');
   });
 });
+
+/**
+ * 28/09/2026, revue du chantier : la réponse de micro/etat n'était pas
+ * rapportée à son appui. §5 — un toast « Android n'a pas donné le micro » et
+ * « Ouvrir les réglages » pendant que le micro enregistre.
+ */
+describe('§5 — une réponse tardive de micro/etat ne parle que pour son appui', () => {
+  it('un second appui accordé fait taire la réponse tardive du premier', async () => {
+    banc.telephone = true;
+    let repondre!: (r: object) => void;
+    banc.natif.mockReturnValue(new Promise((r) => { repondre = r; }));
+    banc.micro.mockRejectedValueOnce(new DOMException('Permission denied', 'NotAllowedError'));
+    const premier = rendu().startRecording();
+    await vi.waitFor(() => expect(banc.natif).toHaveBeenCalledWith('micro', { action: 'etat' }));
+    await rendu().stopRecording().catch(() => undefined);
+    await rendu().startRecording();
+    expect(rendu().state, 'l’invite a accordé le second appui').toBe('recording');
+    repondre({ type: 'reponse', id: 'x', ok: true, donnees: { etat: 'refuse' } });
+    await premier;
+    expect(rendu().state).toBe('recording');
+    expect(rendu().error, 'un refus affiché pendant que le micro enregistre').toBeNull();
+    expect(rendu().micro, 'le bouton des réglages sous un micro qui enregistre').toBeNull();
+  });
+
+  it('le refus répondu en levant le doigt s’affiche encore : le relâcher n’est pas un nouvel appui', async () => {
+    banc.telephone = true;
+    let refuser!: (e: unknown) => void;
+    banc.micro.mockReturnValue(new Promise((_, r) => { refuser = r; }));
+    banc.natif.mockResolvedValue({ type: 'reponse', id: 'x', ok: true, donnees: { etat: 'refuseDefinitivement' } });
+    const depart = rendu().startRecording();
+    // Le doigt se lève pour toucher « Refuser » dans l'invite d'Android.
+    await rendu().stopRecording().catch(() => undefined);
+    refuser(new DOMException('Permission denied', 'NotAllowedError'));
+    await depart;
+    expect(rendu().error, 'le refus d’Android tu parce que le doigt s’était levé')
+      .toBe(fr['talk.micro.telephone.refuseDefinitivement']);
+    expect(rendu().micro?.reglages).toBe(true);
+  });
+});
