@@ -29,6 +29,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
 from contextlib import aclosing
 from typing import Any, AsyncIterator, Iterable, Sequence
@@ -64,6 +65,22 @@ from diapason.server.actualite import (
     sous_l_url_demandee,
 )
 from diapason.server.details_outils import details_du_fil
+from diapason.server.lecture_notes import (
+    CONSIGNE_RELECTURE,
+    cibler_recherche_note,
+    offre_de_lecture,
+    relecture_note_demandee,
+    titre_note_cite,
+)
+from diapason.server.liens_verifies import (
+    CONSIGNE_LIENS,
+    CONSIGNE_REPRISE_LIENS,
+    demande_de_liens,
+    erreur_destination,
+    liens_sans_preuve,
+    page_a_verifier,
+    repli_liens,
+)
 from diapason.server.questions_chat import (
     CADRAGE_MAX_JETONS,
     POSER_QUESTIONS,
@@ -83,15 +100,16 @@ from diapason.server.sources_officielles import (
     entete_officielle,
     page_officielle,
 )
-from diapason.server.suite import avec_rappel
+from diapason.server.suite import avec_rappel, demande_acceptee
 from diapason.server.trousse_chat import MAX_CHARGEMENTS, TrousseChat
 
 logger = logging.getLogger("diapason.server")
 
-# Au-delà, on cesse de proposer des outils au modèle et on lui demande sa
-# réponse. Trois suffisent au quotidien (lire l'heure, lire l'agenda, répondre)
-# et bornent le temps qu'une question peut coûter.
-DEFAULT_MAX_TOOL_TURNS = 3
+# 27/09/2026 : trois tours coupaient « projet + trois tâches + terminer
+# la première + relire » après seulement deux tâches. Ce scénario demande
+# six tours séquentiels ; douze, comme le budget vocal, laissent aussi les
+# lectures préparatoires tout en bornant une demande qui tourne en rond.
+DEFAULT_MAX_TOOL_TURNS = 12
 
 # Un résultat d'outil très long noie le contexte d'un 9b et ralentit le tour
 # suivant. On tronque en le disant, plutôt que de laisser le modèle croire
@@ -332,6 +350,12 @@ def observation(resultat: Any) -> str:
 
 def _signature(nom: str, arguments: str) -> str:
     """Identifie un appel pour repérer une boucle : même outil, mêmes arguments."""
+    try:
+        arguments = json.dumps(
+            json.loads(arguments), sort_keys=True, ensure_ascii=False
+        )
+    except (ValueError, TypeError):
+        pass
     return f"{nom}({arguments})"
 
 
@@ -407,9 +431,8 @@ async def stream_with_tools(
         # en prose. Le rappel au tour courant a produit le véritable appel.
         travail.append(Message(role=Role.SYSTEM, content=RAPPEL))
     # 21/09/2026, 23 h : « Raconte-moi l'histoire de ce pays » après Haïti
-    # → « de quel pays tu parles ? ». Le rappel du sujet (server/suite.py),
-    # après la consigne des questions — qui se recolle au DERNIER système
-    # du fil, et ce doit être le prompt d'identité.
+    # → « de quel pays tu parles ? ». Le rappel du sujet (server/suite.py)
+    # reste près de la demande ; les règles fixes rejoignent l'identité.
     travail = avec_rappel(travail)
     # 20/09/2026 : « Qui est le président actuel du Canada ? » → « Justin
     # Trudeau, depuis 2015 », de mémoire, sans appel, en 5,1 s. Une question
@@ -421,6 +444,52 @@ async def stream_with_tools(
     # à vérifier — celle qui précède la demande, pas la demande elle-même.
     dernier_message = next((m for m in reversed(messages) if m.role == Role.USER), None)
     derniere_demande = (dernier_message.content or "") if dernier_message else ""
+    from diapason.server.actions_internes import (
+        clarification_sans_confirmation,
+        mutation_interne_demandee,
+    )
+
+    mutation_attendue = "diapason_app" in trousse.noms and mutation_interne_demandee(
+        derniere_demande
+    )
+    mutation_faite = False
+    reprise_mutation = False
+    relecture_ecriture = mutation_attendue and bool(
+        re.search(
+            r"\b(relis|relire|relecture|vérifie|verifie|vérifier|verifier)\b",
+            derniere_demande,
+            re.I,
+        )
+    )
+    ecriture_relue = False
+    controler_liens = demande_de_liens(derniere_demande)
+    demande_note = derniere_demande
+    if dernier_message is not None and not dernier_message.images:
+        rang = max(i for i, m in enumerate(messages) if m.role == Role.USER)
+        tours = [
+            (m.role.value, m.content or "")
+            for m in messages[:rang]
+            if m.role in (Role.USER, Role.ASSISTANT)
+        ]
+        # 27/09/2026 : après « oui », le contrôle de lecture ne voyait plus
+        # la note demandée et laissait passer un faux constat d'absence.
+        precedent = next(
+            (texte for role, texte in reversed(tours) if role == "assistant"), ""
+        )
+        if offre_de_lecture(precedent):
+            demande_note = demande_acceptee(derniere_demande, tours) or derniere_demande
+    lecture_note_attendue = "vie_workspace" in trousse.noms and relecture_note_demandee(
+        demande_note
+    )
+    lecture_note_faite = False
+    note_du_tour = ""
+    reprise_note = False
+    if lecture_note_attendue:
+        travail.append(Message(role=Role.SYSTEM, content=CONSIGNE_RELECTURE))
+    reprise_liens = False
+    adresses_recues: list[str] = []
+    if controler_liens:
+        travail.append(Message(role=Role.SYSTEM, content=CONSIGNE_LIENS))
     avec_image = bool(dernier_message is not None and dernier_message.images)
     demande_de_verification = (
         "web_search" in trousse.noms
@@ -475,6 +544,7 @@ async def stream_with_tools(
     # AFFICHE : tout le texte parti sur le fil pendant le tour.
     texte_affiche: list[str] = []
     deja_vus: set[str] = set()
+    lectures_vues: set[str] = set()
     deja_ecrit = False
     # Le filet anti-promesse, au chat aussi (Atlas, 24 août 2026) : une seule
     # sommation par réponse, et jamais après qu'un outil a réellement tourné
@@ -485,13 +555,27 @@ async def stream_with_tools(
     outils_indisponibles = False
 
     tours_actions = 0
+    limite_signalee = False
     passages = max_tool_turns + MAX_CHARGEMENTS + 1
     for passage in range(passages):
         # Le tour de trop se fait sans outils : on veut une phrase, pas un
         # nouvel appel qu'on n'exécuterait pas.
         # 19/09/2026 : charger un schéma ne doit pas prendre la place d'une
-        # vraie action dans les trois tours permis. La découverte reste bornée.
+        # vraie action dans les tours permis. La découverte reste bornée.
         dernier_tour = tours_actions >= max_tool_turns or passage == passages - 1
+        if dernier_tour and tours_actions and not limite_signalee:
+            limite_signalee = True
+            travail.append(
+                Message(
+                    role=Role.SYSTEM,
+                    content=(
+                        "La limite d'exécution de ce tour est atteinte. "
+                        "Décris seulement les actions confirmées par les outils. "
+                        "Indique les étapes demandées qui restent non exécutées ; "
+                        "ne les annonce pas comme terminées ou en cours."
+                    ),
+                )
+            )
         specs = [] if outils_indisponibles else trousse.specs
         if interactive_questions:
             specs = [*specs, schema_questions()]
@@ -507,6 +591,10 @@ async def stream_with_tools(
             and not outils_indisponibles
             and not un_outil_a_tourne
             and trousse.verifier_lecture(messages)
+        )
+        retenir_note = lecture_note_attendue and not lecture_note_faite
+        retenir_mutation = mutation_attendue and (
+            not mutation_faite or (relecture_ecriture and not ecriture_relue)
         )
 
         morceaux: list[str] = []
@@ -537,6 +625,9 @@ async def stream_with_tools(
                         morceaux.append(morceau.content)
                         if (
                             not verifier_lecture
+                            and not controler_liens
+                            and not retenir_note
+                            and not retenir_mutation
                             and premier_du_tour
                             and deja_ecrit
                             and morceau.content.strip()
@@ -546,7 +637,12 @@ async def stream_with_tools(
                             # séparateur les deux se recollent :
                             # « Je regarde tes tâches.Tu as une tâche ».
                             yield ToolStreamEvent("token", "\n\n")
-                        if not verifier_lecture:
+                        if (
+                            not verifier_lecture
+                            and not controler_liens
+                            and not retenir_note
+                            and not retenir_mutation
+                        ):
                             premier_du_tour = False
                             # Un tour composé d'espaces ne doit pas faire
                             # précéder le suivant d'un saut de ligne.
@@ -585,6 +681,89 @@ async def stream_with_tools(
             continue
 
         appels = [fragments[i] for i in sorted(fragments)]
+        if retenir_mutation and not appels:
+            if clarification_sans_confirmation("".join(morceaux)):
+                for contenu in morceaux:
+                    yield ToolStreamEvent("token", contenu)
+                return
+            if not reprise_mutation and not dernier_tour and raison_arret == "stop":
+                reprise_mutation = True
+                travail.append(
+                    Message(
+                        role=Role.SYSTEM,
+                        content=(
+                            (
+                                "La modification a réussi mais la relecture "
+                                "demandée n'a pas été faite. Lis maintenant "
+                                "la donnée enregistrée avec l'outil interne, "
+                                "sans refaire l'écriture. "
+                                if mutation_faite
+                                else "La modification demandée n'a pas été exécutée. "
+                            )
+                            + "Appelle l'outil interne avec les bons paramètres, "
+                            "consulte son schéma au besoin. Une annonce ou une "
+                            "lecture seule ne modifie rien. S'il manque une "
+                            "information, demande-la sans deviner. "
+                            "Si l'outil échoue, dis-le sans inventer de réussite."
+                        ),
+                    )
+                )
+                continue
+            yield ToolStreamEvent(
+                "token",
+                "La modification est enregistrée, mais je n’ai pas pu la relire."
+                if mutation_faite
+                else "Je n’ai pas pu effectuer cette modification dans Diapason.",
+            )
+            return
+        if retenir_mutation:
+            morceaux = []
+        if retenir_note and not appels:
+            # 27/09/2026 : « relis avec un outil » rendait un graphique
+            # inventé depuis l'historique, sans aucune lecture. Une seule
+            # reprise, puis un échec explicite plutôt qu'une fausse preuve.
+            if not reprise_note and not dernier_tour and raison_arret == "stop":
+                reprise_note = True
+                travail.append(Message(role=Role.SYSTEM, content=CONSIGNE_RELECTURE))
+                titre = titre_note_cite(demande_note)
+                if note_du_tour:
+                    appels = [
+                        {
+                            "id": f"note_read_{passage}",
+                            "type": "function",
+                            "function": {
+                                "name": "vie_workspace",
+                                "arguments": json.dumps(
+                                    {"action": "read_note", "item_id": note_du_tour}
+                                ),
+                            },
+                        }
+                    ]
+                elif titre:
+                    # Recherche sans mutation du titre cité par l'utilisateur,
+                    # jamais d'un identifiant inventé. Les éventuels homonymes
+                    # restent dans le résultat pour demander un choix.
+                    appels = [
+                        {
+                            "id": f"note_read_{passage}",
+                            "type": "function",
+                            "function": {
+                                "name": "vie_workspace",
+                                "arguments": json.dumps(
+                                    {"action": "list_notes", "search": titre}
+                                ),
+                            },
+                        }
+                    ]
+                else:
+                    continue
+            if not appels:
+                yield ToolStreamEvent(
+                    "token", "Je n’ai pas pu relire cette note avec l’outil."
+                )
+                return
+        if retenir_note:
+            morceaux = []
         if outils_indisponibles and appels:
             yield ToolStreamEvent(
                 "token", "Je n’ai pas pu terminer cette demande sans accès aux outils."
@@ -631,6 +810,74 @@ async def stream_with_tools(
         if cadrage_requis and appels:
             yield ToolStreamEvent("token", "\n\nPeux-tu préciser ta demande ?")
             return
+        if controler_liens:
+            # 27/09/2026 : retenir seulement les réponses demandant un lien,
+            # sinon une adresse inventée est déjà visible avant le contrôle.
+            if not appels:
+                texte_liens = "".join(morceaux)
+                if liens_sans_preuve(texte_liens, adresses_recues):
+                    candidate = page_a_verifier(
+                        texte_liens, derniere_demande, adresses_recues
+                    )
+                    if (
+                        candidate
+                        and not reprise_liens
+                        and not dernier_tour
+                        and raison_arret == "stop"
+                        and "web_read" in trousse.noms
+                    ):
+                        # Une source candidate est une piste, pas une preuve.
+                        # Le même exécuteur et le même budget bornent cette
+                        # lecture ; seule une réussite autorise son adresse.
+                        reprise_liens = True
+                        appels = [
+                            {
+                                "id": f"link_read_{passage}",
+                                "type": "function",
+                                "function": {
+                                    "name": "web_read",
+                                    "arguments": json.dumps({"url": candidate}),
+                                },
+                            }
+                        ]
+                        travail.append(
+                            Message(role=Role.SYSTEM, content=CONSIGNE_REPRISE_LIENS)
+                        )
+                    if (
+                        not appels
+                        and not reprise_liens
+                        and not dernier_tour
+                        and raison_arret == "stop"
+                    ):
+                        reprise_liens = True
+                        travail.append(
+                            Message(
+                                role=Role.SYSTEM,
+                                content=CONSIGNE_REPRISE_LIENS,
+                            )
+                        )
+                        continue
+                    if not appels:
+                        texte_liens = repli_liens(adresses_recues, derniere_demande)
+                if not appels:
+                    yield ToolStreamEvent("token", texte_liens)
+                if not appels and (actualite or verification_faite):
+                    for evt in _controle_des_sources(
+                        texte_liens,
+                        corpus_sources,
+                        question_courante,
+                        donnees_verification,
+                        sources=sources_du_tour,
+                        recherche_tentee=recherche_tentee,
+                        verification_faite=verification_faite,
+                        controle_lexical=actualite,
+                        dernier_passage=texte_liens,
+                    ):
+                        yield evt
+                if not appels:
+                    return
+            # Une annonce antérieure aux outils n'est pas une source.
+            morceaux = []
         if not verifier_lecture:
             texte_affiche.extend(morceaux)
         texte_retenu = "".join(morceaux)
@@ -958,6 +1205,8 @@ async def stream_with_tools(
             fonction = appel.get("function") or {}
             nom = fonction.get("name", "")
             arguments = fonction.get("arguments", "") or "{}"
+            if nom == "vie_workspace" and lecture_note_attendue:
+                arguments = cibler_recherche_note(arguments, demande_note)
 
             if not nom:
                 continue
@@ -993,6 +1242,11 @@ async def stream_with_tools(
                 )
                 continue
             deja_vus.add(signature)
+            from diapason.server.actions_internes import nature_action_interne
+
+            nature_interne = nature_action_interne(nom, arguments)
+            if nature_interne == "read":
+                lectures_vues.add(signature)
 
             if actualite and nom == "web_search":
                 # Fraîcheur et vertical décidés par le code, pas par le 9b :
@@ -1011,6 +1265,9 @@ async def stream_with_tools(
                     raise ValueError(
                         "Cet outil n'appartient pas à la trousse autorisée."
                     )
+                destination = erreur_destination(nom, derniere_demande)
+                if destination:
+                    raise ValueError(destination)
                 resultat = await asyncio.to_thread(
                     executor.execute,
                     ToolCall(id=appel.get("id") or "", name=nom, arguments=arguments),
@@ -1022,7 +1279,45 @@ async def stream_with_tools(
                 contenu = f"L'outil a échoué : {exc}"
                 succes = False
             latence = time.time() - debut
+            if succes and nature_interne == "write":
+                mutation_faite = True
+                ecriture_relue = False
+                reprise_mutation = False
+                # 27/09/2026 : lire, modifier, relire était bloqué comme une
+                # boucle. Seules les lectures expirent ; jamais les écritures.
+                deja_vus.difference_update(lectures_vues)
+                lectures_vues.clear()
+            elif succes and nature_interne == "read" and mutation_faite:
+                ecriture_relue = True
             page_lue = ""
+            if succes and nom in {"vie_workspace", "diapason_app"}:
+                try:
+                    action_note = json.loads(arguments).get(
+                        "action" if nom == "vie_workspace" else "operation"
+                    )
+                except (ValueError, TypeError, AttributeError):
+                    action_note = None
+                if action_note in {"read_note", "get_note", "list_notes"}:
+                    lecture_note_faite = True
+                elif action_note in {"create_note", "update_note"}:
+                    note = (getattr(resultat, "metadata", None) or {}).get("note")
+                    if nom == "diapason_app":
+                        try:
+                            note = json.loads(resultat.content).get("note")
+                        except (ValueError, AttributeError):
+                            note = None
+                    if isinstance(note, dict) and note.get("id"):
+                        note_du_tour = str(note["id"])
+                        lecture_note_faite = False
+            if succes and nom in {"web_search", "web_read"}:
+                meta_liens = getattr(resultat, "metadata", None) or {}
+                adresses_recues.extend(
+                    str(source["url"])
+                    for source in meta_liens.get("sources", [])
+                    if isinstance(source, dict) and source.get("url")
+                )
+                if nom == "web_read":
+                    adresses_recues.append(_url_demandee(arguments))
             if nom == "web_search":
                 recherche_tentee = True
                 if recherche_concluante(nom, succes, contenu):

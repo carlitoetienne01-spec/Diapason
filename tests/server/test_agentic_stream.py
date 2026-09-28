@@ -159,6 +159,27 @@ def test_le_dernier_tour_se_fait_sans_outils():
     assert "tools" not in moteur.appels[2]["kwargs"], (
         "le tour de trop doit réclamer une réponse, pas un nouvel appel"
     )
+    assert "non exécutées" in moteur.appels[2]["messages"][-1].content, (
+        "la fin du budget ne doit pas faire annoncer une demande inachevée comme finie"
+    )
+
+
+def test_une_demande_de_six_etapes_ne_perd_pas_ses_outils_apres_trois():
+    """§100 — projet, trois tâches, achèvement et relecture vont jusqu'au bout."""
+    moteur = MoteurFactice(
+        [
+            [StreamChunk(tool_calls=[_appel("etape", f'{{"numero":{i}}}')])]
+            for i in range(6)
+        ]
+        + [[StreamChunk(content="Résultat relu.", finish_reason="stop")]]
+    )
+    executeur = ExecuteurFactice()
+    evenements = _collecter(moteur, executeur, outils=("etape",))
+    assert len(executeur.recus) == 6, "exécuter toutes les étapes demandées"
+    assert all("tools" in appel["kwargs"] for appel in moteur.appels[:6]), (
+        "ne pas retirer les outils au milieu du travail"
+    )
+    assert "".join(e.data for e in evenements if e.kind == "token") == "Résultat relu."
 
 
 def test_un_appel_identique_repete_est_court_circuite():
