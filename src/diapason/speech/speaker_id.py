@@ -37,9 +37,11 @@ logger = logging.getLogger(__name__)
 SEUIL = 0.45
 ECHANTILLONS_REQUIS = 5
 ECHANTILLONS_MAX = 12
-# 27/09/2026 : les refus observés portaient sur 1,70 et 1,88 s. En dessous
-# de 2 s, un score insuffisant demande davantage de parole, sans abaisser
-# le seuil. Une seconde reste requise pour APPRENDRE une réponse courte.
+# 27/09/2026 : les tours refusés comme « une autre voix » tombaient tous
+# entre une et deux secondes de parole ; ils en manquaient, sans venir d'un
+# autre locuteur. En dessous de 2 s, un score insuffisant demande donc
+# davantage de parole, sans abaisser le seuil ; au-delà, il reste un refus.
+# Une seconde reste requise pour APPRENDRE une réponse courte.
 DUREE_MIN_S = 1.0
 DUREE_COURTE_S = 2.0
 # 27/09/2026 : la même limite d'une seconde empêchait de VÉRIFIER « oui »
