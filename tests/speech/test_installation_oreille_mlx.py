@@ -7,7 +7,8 @@ Le fichier refusé restait aussi sur le disque, où huggingface_hub le
 resservait à chaque relance sans rien retélécharger.
 
 Sans réseau : le faux Hub garde, comme le vrai, un fichier déjà présent dans
-local_dir à la révision demandée.
+local_dir quand ses métadonnées y sont, et recopie sinon son cache par-dessus
+— à travers un lien, comme le shutil.copyfile de huggingface_hub.
 """
 
 from __future__ import annotations
@@ -59,6 +60,7 @@ class _Banc:
         self.source = tmp_path / "source"
         self.depot = dict(CONTENUS)
         self.hub_en_panne = False
+        self.telechargements = 0
         self._monkeypatch = monkeypatch
         monkeypatch.setattr(
             self.installeur,
@@ -88,16 +90,19 @@ class _Banc:
 
     def _snapshot_download(self, repo, *, revision, local_dir, **options):
         # Comme le vrai hub pour local_dir : un fichier déjà là, dont les
-        # métadonnées portent la révision demandée, est rendu tel quel.
-        _ecrire(
-            Path(local_dir),
-            {
-                nom: octets
-                for nom, octets in self.depot.items()
-                if nom in options["allow_patterns"]
-                and not (Path(local_dir) / nom).exists()
-            },
-        )
+        # métadonnées portent la révision demandée, est rendu tel quel. Sans
+        # elles (installation par --model-source), le fichier de son cache
+        # est recopié PAR-DESSUS, et write_bytes suit un lien comme copyfile.
+        self.telechargements += 1
+        local = Path(local_dir)
+        for nom, octets in self.depot.items():
+            metadonnee = local / ".cache/huggingface/download" / f"{nom}.metadata"
+            if nom not in options["allow_patterns"] or (
+                (local / nom).is_file() and metadonnee.is_file()
+            ):
+                continue
+            _ecrire(local, {nom: octets})
+            _ecrire(metadonnee.parent, {metadonnee.name: b"revision\netag\n"})
 
     def lancer(self, *arguments: str) -> None:
         self._monkeypatch.setattr(
@@ -222,35 +227,103 @@ class TestLeTemoinDeLOreilleMLX:
 
 
 class TestRienNeSortDuDossierDeLOreille:
-    def test_un_poids_lie_refuse_perd_son_lien_et_jamais_sa_cible(self, banc, tmp_path):
-        """§5 — la voix Orion effaçait un fichier extérieur à travers un lien.
+    """28/09/2026 : le hub recopiait son cache dans la cible d'un poids lié.
 
-        Ici les deux noms sont à la racine de model/ : seul le lien peut
-        être refusé, et c'est lui, pas sa cible, qui doit partir. Un
-        _retirer() qui résoudrait le chemin effacerait le fichier de
-        l'utilisateur.
-        """
-        banc.lancer()
+    Le commentaire du script affirmait qu'aucune écriture ne sortait de
+    model/, les deux noms étant à sa racine ; le téléchargement, lui, écrit
+    À TRAVERS un lien de fichier quand les métadonnées de local_dir manquent.
+    """
+
+    PRECIEUX = b"un autre poids, precieux"
+
+    def _installer_par_copie_puis_lier_le_poids(self, banc, tmp_path) -> Path:
+        # --model-source ne pose aucune métadonnée du hub dans local_dir :
+        # c'est le cas où le vrai hub recopie son cache par-dessus.
+        _ecrire(banc.source, CONTENUS)
+        banc.lancer("--model-source", str(banc.source))
         exterieur = tmp_path / "ailleurs/poids.safetensors"
-        _ecrire(exterieur.parent, {exterieur.name: b"un autre poids, precieux"})
+        _ecrire(exterieur.parent, {exterieur.name: self.PRECIEUX})
         (banc.modele / "weights.safetensors").unlink()
         (banc.modele / "weights.safetensors").symlink_to(exterieur)
+        return exterieur
 
-        with pytest.raises(RuntimeError, match="weights.safetensors"):
+    def test_le_telechargement_ne_recopie_jamais_dans_la_cible_d_un_lien(
+        self, banc, tmp_path, capsys
+    ):
+        """§5 — le poids de l'utilisateur était écrasé, puis déclaré conforme.
+
+        Le hub recopiait weights.safetensors dans la cible du lien ; la
+        vérification lisait ensuite la bonne empreinte À TRAVERS lui, et le
+        témoin « installé » s'écrivait sur un lien vers le fichier écrasé.
+        Un .cache lié recevait de même les métadonnées du hub.
+        """
+        exterieur = self._installer_par_copie_puis_lier_le_poids(banc, tmp_path)
+        cache = tmp_path / "cache_de_l_utilisateur"
+        _ecrire(cache, {"a_moi.txt": b"a garder"})
+        (banc.modele / ".cache").symlink_to(cache, target_is_directory=True)
+
+        banc.lancer()
+
+        assert banc.telechargements == 1, "précondition : la relance a téléchargé"
+        assert exterieur.read_bytes() == self.PRECIEUX, (
+            "le téléchargement ne doit rien écrire hors de model/"
+        )
+        assert [p.name for p in cache.iterdir()] == ["a_moi.txt"], (
+            "les métadonnées du hub ne doivent pas s'écrire derrière un lien"
+        )
+        assert not (banc.modele / "weights.safetensors").is_symlink(), (
+            "le poids doit arriver dans un vrai fichier de model/"
+        )
+        assert moteur_installe(), "le modèle vérifié rend l'oreille disponible"
+        sortie = capsys.readouterr().out
+        assert "Lien symbolique retiré" in sortie and "weights.safetensors" in sortie, (
+            f"le retrait du lien doit être dit, pas fait en silence : {sortie!r}"
+        )
+
+    def test_un_lien_impossible_a_retirer_arrete_le_telechargement(
+        self, banc, tmp_path, verrouiller
+    ):
+        """§5 — un lien resté en place ne doit pas devenir un chemin d'écriture."""
+        exterieur = self._installer_par_copie_puis_lier_le_poids(banc, tmp_path)
+        verrouiller(banc.modele)
+
+        with pytest.raises(RuntimeError, match="Rien n'a été téléchargé") as refus:
             banc.lancer()
 
-        assert exterieur.read_bytes() == b"un autre poids, precieux", (
-            "un fichier hors de model/ ne doit jamais être effacé"
+        assert "Impossible de retirer weights.safetensors (lien symbolique)" in str(
+            refus.value
+        ), f"le lien resté en place doit être nommé : {refus.value}"
+        assert banc.telechargements == 0, "rien ne doit être téléchargé"
+        assert exterieur.read_bytes() == self.PRECIEUX, (
+            "rien ne doit être écrit à travers un lien resté en place"
         )
+        assert not banc.temoin.exists(), "le témoin d'un modèle douteux doit tomber"
         assert not moteur_installe(), "l'oreille ne doit pas se dire disponible"
-        banc.lancer()
-        assert not (banc.modele / "weights.safetensors").is_symlink(), (
-            "la relance doit reposer un vrai fichier à la place du lien"
+
+    def test_une_copie_ne_laisse_aucun_lien_dans_le_modele(self, banc, tmp_path):
+        """§5 — la règle vaut pour la copie comme pour le téléchargement.
+
+        La copie n'écrit que les deux noms, dont _retirer() défait déjà le
+        lien ; un autre lien (ici .cache, où le hub écrit ses métadonnées)
+        restait sous le témoin « installé ».
+        """
+        exterieur = self._installer_par_copie_puis_lier_le_poids(banc, tmp_path)
+        cache = tmp_path / "cache_de_l_utilisateur"
+        _ecrire(cache, {"a_moi.txt": b"a garder"})
+        (banc.modele / ".cache").symlink_to(cache, target_is_directory=True)
+
+        banc.lancer("--model-source", str(banc.source))
+
+        assert exterieur.read_bytes() == self.PRECIEUX, (
+            "la copie ne doit rien écrire hors de model/"
         )
-        assert moteur_installe(), "le modèle réparé doit être rendu disponible"
-        assert exterieur.read_bytes() == b"un autre poids, precieux", (
-            "la relance ne doit rien écrire derrière l'ancien lien"
+        assert (cache / "a_moi.txt").read_bytes() == b"a garder", (
+            "seul le lien part, jamais ce qu'il y a derrière"
         )
+        assert [p for p in banc.modele.rglob("*") if p.is_symlink()] == [], (
+            "une installation réussie ne doit laisser aucun lien dans model/"
+        )
+        assert moteur_installe(), "la copie saine rend l'oreille disponible"
 
 
 class TestLaCopieLocaleDeLOreille:

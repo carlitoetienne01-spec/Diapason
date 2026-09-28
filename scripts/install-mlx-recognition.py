@@ -27,11 +27,14 @@ EMPREINTES = {
 # seulement si weights.safetensors manque — ce que la vérification refuse et
 # que moteur_installe() exclut —, et son tokenizer vient de ses propres
 # assets. Aucun glob : un fichier de trop dans model/ n'est jamais lu.
-# Pas de refus des liens non plus (vérifié le 28/09/2026, quand la voix Orion
-# effaçait un fichier extérieur à travers model/speech_tokenizer lié) : les
-# deux noms sont à la racine de model/, aucun dossier lié ne peut s'intercaler
-# entre model/ et eux, et _retirer() défait un lien sans toucher sa cible.
-# Aucune suppression ni aucune copie ne sort donc de model/.
+# Les liens, eux, n'arrivent jamais jusqu'à la vérification : _sans_lien()
+# les défait avant tout téléchargement et toute copie. Ce commentaire disait
+# le 28/09/2026 qu'aucune écriture ne sortait de model/ parce que les deux
+# noms sont à sa racine ; c'était faux pour le téléchargement : quand les
+# métadonnées de local_dir manquent (installation par --model-source) ou sont
+# plus vieilles que la cible, huggingface_hub recopie son cache PAR-DESSUS
+# un weights.safetensors lié (shutil.copyfile), donc dans le fichier de
+# l'utilisateur, que la vérification déclarait ensuite conforme.
 
 
 def _empreinte(chemin: Path) -> str | None:
@@ -60,6 +63,37 @@ def _retirer(chemin: Path) -> None:
             chemin.unlink(missing_ok=True)
     except OSError:
         pass  # verifier() nomme ce qui reste, et demande de le retirer
+
+
+def _liens(modele: Path) -> list[str]:
+    if not modele.is_dir():
+        return []
+    return sorted(
+        chemin.relative_to(modele).as_posix()
+        for chemin in modele.rglob("*")
+        if chemin.is_symlink()
+    )
+
+
+def _sans_lien(modele: Path, operation: str) -> None:
+    # Tout lien sous model/, pas seulement les deux noms : le hub écrit aussi
+    # ses métadonnées et ses verrous sous .cache/huggingface/. rglob ne
+    # descend pas dans un dossier lié : chaque nom listé n'a de lien qu'à son
+    # dernier maillon, et _retirer() défait ce lien sans toucher sa cible.
+    liens = _liens(modele)
+    for nom in liens:
+        _retirer(modele / nom)
+    if restes := _liens(modele):
+        raise RuntimeError(
+            f"Impossible de retirer {', '.join(restes)} (lien symbolique) : "
+            "supprimez le lien lui-même, pas sa cible, puis relancez le "
+            f"script. Rien n'a été {operation}."
+        )
+    if liens:
+        print(
+            "Lien symbolique retiré de model/, sa cible reste intacte : "
+            + ", ".join(liens)
+        )
 
 
 def verifier(modele: Path) -> None:
@@ -99,6 +133,10 @@ def copier(source: Path, modele: Path, temoin: Path) -> None:
     # témoin qui dirait le contraire.
     temoin.unlink(missing_ok=True)
     modele.mkdir(parents=True, exist_ok=True)
+    # La copie n'écrit que les deux noms, que _retirer() défait déjà un à
+    # un ; les autres liens partent quand même, pour qu'une installation
+    # réussie ne laisse aucun lien dans model/, quel que soit son chemin.
+    _sans_lien(modele, "copié")
     for nom in EMPREINTES:
         # Un fichier en lecture seule (copy2 recopie le mode de sa source)
         # faisait lever PermissionError à copy2 : le poids refusé ne se
@@ -151,6 +189,7 @@ def main() -> None:
         copier(args.model_source, modele, temoin)
     else:
         temoin.unlink(missing_ok=True)
+        _sans_lien(modele, "téléchargé")
         script = (
             "from huggingface_hub import snapshot_download; "
             f"snapshot_download({MODELE!r}, revision={REVISION!r}, "

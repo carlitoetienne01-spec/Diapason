@@ -522,6 +522,11 @@ modèle ne change et n'est réécrit qu'après vérification ; un fichier refus�
 est retiré, pour que la relance le retélécharge, et `--model-source` vérifie
 la source avant de remplacer quoi que ce soit. Les fichiers en trop ne sont
 pas refusés ici : mlx-whisper 0.4.3 ouvre ses deux fichiers par leur nom.
+Les liens symboliques sous `model/`, eux, sont retirés (le lien seul, jamais
+sa cible) avant tout téléchargement et toute copie : sans métadonnées dans
+`model/`, le hub recopiait son cache dans le fichier de l'utilisateur
+derrière un `weights.safetensors` lié, que la vérification déclarait ensuite
+conforme.
 Le processus reçoit uniquement le PCM déjà filtré par un tube local,
 applique les mêmes seuils anti-hallucination et ne journalise aucun mot.
 La dictée, le modèle de réponse, son contexte et les voix A/B sont inchangés.
