@@ -786,6 +786,52 @@ class TestAucuneSuppressionNeSuitUnLien:
         )
         assert not moteur_installe(), "la voix ne doit pas se dire disponible"
 
+    def test_un_cache_du_hub_lie_ailleurs_ne_recoit_rien(self, banc, tmp_path):
+        """§5 — le hub écrit sa tenue de livres sous model/.cache/.
+
+        Métadonnées, arbre de révision, .incomplete de 2,3 Go : un .cache
+        lié les faisait écrire dans le dossier de l'utilisateur. _liens() le
+        défait, mais la revue du 28/09/2026 l'a mesuré : l'y rendre aveugle
+        (liens sous .cache/ ignorés) laissait tous les tests verts.
+        """
+        cache = tmp_path / "cache_de_l_utilisateur"
+        _ecrire(cache, {"a_moi.txt": b"a garder"})
+        banc.modele.mkdir(parents=True)
+        (banc.modele / ".cache").symlink_to(cache, target_is_directory=True)
+
+        banc.lancer()
+
+        assert _arbre(cache) == {"a_moi.txt": b"a garder"}, (
+            "la tenue du hub ne doit pas s'écrire derrière un lien"
+        )
+        assert not (banc.modele / ".cache").is_symlink(), (
+            "le hub doit écrire dans un vrai dossier de model/"
+        )
+        assert moteur_installe(), "le modèle téléchargé et vérifié rend la voix prête"
+
+    def test_un_poids_lie_sous_un_vrai_dossier_ne_recoit_rien(self, banc, tmp_path):
+        """§5 — un lien profond se défait comme un lien à la racine.
+
+        speech_tokenizer/ est un vrai dossier, son model.safetensors un lien
+        vers un fichier de l'utilisateur, que le hub réécrirait. Tous les
+        liens des autres tests sont à la racine de model/ : un _liens()
+        limité à elle (glob au lieu de rglob) les laissait tous verts.
+        """
+        exterieur = tmp_path / "ailleurs/codec.safetensors"
+        _ecrire(exterieur.parent, {exterieur.name: self.CODEC_PRECIEUX})
+        (banc.modele / "speech_tokenizer").mkdir(parents=True)
+        (banc.modele / "speech_tokenizer/model.safetensors").symlink_to(exterieur)
+
+        banc.lancer()
+
+        assert exterieur.read_bytes() == self.CODEC_PRECIEUX, (
+            "le téléchargement ne doit rien écrire derrière un lien profond"
+        )
+        assert not (banc.modele / "speech_tokenizer/model.safetensors").is_symlink(), (
+            "le codec doit arriver dans un vrai fichier de model/"
+        )
+        assert moteur_installe(), "le modèle téléchargé et vérifié rend la voix prête"
+
 
 def _arbre(dossier: Path) -> dict[str, bytes | None]:
     """Tout ce qu'il y a sous ``dossier`` : chemins, et octets des fichiers."""

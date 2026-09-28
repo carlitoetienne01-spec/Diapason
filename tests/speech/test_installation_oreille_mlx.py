@@ -326,6 +326,31 @@ class TestRienNeSortDuDossierDeLOreille:
         )
         assert moteur_installe(), "la copie saine rend l'oreille disponible"
 
+    def test_un_lien_sous_le_cache_du_hub_ne_recoit_rien(self, banc, tmp_path):
+        """§5 — un lien profond se défait comme un lien à la racine.
+
+        Les métadonnées du hub vivent trois dossiers sous model/ : un
+        weights.safetensors.metadata lié vers un fichier de l'utilisateur
+        le faisait réécrire. Tous les liens des autres tests sont à la
+        racine : un _liens() limité à elle (glob au lieu de rglob) les
+        laissait tous verts (revue du 28/09/2026).
+        """
+        exterieur = tmp_path / "ailleurs/a_moi.txt"
+        _ecrire(exterieur.parent, {exterieur.name: self.PRECIEUX})
+        metadonnees = banc.modele / ".cache/huggingface/download"
+        metadonnees.mkdir(parents=True)
+        (metadonnees / "weights.safetensors.metadata").symlink_to(exterieur)
+
+        banc.lancer()
+
+        assert exterieur.read_bytes() == self.PRECIEUX, (
+            "les métadonnées du hub ne doivent pas s'écrire derrière un lien"
+        )
+        assert [p for p in banc.modele.rglob("*") if p.is_symlink()] == [], (
+            "une installation réussie ne doit laisser aucun lien dans model/"
+        )
+        assert moteur_installe(), "le modèle vérifié rend l'oreille disponible"
+
 
 def _arbre(dossier: Path) -> dict[str, bytes | None]:
     """Tout ce qu'il y a sous ``dossier`` : chemins, et octets des fichiers."""
