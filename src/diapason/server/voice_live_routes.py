@@ -9,10 +9,12 @@ from typing import Any, Optional
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 
 from diapason.core.origine_telephone import depuis_le_telephone
+from diapason.server.profil_vocal_routes import profil_vocal_router
 
 logger = logging.getLogger(__name__)
 
 voice_live_router = APIRouter(tags=["voice-live"])
+voice_live_router.include_router(profil_vocal_router)
 
 
 def _parse_tools_csv(raw: str) -> Optional[list[str]]:

@@ -25,19 +25,22 @@ def voice_status() -> None:
         console.print("[green]Verrou armé[/green] — seule la voix enrôlée est écoutée.")
     else:
         console.print(
-            "[yellow]En apprentissage[/yellow] — les prochains tours adressés "
-            "(« Diapason, … ») nourrissent le profil, puis le verrou s'arme."
+            "[yellow]Profil à préparer[/yellow] — ouvre Réglages → Voix "
+            "et enregistre ton profil avec le parcours guidé."
         )
 
 
 @voice.command("reset")
 @click.confirmation_option(prompt="Effacer l'empreinte vocale et tout réapprendre ?")
 def voice_reset() -> None:
-    """Oublie l'empreinte : les prochains tours adressés réapprennent."""
+    """Oublie l'empreinte ; un nouvel enregistrement guidé sera nécessaire."""
     from diapason.speech.speaker_id import get_verifier
 
     get_verifier().reset()
-    Console().print("[green]Empreinte effacée.[/green] La voix se réapprend seule.")
+    Console().print(
+        "[green]Empreinte effacée.[/green] "
+        "Prépare un nouveau profil dans Réglages → Voix."
+    )
 
 
 __all__ = ["voice"]

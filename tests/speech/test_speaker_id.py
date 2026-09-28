@@ -49,11 +49,11 @@ def verifier(tmp_path):
 
 
 class TestCycleDeVie:
-    def test_sans_profil_le_verrou_dort_et_tout_passe(self, verifier):
-        """Le doute profite au propriétaire : pas armé = pas de rejet."""
+    def test_sans_profil_le_parcours_guide_est_requis(self, verifier):
+        """§100 : un profil absent ne prouve aucune identité."""
         assert verifier.arme is False
         score, ok = verifier.verify(_pcm(_S / "v_Amelie_1.wav"))
-        assert ok is True
+        assert ok is False
 
     def test_le_verrou_s_arme_au_cinquieme_echantillon(self, verifier):
         sons = ["v_Thomas_1.wav", "v_Thomas_2.wav", "v_Thomas_3.wav"]
@@ -99,6 +99,6 @@ class TestLeVerdict:
         score, ok = arme_sur_thomas.verify(_pcm(_S / "v_Amelie_1.wav"))
         assert ok is False, f"une voix étrangère acceptée (score {score:.2f})"
 
-    def test_un_tour_trop_court_profite_au_proprietaire(self, arme_sur_thomas):
+    def test_un_tour_trop_court_demande_plus_de_parole(self, arme_sur_thomas):
         score, ok = arme_sur_thomas.verify(b"\x00\x00" * 800)  # 50 ms
-        assert ok is True, "un fragment inexploitable ne doit pas rendre sourd"
+        assert ok is False, "un fragment inexploitable ne prouve pas une identité"

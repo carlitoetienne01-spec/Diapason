@@ -450,7 +450,7 @@ def _isoler_le_profil_vocal(monkeypatch, tmp_path):
     enrôlé leur audio synthétique dans ~/.diapason/voice_profile.npz — cinq
     échantillons de bruit, verrou armé. Armé ainsi, l'assistant aurait été
     SOURD à la vraie voix de l'utilisateur. Chaque test reçoit donc un
-    vérificateur neutre (jamais armé, enrôlement muet) ; les tests du module
+    vérificateur neutre (verdict injecté, aucun enrôlement) ; les tests du module
     speaker_id construisent explicitement leur propre instance sur tmp_path.
     """
     from diapason.speech import speaker_id
@@ -464,6 +464,9 @@ def _isoler_le_profil_vocal(monkeypatch, tmp_path):
 
         def verify(self, *a, **k):
             return 1.0, True
+
+        def evaluer(self, *a, **k):
+            return speaker_id.VerdictVocal("recognized", 1.0)
 
         def reset(self):
             pass
