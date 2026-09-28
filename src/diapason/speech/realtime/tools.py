@@ -315,8 +315,17 @@ def gemini_function_declarations(
 
 def openai_tools_schema(
     allowed: Optional[Sequence[str]] = None,
+    *,
+    telephone: bool = False,
 ) -> list[dict[str, Any]]:
-    """OpenAI Realtime ``session.tools`` entries."""
+    """OpenAI Realtime ``session.tools`` entries.
+
+    ``telephone`` : la séance vient du téléphone (28/09/2026). Chaque outil
+    rend alors ``schema_du_telephone()`` — diapason_app sans navigate ni
+    current_view, qu'il refuse au téléphone. Passé par l'appelant, qui a lu
+    la marque de la passerelle à sa construction, jamais relu ici dans un
+    fil ; au bureau, le schéma reste celui dont le préfixe est en cache.
+    """
     _ensure_desktop_tools_loaded()
     from diapason.core.registry import ToolRegistry
 
@@ -326,7 +335,9 @@ def openai_tools_schema(
             tool = ToolRegistry.create(tid)
         except Exception:
             continue
-        out.append(tool.to_openai_function())
+        out.append(
+            tool.schema_du_telephone() if telephone else tool.to_openai_function()
+        )
     return out
 
 

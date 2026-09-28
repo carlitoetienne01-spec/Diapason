@@ -1198,8 +1198,12 @@ class LocalVoiceSession(RealtimeVoiceSession):
 
                         # Ollama speaks the OpenAI function format, so the
                         # schema built for OpenAI Realtime serves unchanged.
+                        # Au téléphone (28/09/2026), sans les opérations que
+                        # l'outil lui refuse : navigate, current_view.
                         schema = await asyncio.to_thread(
-                            openai_tools_schema, self._allowed_tools
+                            openai_tools_schema,
+                            self._allowed_tools,
+                            telephone=self._du_telephone,
                         )
                     # 27/09/2026 : le premier tour standard attendait
                     # encore 37 s APRÈS READY, derrière la chauffe détachée.

@@ -224,6 +224,37 @@ class DiapasonAppTool(BaseTool):
             metadata={"risk": "routine_write", "reversible": True},
         )
 
+    def schema_du_telephone(self) -> dict[str, Any]:
+        """Le schéma sans ce que operation_permise_au_telephone refuse.
+
+        28/09/2026, revue de f7428c98 : le téléphone se voyait refuser
+        navigate et current_view, mais son modèle les trouvait encore dans
+        l'enum, et la description lui disait de prendre une page « from
+        catalogue » — un catalogue qui, au téléphone, n'en liste plus. Il en
+        aurait inventé une, puis essuyé le refus. On retire donc de l'enum
+        chaque opération refusée, et de la description chaque phrase qui en
+        nomme une — y compris dans une description réécrite par
+        descriptions.toml. Le schéma du bureau, lui, ne change pas d'un
+        octet : son préfixe reste en cache.
+        """
+        fonction = copy.deepcopy(self.to_openai_function())
+        corps = fonction["function"]
+        operation = corps["parameters"]["properties"]["operation"]
+        refusees = [
+            nom for nom in operation["enum"] if not operation_permise_au_telephone(nom)
+        ]
+        if refusees:
+            operation["enum"] = [
+                nom for nom in operation["enum"] if nom not in refusees
+            ]
+            phrases = re.split(r"(?<=[.!?])\s+", corps["description"])
+            corps["description"] = " ".join(
+                phrase
+                for phrase in phrases
+                if not any(nom in phrase for nom in refusees)
+            )
+        return fonction
+
     def execute(self, **params: Any) -> ToolResult:
         return self._executer(params, suppression=False)
 

@@ -66,7 +66,8 @@ _DEPUIS_LE_TELEPHONE: ContextVar[bool] = ContextVar(
 # phase 6 les y mettra pour leurs données, les opérations navigate et
 # current_view de diapason_app (piloter la fenêtre du Mac, lire ce qu'elle
 # affiche) resteront refusées : l'outil le décide lui-même, opération par
-# opération (tools/diapason_app.py, revue de sécurité du 28/09/2026).
+# opération (tools/diapason_app.py, revue de sécurité du 28/09/2026), et son
+# schéma vu du téléphone (BaseTool.schema_du_telephone) ne les offre pas.
 OUTILS_DU_TELEPHONE: frozenset[str] = frozenset(
     {
         "current_time",

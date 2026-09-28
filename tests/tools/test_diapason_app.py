@@ -157,6 +157,40 @@ def par_l_executeur(operation, params=None, **racine):
     )
 
 
+_DONNEES = {"catalogue", "describe"} | {
+    nom for noms in OPERATIONS.values() for nom in noms.split()
+}
+
+
+def _par_nom(schemas):
+    return {s["function"]["name"]: s["function"] for s in schemas}
+
+
+def _sans_le_mac(fonction):
+    """Le schéma de diapason_app tel que le modèle du téléphone doit le voir."""
+    operations = fonction["parameters"]["properties"]["operation"]["enum"]
+    assert set(operations) == _DONNEES, (
+        "le téléphone voit exactement les opérations sur les données : "
+        f"en trop {set(operations) - _DONNEES}, en moins {_DONNEES - set(operations)}"
+    )
+    for nom in ("navigate", "current_view"):
+        assert nom not in fonction["description"], (
+            f"la description promet encore {nom} au téléphone"
+        )
+    assert "operation='describe'" in fonction["description"], (
+        "la consigne des données doit survivre au retrait du Mac"
+    )
+
+
+def _avec_le_mac(fonction):
+    """Témoin : le bureau garde navigate et current_view, et leur consigne."""
+    operations = fonction["parameters"]["properties"]["operation"]["enum"]
+    assert {"navigate", "current_view"} <= set(operations), "le bureau perd le Mac"
+    assert "page from catalogue" in fonction["description"], (
+        "le bureau perd la consigne de navigate"
+    )
+
+
 class TestLeTelephone:
     """Revue de sécurité du 28/09/2026 : le plafond du téléphone se décide nom
     par nom, et diapason_app porte sous un seul nom les données de Diapason
@@ -183,7 +217,10 @@ class TestLeTelephone:
 
         assert not {"diapason_app", "diapason_app_delete"} & OUTILS_DU_TELEPHONE, (
             "la phase 6 a ouvert diapason_app : c'est une décision, mettre ce "
-            "test à jour avec elle"
+            "test à jour avec elle. Le refus de navigate/current_view et leur "
+            "retrait du schéma du téléphone tiennent déjà ; reste à présenter "
+            "diapason_app dans TOOL_ORAL_HINT_TELEPHONE (oral_prompt.py), sans "
+            "ces deux opérations"
         )
         with marquer_le_telephone():
             rendus = [
@@ -326,9 +363,100 @@ class TestLeTelephone:
                     arguments=json.dumps({"operation": "current_view"}),
                 )
             )
-        assert outils == [outil], "le plafond simulé laisse passer le nom"
+        assert [o.spec.name for o in outils] == ["diapason_app"], (
+            "le plafond simulé laisse passer le nom"
+        )
         assert not rendu.success and "téléphone" in rendu.content
         assert mac_temoin == [], "la Discussion du téléphone a lu la fenêtre du Mac"
+
+    def test_la_discussion_du_telephone_ne_voit_pas_les_operations_du_mac(
+        self, plafond_de_la_phase_6
+    ):
+        """§5 : le téléphone se voit refuser navigate et current_view ; son
+        modèle ne doit pas les trouver dans le schéma que TrousseChat lui
+        envoie, ni la consigne de prendre une page « from catalogue » dans un
+        catalogue qui, au téléphone, n'en liste plus (revue du 28/09/2026)."""
+        from diapason.core.origine_telephone import marquer_le_telephone
+        from diapason.core.types import Message, Role
+        from diapason.server.routes import _trousse_de_l_origine
+        from diapason.server.trousse_chat import TrousseChat
+
+        outils = [DiapasonAppTool(), DiapasonAppDeleteTool()]
+        tooling = (outils, ToolExecutor(outils, autoload_capability_policy=False))
+        demande = [Message(role=Role.USER, content="Ajoute une note : pain")]
+        with marquer_le_telephone():
+            vus, _ = _trousse_de_l_origine(tooling)
+        telephone = _par_nom(TrousseChat(vus, demande).specs)
+        bureau = _par_nom(TrousseChat(_trousse_de_l_origine(tooling)[0], demande).specs)
+
+        _sans_le_mac(telephone["diapason_app"])
+        _avec_le_mac(bureau["diapason_app"])
+        assert telephone["diapason_app_delete"] == bureau["diapason_app_delete"], (
+            "les suppressions sont toutes permises : leur schéma ne change pas"
+        )
+
+    def test_une_description_reecrite_ne_rend_pas_le_mac_au_telephone(
+        self, monkeypatch
+    ):
+        """§5 : descriptions.toml (recherche de spec M1) peut réécrire la
+        description ; une réécriture qui nomme navigate ou current_view ne
+        doit pas les rendre au téléphone. Retirer seulement les deux phrases
+        d'origine, mot pour mot, les y laisserait."""
+        from diapason.tools import description_loader
+
+        reecrite = (
+            "Edit Diapason data. Pages open with navigate. "
+            "Call current_view to see the page. Read before edits."
+        )
+        monkeypatch.setattr(
+            description_loader,
+            "get_tool_description_override",
+            lambda nom: reecrite if nom == "diapason_app" else None,
+        )
+        vue = DiapasonAppTool().schema_du_telephone()["function"]["description"]
+        assert vue == "Edit Diapason data. Read before edits.", (
+            f"la réécriture promet encore le Mac au téléphone : {vue!r}"
+        )
+        assert (
+            DiapasonAppTool().to_openai_function()["function"]["description"]
+            == reecrite
+        ), "le bureau garde la réécriture entière"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("du_telephone", [True, False])
+    async def test_la_voix_du_telephone_ne_voit_pas_les_operations_du_mac(
+        self, plafond_de_la_phase_6, monkeypatch, du_telephone
+    ):
+        """§5 : la séance vocale lit la marque du téléphone à sa construction,
+        puis chauffe son préfixe avec les schémas : ceux du téléphone sans
+        navigate ni current_view, ceux du bureau intacts (préfixe en cache)."""
+        from contextlib import nullcontext
+
+        from diapason.core.origine_telephone import marquer_le_telephone
+        from diapason.speech.realtime import local_voice
+
+        chauffes: list[list[dict]] = []
+
+        async def chauffer(_modele, _systeme, outils, _historique=None):
+            chauffes.append(outils)
+
+        monkeypatch.setattr(local_voice, "_prewarm_prefix", chauffer)
+        monkeypatch.setattr(local_voice, "ollama_reachable", lambda: True)
+        with marquer_le_telephone() if du_telephone else nullcontext():
+            seance = local_voice.LocalVoiceSession(stt=lambda _: "", tts=lambda _: b"")
+        try:
+            await seance.connect()
+            assert (await seance._queue.get()).kind == "ready", "séance non prête"
+        finally:
+            await seance.close()
+
+        (schemas,) = chauffes
+        vus = _par_nom(schemas)
+        assert "diapason_app" in vus, "le plafond simulé ouvre diapason_app à la voix"
+        if du_telephone:
+            _sans_le_mac(vus["diapason_app"])
+        else:
+            _avec_le_mac(vus["diapason_app"])
 
     @pytest.mark.parametrize(("operation", "params"), _LE_MAC)
     def test_au_bureau_rien_ne_change(self, magasin, mac_temoin, operation, params):

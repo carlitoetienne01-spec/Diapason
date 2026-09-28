@@ -167,6 +167,18 @@ class BaseTool(ABC):
             },
         }
 
+    def schema_du_telephone(self) -> Dict[str, Any]:
+        """Le schéma que voit le modèle quand la demande vient du téléphone.
+
+        28/09/2026 : le plafond du téléphone se décide par NOM, mais un outil
+        peut porter sous un seul nom des données et une action sur le Mac
+        (``diapason_app`` : ``navigate``, ``current_view``). Il refuse ces
+        opérations à l'exécution ; ici, il cesse de les offrir au modèle, qui
+        les promettait avant d'essuyer le refus (§5). Par défaut, le schéma
+        du bureau. Ce n'est qu'une vue : le refus reste dans l'outil.
+        """
+        return self.to_openai_function()
+
 
 # ---------------------------------------------------------------------------
 # ToolExecutor — dispatch engine for tool calls
