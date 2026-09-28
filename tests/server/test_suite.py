@@ -96,18 +96,41 @@ class TestLeRappel:
         )
 
 
+# Des phrases inventées, jamais celles du fil réel. Chaque alternative de
+# _ACCORD y passe, et chaque pronom (le, la, les) dans les deux formes qui en
+# prennent un : le défaut du 27/09/2026 venait d'un accord au PLURIEL, et un
+# jeu tout au singulier laissait réduire le motif à (le|la) sans un rouge.
+ACCORDS = [
+    ("Tu veux la recette ?", "oui"),
+    ("Tu veux la recette ?", "Ouais !"),
+    ("Je te prépare le menu ?", "Okay, vas-y"),
+    ("Je te prépare le menu ?", "vas y"),
+    ("Je te prépare le menu ?", "D'accord, allez-y"),
+    ("Je te prépare le menu ?", "Allez y !"),
+    ("Je continue la liste ?", "Entendu, continue"),
+    ("Je poursuis la liste ?", "Parfait, poursuis."),
+    ("Je te fais le menu ?", "Fais-le"),
+    ("Je te fais le menu ?", "Ok fais le"),
+    ("Tu veux le menu ?", "Tu peux me le donner"),
+    ("Tu veux la recette ?", "Ok, tu peux me la donner"),
+    ("Tu veux les idées ?", "Entendu, tu peux les donner"),
+    ("Tu veux le menu ?", "Donne-le-moi"),
+    ("Tu veux la recette ?", "Donne la moi"),
+    ("Tu veux les idées ?", "Donne-les-moi"),
+    ("Tu veux les idées ?", "Oui, donne les moi"),
+]
+
+
 class TestLeFil:
-    @pytest.mark.parametrize(
-        "accord", ["oui", "Ok, tu peux me la donner", "Oui, vas-y", "Donne-la-moi"]
-    )
-    def test_les_accords_successifs_gardent_la_demande_en_attente(self, accord):
+    @pytest.mark.parametrize(("offre", "accord"), ACCORDS)
+    def test_les_accords_successifs_gardent_la_demande_en_attente(self, offre, accord):
         """§5 : trois accords ne doivent pas reproduire trois fois le même refus."""
-        demande = "Propose-moi une recette de soupe pour ce soir"
+        demande = "Propose-moi un repas léger pour ce soir"
         fil = [
             Message(role=Role.USER, content=demande),
-            Message(role=Role.ASSISTANT, content="Tu veux la recette ?"),
+            Message(role=Role.ASSISTANT, content=offre),
             Message(role=Role.USER, content="oui"),
-            Message(role=Role.ASSISTANT, content="Tu veux la recette ?"),
+            Message(role=Role.ASSISTANT, content=offre),
             Message(role=Role.USER, content=accord),
         ]
         avec = avec_rappel(fil)
