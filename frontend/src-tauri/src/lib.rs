@@ -4441,11 +4441,18 @@ mod native_overlay {
 
 #[cfg(target_os = "macos")]
 mod native_reglette {
+    use block2::RcBlock;
     use objc::declare::ClassDecl;
     use objc::runtime::{Class, Object, Sel, BOOL, NO, YES};
     use objc::{class, msg_send, sel, sel_impl};
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::Mutex;
+
+    #[link(name = "WebKit", kind = "framework")]
+    extern "C" {
+        static WKWebsiteDataTypeServiceWorkerRegistrations: *mut Object;
+        static WKWebsiteDataTypeFetchCache: *mut Object;
+    }
 
     static PANEL_PTR: AtomicUsize = AtomicUsize::new(0);
     static WEBVIEW_PTR: AtomicUsize = AtomicUsize::new(0);
@@ -5477,9 +5484,35 @@ mod native_reglette {
         let _: () = msg_send![panel, setContentView: wv];
         MINI_WV_PTR.store(wv as usize, Ordering::SeqCst);
 
-        let u: *mut Object = msg_send![class!(NSURL), URLWithString: nsstring(url_str)];
-        let req: *mut Object = msg_send![class!(NSURLRequest), requestWithURL: u];
-        let _: () = msg_send![wv, loadRequest: req];
+        // 28/09/2026 : un ancien worker servait le chat de septembre avec
+        // les routes /succes ; les onglets /vie ne rendaient donc rien.
+        // Désinscrire dans le NOUVEAU bundle ne suffit pas : c'est justement
+        // l'ancien qui est chargé. Retirer les deux caches hors ligne AVANT
+        // la première navigation, sans toucher aux cookies, préférences,
+        // IndexedDB ni au stockage des conversations.
+        let types: *mut Object = msg_send![class!(NSMutableSet), set];
+        let _: () = msg_send![types, addObject: WKWebsiteDataTypeServiceWorkerRegistrations];
+        let _: () = msg_send![types, addObject: WKWebsiteDataTypeFetchCache];
+        let magasin: *mut Object = msg_send![cfg, websiteDataStore];
+        let depuis: *mut Object = msg_send![class!(NSDate), distantPast];
+        let adresse_initiale = url_str.to_string();
+        let vue = wv as usize;
+        let pret = RcBlock::new(move || {
+            // Un second clic dans la réglette pendant le nettoyage gagne :
+            // le pushState sur le document vide n'aurait gardé aucune route.
+            let route = ROUTE_ACTIVE.lock().ok().and_then(|g| g.clone());
+            let adresse = route
+                .map(|r| format!("http://127.0.0.1:{}{}", API_PORT.load(Ordering::SeqCst), r))
+                .unwrap_or_else(|| adresse_initiale.clone());
+            let u: *mut Object = msg_send![class!(NSURL), URLWithString: nsstring(&adresse)];
+            let req: *mut Object = msg_send![class!(NSURLRequest), requestWithURL: u];
+            let _: () = msg_send![vue as *mut Object, loadRequest: req];
+        });
+        let _: () = msg_send![magasin,
+            removeDataOfTypes: types
+            modifiedSince: depuis
+            completionHandler: RcBlock::as_ptr(&pret) as *const std::ffi::c_void
+        ];
 
         MINI_PANEL_PTR.store(panel as usize, Ordering::SeqCst);
         presenter_mini(panel);

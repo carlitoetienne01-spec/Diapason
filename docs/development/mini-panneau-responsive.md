@@ -146,3 +146,36 @@ vraie WKWebView non activante du mini-panneau, qui reste due pour les neuf.
 Le même jour, les mêmes pages ont été vues à 375 px avec le pont simulé
 (`diapason-mobile.md`, étape 5).
 Un module nouveau se conforme aux onze règles dès sa naissance.
+
+## Le mini-panneau doit charger la version installée (28 septembre 2026)
+
+Le serveur et la fenêtre avaient le même bundle, mais la WKWebView du
+mini-panneau gardait un service worker antérieur au renommage des pages.
+Son précache contenait encore `SuccesTasksPage`, `SuccesNotesPage` et
+`SuccesDashboardPage` : les nouveaux onglets `/vie/*` ne correspondaient
+plus aux routes, et la Discussion montrait l'ancien compositeur.
+Une construction Tauri sans `sw.js` ne désinscrivait pas ce worker.
+
+Le chargement natif attend désormais le retrait des enregistrements de
+service workers et de leur cache Fetch **avant sa première navigation**.
+Une correction dans le nouveau JavaScript seul ne pouvait pas atteindre
+une surface qui recevait toujours l'ancien. Cookies, localStorage,
+IndexedDB et conversations ne sont pas effacés. Si l'utilisateur choisit
+une autre rubrique pendant ce retrait, la dernière route demandée gagne.
+
+Le bundle n'inscrit plus de service worker en mode compact, ni lorsque
+son build n'en publie pas ; il retire les anciens et leurs seuls caches
+Workbox. La PWA du navigateur conserve son inscription quand elle est
+active. Tests : `lib/serviceWorker.test.ts`, les contrats des routes et
+les tests natifs Tauri ; le contrôle final doit aussi porter sur la vraie
+WKWebView et le compositeur actuel, pas seulement sur `?compact`.
+
+Contrôle natif effectué après installation le 28 septembre : Tableau de
+bord affiche ses cartes, la carte des tâches ouvre le Planificateur, et
+le retour à Discussion conserve l'historique du serveur. Son compositeur
+affiche le nouveau menu « + », borné dans le panneau ; au focus du champ,
+la flèche d'envoi apparaît, puis le bouton de conversation vocale revient
+au repos. Aucun micro n'a été ouvert pour ce contrôle. L'ancien
+enregistrement du service worker a bien disparu. Les 37 tests frontend
+ciblés et les 67 tests natifs exécutés passent (un test natif ignoré).
+Ce contrôle ne vaut pas une visite native de toutes les autres rubriques.

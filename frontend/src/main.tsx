@@ -14,6 +14,7 @@ import './lib/natif';
 import { migrerStockage, stockageDeLOrigine } from './features/vie/migrerStockage';
 import { initAnalytics } from './lib/analytics';
 import { gererLeServiceWorker } from './lib/serviceWorker';
+import { estCompact } from './lib/compact';
 import { serviParLeTailnet } from './lib/tailnet';
 // Les treize polices du menu des notes, embarquées EN LOCAL.
 //
@@ -96,13 +97,14 @@ migrerStockage(stockageDeLOrigine());
 applyTheme();
 
 // Le service worker, à `load` comme le faisait `registerSW.js` : inscrit sur
-// le Mac et dans le mini-panneau, désinscrit au téléphone, où le bundle doit
-// toujours être celui que le Mac sert (lib/serviceWorker.ts, 26/09/2026).
+// le navigateur PWA du Mac, désinscrit dans les surfaces qui doivent
+// toujours suivre le bundle servi, notamment le mini-panneau.
 function serviceWorker() {
   void gererLeServiceWorker({
     conteneur: 'serviceWorker' in navigator ? navigator.serviceWorker : null,
     caches: typeof caches === 'undefined' ? null : caches,
     servi: serviParLeTailnet(),
+    compact: estCompact,
     actif: import.meta.env.PROD && __PWA_ACTIF__,
   }).catch((erreur: unknown) => console.warn('[pwa] service worker', erreur));
 }

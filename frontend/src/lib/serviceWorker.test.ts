@@ -55,10 +55,20 @@ describe('gererLeServiceWorker', () => {
     expect(reussite).toHaveBeenCalled();
   });
 
-  it('ne fait rien dans une construction sans service worker (Tauri, serveur de dev)', async () => {
-    const { conteneur } = faux();
-    await expect(gererLeServiceWorker({ conteneur, servi: false, actif: false })).resolves.toBe('rien');
+  it('retire le worker ancien même si le nouveau build ne publie plus sw.js', async () => {
+    const { conteneur, desinscrire } = faux(1);
+    await expect(gererLeServiceWorker({ conteneur, servi: false, actif: false })).resolves.toBe('desinscrit');
     expect(conteneur.register).not.toHaveBeenCalled();
+    expect(desinscrire).toHaveBeenCalledOnce();
+  });
+
+  it('le mini-panneau abandonne le cache ancien même avec un build PWA', async () => {
+    const { conteneur, desinscrire } = faux(1);
+    const { caches, effaces } = fauxCaches(['workbox-precache-v2-http://127.0.0.1:8000/', 'documents']);
+    await expect(gererLeServiceWorker({ conteneur, caches, servi: false, compact: true, actif: true })).resolves.toBe('desinscrit');
+    expect(conteneur.register, 'le panneau doit recevoir le même compositeur que l’app').not.toHaveBeenCalled();
+    expect(desinscrire).toHaveBeenCalledOnce();
+    expect(effaces, 'les données utilisateur restent intactes').toEqual(['workbox-precache-v2-http://127.0.0.1:8000/']);
   });
 
   it('se tait sans API de service worker', async () => {
