@@ -99,7 +99,9 @@ describe('Layout.tsx', () => {
 
   it('garde la barre latérale et son voile au Mac', () => {
     expect(layout).toMatch(/\{!estMobile && <Sidebar \/>\}/);
-    expect(layout).toMatch(/\{!estMobile && sidebarOpen && \(/);
+    // 28/09/2026 : le rail du bureau montre son panneau selon la page
+    // (panneauVisible) ; la garde « rien de tout cela au téléphone » reste.
+    expect(layout).toMatch(/\{!estMobile && panneauVisible\(sidebarOpen, pathname\) && \(/);
     expect(layout.match(/<Sidebar\b/g)?.length, 'une seule barre latérale').toBe(1);
   });
 
