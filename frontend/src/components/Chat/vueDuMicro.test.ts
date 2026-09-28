@@ -34,7 +34,7 @@ describe('TestLaVueDuDetailDuMicro — le bouton n’existe qu’avec une coquil
 
   it('au téléphone, le détail et le bouton, dans la langue de la page', () => {
     expect(vueDuDetailDuMicro(auTelephone, fr)).toEqual({
-      detail: 'Détail : NotAllowedError · Permission denied', bouton: 'Ouvrir les réglages', avis: null,
+      detail: 'Détail : NotAllowedError · Permission denied', bouton: 'Ouvrir les réglages', avis: null, reponse: null,
     });
     expect(vueDuDetailDuMicro(auTelephone, en)?.bouton).toBe('Open settings');
   });
@@ -46,9 +46,23 @@ describe('TestLaVueDuDetailDuMicro — le bouton n’existe qu’avec une coquil
   });
 
   it('un avis des réglages se montre, même sans détail', () => {
-    const vue = vueDuDetailDuMicro({ ...auBureau, avis: { cle: 'talk.micro.reglagesEchec' } }, fr);
+    const vue = vueDuDetailDuMicro({ ...auBureau, avis: { cle: 'talk.micro.reglagesEchec', reponse: null } }, fr);
     expect(vue?.avis).toBe(fr('talk.micro.reglagesEchec'));
-    expect(texteDeLAvis({ cle: 'talk.micro.reglagesIndisponibles' }, en)).toBe(en('talk.micro.reglagesIndisponibles'));
+    expect(vue?.reponse).toBeNull();
+    expect(texteDeLAvis({ cle: 'talk.micro.reglagesIndisponibles', reponse: null }, en))
+      .toEqual({ texte: en('talk.micro.reglagesIndisponibles'), reponse: null });
+  });
+
+  it('en anglais, la phrase française de la coquille est citée sous une phrase anglaise, jamais seule', () => {
+    // 28/09/2026, revue (sonde P2) : la phrase de la coquille s'affichait
+    // seule — en français et au tutoiement, au milieu d'un écran anglais.
+    // La phrase exacte de coquille_controller.dart quand Android refuse.
+    const phrase = 'Les réglages d’Android n’ont pas pu s’ouvrir : ouvre Paramètres › Applis › Diapason › Autorisations › Micro.';
+    const vue = vueDuDetailDuMicro({ ...auTelephone, avis: { cle: 'talk.micro.reglagesEchec', reponse: phrase } }, en);
+    expect(vue?.avis, 'la phrase principale suit la langue de la page').toBe(en('talk.micro.reglagesEchec'));
+    expect(vue?.reponse, 'le récepteur est cité et nommé (§100)').toBe(`The phone app replied: “${phrase}”`);
+    expect(vueDuDetailDuMicro({ ...auTelephone, avis: { cle: 'talk.micro.reglagesEchec', reponse: phrase } }, fr)?.avis,
+      'le vouvoiement de la page, pas le tutoiement de la coquille').not.toMatch(/\bouvre\b/);
   });
 });
 
@@ -94,6 +108,7 @@ describe('TestLeBranchementDuDetailDuMicro — la barre, l’orbe et la dictée 
     expect(code).toContain('const vue = vueDuDetailDuMicro(micro, t); if (!vue) return null;');
     expect(code, 'le bouton ne dépend plus de la vue (MU1d)').toContain('{vue.bouton && ( <button type="button" onClick={onOuvrirReglages}');
     expect(code).toContain('{vue.detail && (');
+    expect(code, 'la réponse de la coquille, dans la même annonce que l’avis').toContain('{vue.avis && ( <p role="status" className="text-xs"> {vue.avis} {vue.reponse && (');
     expect(code, 'une décision prise dans le composant échappe aux tests').not.toMatch(/micro\.(reglages|technique|avis)/);
   });
 

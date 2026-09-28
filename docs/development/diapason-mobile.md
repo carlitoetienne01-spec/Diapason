@@ -1510,7 +1510,10 @@ classé dans l'audit à quelques pour cent chacun.
   `ok: true`, sur le toucher du bouton seulement ; ne change aucune
   permission. Sous le cadenas : une phrase française. `startActivity` qui
   échoue : `ok: false` avec une phrase. Un délai expiré ne dit rien (l'app
-  est derrière les Paramètres).
+  est derrière les Paramètres). La page n'affiche jamais cette phrase
+  seule — la coquille ne parle que français, et tutoie : elle dit la sienne
+  (fr ou en, au vouvoiement), puis cite celle de la coquille, attribuée
+  (« L'app du téléphone a répondu : « … » »).
 - Autre action : `ok: false`, `actionInconnue` (jamais affiché brut).
 - Coquille antérieure : `verbeInconnu`. Elle n'a pas MODIFY_AUDIO_SETTINGS.
 

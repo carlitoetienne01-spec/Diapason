@@ -269,7 +269,9 @@ export function InputArea() {
     // `optionsDuToastDictee`, testée seule (vueDuMicro.ts).
     toast.error(speechError, optionsDuToastDictee(speechMicro, t, () => {
       void ouvrirReglagesDictee().then((avis) => {
-        if (avis) toast.error(texteDeLAvis(avis, t), { duration: DUREE_TOAST_MS });
+        if (!avis) return;
+        const { texte, reponse } = texteDeLAvis(avis, t);
+        toast.error(texte, { duration: DUREE_TOAST_MS, description: reponse ?? undefined });
       });
     }));
     // Une fois par échec : `t` qui change avec la langue ne rejoue pas le toast.

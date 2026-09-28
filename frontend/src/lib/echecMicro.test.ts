@@ -286,15 +286,18 @@ describe('TestLeVerbeMicro — lire l’état et ouvrir les réglages', () => {
     }
   });
 
-  it('la phrase de la coquille (le cadenas) se montre telle quelle ; un code jamais', async () => {
-    const phrase = 'Déverrouillez Diapason pour ouvrir ses réglages.';
-    expect(await ouvrirLesReglagesDuMicro(async () => reponse(false, { erreur: phrase }))).toEqual({ texte: phrase });
+  it('la phrase de la coquille est citée sous celle de la page ; un code jamais', async () => {
+    // 28/09/2026, revue : la phrase de la coquille, française et tutoyante,
+    // s'affichait SEULE — telle quelle dans une interface anglaise.
+    const phrase = 'Diapason est verrouillé sur le téléphone : les réglages ne s’ouvrent pas.';
+    expect(await ouvrirLesReglagesDuMicro(async () => reponse(false, { erreur: phrase })))
+      .toEqual({ cle: 'talk.micro.reglagesEchec', reponse: phrase });
     expect(await ouvrirLesReglagesDuMicro(async () => reponse(false, { erreur: 'actionInconnue' })))
-      .toEqual({ cle: 'talk.micro.reglagesIndisponibles' });
+      .toEqual({ cle: 'talk.micro.reglagesIndisponibles', reponse: null });
     expect(await ouvrirLesReglagesDuMicro(async () => reponse(false, { erreur: 'verbeInconnu' })))
-      .toEqual({ cle: 'talk.micro.reglagesIndisponibles' });
-    expect(await ouvrirLesReglagesDuMicro(async () => reponse(false, { erreur: 'bizarre' })))
-      .toEqual({ cle: 'talk.micro.reglagesEchec' });
-    expect(await ouvrirLesReglagesDuMicro(async () => reponse(false))).toEqual({ cle: 'talk.micro.reglagesEchec' });
+      .toEqual({ cle: 'talk.micro.reglagesIndisponibles', reponse: null });
+    expect(await ouvrirLesReglagesDuMicro(async () => reponse(false, { erreur: 'bizarre' })), 'un code affiché brut')
+      .toEqual({ cle: 'talk.micro.reglagesEchec', reponse: null });
+    expect(await ouvrirLesReglagesDuMicro(async () => reponse(false))).toEqual({ cle: 'talk.micro.reglagesEchec', reponse: null });
   });
 });

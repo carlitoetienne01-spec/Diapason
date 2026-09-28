@@ -662,7 +662,7 @@ describe('§5 — un micro qui ne s’ouvre pas dit pourquoi', () => {
     } finally { lecture.mockRestore(); journal.mockRestore(); }
   });
 
-  it('les réglages refusés sous le cadenas : la phrase de la coquille, telle quelle', async () => {
+  it('les réglages refusés sous le cadenas : la phrase de la page, et celle de la coquille citée', async () => {
     const journal = muet();
     banc.telephone = true;
     const phrase = 'Déverrouillez Diapason pour ouvrir ses réglages.';
@@ -673,7 +673,7 @@ describe('§5 — un micro qui ne s’ouvre pas dit pourquoi', () => {
     try {
       await echouer(refuse());
       await rendu().ouvrirReglagesMicro();
-      expect(rendu().micro?.avis).toEqual({ texte: phrase });
+      expect(rendu().micro?.avis).toEqual({ cle: 'talk.micro.reglagesEchec', reponse: phrase });
     } finally { journal.mockRestore(); }
   });
 

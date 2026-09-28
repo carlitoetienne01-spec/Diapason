@@ -115,7 +115,7 @@ describe('§5 — la dictée dit pourquoi le micro ne s’ouvre pas', () => {
   it('le bouton du toast demande micro/reglages et rend la phrase de la coquille', async () => {
     const phrase = 'Déverrouillez Diapason pour ouvrir ses réglages.';
     banc.natif.mockResolvedValue({ type: 'reponse', id: 'y', ok: false, erreur: phrase });
-    expect(await rendu().ouvrirReglagesMicro()).toEqual({ texte: phrase });
+    expect(await rendu().ouvrirReglagesMicro()).toEqual({ cle: 'talk.micro.reglagesEchec', reponse: phrase });
     expect(banc.natif).toHaveBeenCalledWith('micro', { action: 'reglages' });
   });
 });

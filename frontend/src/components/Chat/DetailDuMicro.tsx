@@ -49,6 +49,11 @@ export function DetailDuMicro({
       {vue.avis && (
         <p role="status" className="text-xs">
           {vue.avis}
+          {vue.reponse && (
+            <span className="mt-1 block text-[11px] opacity-80" style={{ overflowWrap: 'anywhere' }}>
+              {vue.reponse}
+            </span>
+          )}
         </p>
       )}
     </div>

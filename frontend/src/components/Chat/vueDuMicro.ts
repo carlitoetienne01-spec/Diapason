@@ -33,11 +33,19 @@ export interface VueDuDetail {
   bouton: string | null;
   /** La phrase sur les réglages qui ne se sont pas ouverts, ou rien. */
   avis: string | null;
+  /** Ce que la coquille en a dit, cité et attribué, ou rien. */
+  reponse: string | null;
 }
 
-/** La phrase d'un avis des réglages, dans la langue de la page. */
-export function texteDeLAvis(avis: AvisDesReglages, t: Traduire): string {
-  return 'cle' in avis ? t(avis.cle) : avis.texte;
+/**
+ * Un avis des réglages : la phrase de la page, dans sa langue, et celle de
+ * la coquille — qui ne parle que français — citée dessous, attribuée.
+ */
+export function texteDeLAvis(avis: AvisDesReglages, t: Traduire): { texte: string; reponse: string | null } {
+  return {
+    texte: t(avis.cle),
+    reponse: avis.reponse ? t('talk.micro.reponseDeLApp', { phrase: avis.reponse }) : null,
+  };
 }
 
 /**
@@ -47,10 +55,12 @@ export function texteDeLAvis(avis: AvisDesReglages, t: Traduire): string {
  */
 export function vueDuDetailDuMicro(micro: MicroAAfficher | null, t: Traduire): VueDuDetail | null {
   if (!micro) return null;
+  const avis = micro.avis ? texteDeLAvis(micro.avis, t) : null;
   const vue: VueDuDetail = {
     detail: micro.technique ? t('talk.micro.detail', { technique: micro.technique }) : null,
     bouton: micro.reglages ? t('talk.micro.ouvrirReglages') : null,
-    avis: micro.avis ? texteDeLAvis(micro.avis, t) : null,
+    avis: avis?.texte ?? null,
+    reponse: avis?.reponse ?? null,
   };
   return vue.detail || vue.bouton || vue.avis ? vue : null;
 }

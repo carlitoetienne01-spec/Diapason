@@ -180,6 +180,7 @@ export const MESSAGES = {
     'talk.micro.reglagesEchec':
       'Android’s settings could not open: open Settings › Apps, choose the Diapason app you are using (“Diapason dev” for the development version), then Permissions › Microphone.',
     'talk.micro.detail': 'Detail: {technique}',
+    'talk.micro.reponseDeLApp': 'The phone app replied: “{phrase}”',
     'talk.sessionFailed':
       'The voice session could not start. Try again; technical details are available in the logs.',
     'talk.closedInactivity':
@@ -1884,6 +1885,7 @@ export const MESSAGES = {
     'talk.micro.reglagesEchec':
       'Les réglages d’Android n’ont pas pu s’ouvrir : ouvrez Paramètres › Applis, choisissez l’app Diapason que vous utilisez (« Diapason dev » en version de développement), puis Autorisations › Micro.',
     'talk.micro.detail': 'Détail : {technique}',
+    'talk.micro.reponseDeLApp': 'L’app du téléphone a répondu : « {phrase} »',
     'talk.sessionFailed':
       'La séance vocale n’a pas pu démarrer. Réessayez ; les détails techniques restent disponibles dans les journaux.',
     'talk.closedInactivity':

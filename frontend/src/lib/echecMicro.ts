@@ -163,14 +163,24 @@ export async function lireEtatDuMicro(demander: DemanderMicro): Promise<EtatMicr
 }
 
 /** Ce qui s'affiche sous le bouton quand les réglages ne se sont pas ouverts. */
-export type AvisDesReglages = { cle: MessageKey } | { texte: string };
+export interface AvisDesReglages {
+  /** La phrase de la page, dans sa langue et au vouvoiement. */
+  cle: MessageKey;
+  /** La phrase de la coquille telle qu'elle l'a dite, citée sous la première (§100) ; `null` pour un code. */
+  reponse: string | null;
+}
 
 /**
  * `micro/reglages` : `null` quand il n'y a RIEN à dire — les réglages se sont
  * ouverts, ou le délai a expiré alors que l'app était passée derrière eux.
- * Une phrase de la coquille (le cadenas, un `startActivity` refusé) se montre
- * telle quelle : c'est le récepteur qui dit ce qui s'est passé (§100). Un
- * code (`verbeInconnu`, `actionInconnue`…) ne s'affiche jamais brut.
+ * Un code (`verbeInconnu`, `actionInconnue`…) ne s'affiche jamais brut.
+ *
+ * 28/09/2026 (revue) : la phrase de la coquille (le cadenas, un
+ * `startActivity` refusé) s'affichait SEULE. Or la coquille ne parle que
+ * français, et tutoie (« ouvre Paramètres… ») : en anglais, une ligne
+ * française au milieu d'un écran anglais ; en français, le vous et le tu
+ * d'une ligne à l'autre. La page dit désormais sa propre phrase, et cite
+ * celle du récepteur dessous, attribuée — elle reste ce qui s'est passé.
  */
 export async function ouvrirLesReglagesDuMicro(demander: DemanderMicro): Promise<AvisDesReglages | null> {
   let reponse: ReponseNatif;
@@ -182,9 +192,10 @@ export async function ouvrirLesReglagesDuMicro(demander: DemanderMicro): Promise
   }
   if (reponse.ok) return null;
   const erreur = reponse.erreur?.trim() ?? '';
-  if (erreur === 'verbeInconnu' || erreur === 'actionInconnue') return { cle: 'talk.micro.reglagesIndisponibles' };
-  if (/\s/.test(erreur)) return { texte: erreur };
-  return { cle: 'talk.micro.reglagesEchec' };
+  if (erreur === 'verbeInconnu' || erreur === 'actionInconnue') {
+    return { cle: 'talk.micro.reglagesIndisponibles', reponse: null };
+  }
+  return { cle: 'talk.micro.reglagesEchec', reponse: /\s/.test(erreur) ? erreur : null };
 }
 
 // ---------------------------------------------------------------------------
