@@ -508,11 +508,15 @@ def _ensure_identity_prompt(
         # La voix a ses règles orales (oral_prompt.py) ; le chat a les
         # siennes — même identité, manière propre à l'écrit (23 août 2026).
         builder = SystemPromptBuilder(
-            agent_template=habiller_pour_le_chat(cfg.agent.default_system_prompt or ""),
+            agent_template=cfg.agent.default_system_prompt or "",
             memory_files_config=getattr(cfg, "memory_files", None),
             system_prompt_config=getattr(cfg, "system_prompt", None),
         )
-        prompt = builder.build()
+        # 27/09/2026 : la préférence de persona « deux ou trois phrases »
+        # suivait les règles de réponse complète ; le modèle livrait seulement
+        # les ingrédients et demandait un autre accord pour les étapes.
+        # L'identité reste entière, puis viennent les règles du canal écrit.
+        prompt = habiller_pour_le_chat(builder.build())
     except Exception:
         logging.getLogger("diapason.server").debug(
             "Identity system prompt resolution failed; "

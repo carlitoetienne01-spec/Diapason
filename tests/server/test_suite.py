@@ -97,6 +97,57 @@ class TestLeRappel:
 
 
 class TestLeFil:
+    @pytest.mark.parametrize(
+        "accord", ["oui", "Oui tu peux me les donner", "Oui, vas-y", "Donne-les-moi"]
+    )
+    def test_les_accords_successifs_gardent_la_demande_en_attente(self, accord):
+        """§5 : trois accords ne doivent pas reproduire trois fois le même refus."""
+        demande = "Donne moi des recettes pour faire des pâtes"
+        fil = [
+            Message(role=Role.USER, content=demande),
+            Message(role=Role.ASSISTANT, content="Tu veux les recettes ?"),
+            Message(role=Role.USER, content="oui"),
+            Message(role=Role.ASSISTANT, content="Tu veux les recettes ?"),
+            Message(role=Role.USER, content=accord),
+        ]
+        avec = avec_rappel(fil)
+        assert avec[:-1] == fil, (
+            "ne pas retirer les erreurs passées ni réécrire l'accord"
+        )
+        assert demande in avec[-1].content, "l'accord porte sur le contenu attendu"
+        assert avec_rappel(avec) == avec, (
+            "le routeur et la boucle ne doublent pas le rappel"
+        )
+        assert "ne lève aucune permission" in avec[-1].content
+
+    @pytest.mark.parametrize(
+        "texte",
+        [
+            "non merci",
+            "oui mais sans crème",
+            "oui, supprime plutôt la note",
+            "Répète ta réponse",
+            "...",
+            "",
+        ],
+    )
+    def test_ne_remplace_pas_un_refus_une_contrainte_ou_une_nouvelle_demande(
+        self, texte
+    ):
+        """§5 : un accord n'efface pas une correction et ne vaut pas permission."""
+        fil = [
+            Message(role=Role.USER, content="Donne des recettes"),
+            Message(role=Role.ASSISTANT, content="Tu veux des variantes ?"),
+            Message(role=Role.USER, content=texte),
+        ]
+        assert avec_rappel(fil) == fil, (
+            "la demande reste interprétée sans accord ajouté"
+        )
+
+    def test_un_accord_isole_n_invente_pas_de_demande(self):
+        fil = [Message(role=Role.USER, content="oui")]
+        assert avec_rappel(fil) == fil, "aucune tâche sans antécédent"
+
     def test_le_rappel_suit_la_demande(self):
         fil = [
             Message(role=Role.SYSTEM, content="identité"),
@@ -108,6 +159,7 @@ class TestLeFil:
         assert len(avec) == 5 and avec[-1].role == Role.SYSTEM
         assert "Alix Didier Fils-Aimé" in (avec[-1].content or "")
         assert avec[:4] == fil, "le fil n'est pas modifié, le rappel s'ajoute"
+        assert avec_rappel(avec) == avec, "le rappel de sujet aussi reste unique"
 
     def test_premier_message_sans_echange_avant(self):
         fil = [Message(role=Role.USER, content="Raconte moi l'histoire de ce pays")]

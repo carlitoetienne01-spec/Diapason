@@ -19,6 +19,25 @@ class TestHabiller:
 
 
 class TestDansLeChat:
+    def test_les_regles_suivent_la_persona_sans_la_supprimer(self, monkeypatch):
+        """§5 : la concision ne doit pas remplacer une recette par son titre."""
+        monkeypatch.setattr(
+            "diapason.prompt.builder.SystemPromptBuilder.build",
+            lambda _: "Identité et préférences de la personne.",
+        )
+        prepares = _ensure_identity_prompt(
+            [Message(role=Role.USER, content="Donne une recette")],
+            None,
+            client_supplied_system=False,
+        )
+        assert (
+            prepares[0].content
+            == "Identité et préférences de la personne.\n\n" + REGLES_ECRITES
+        ), "l'identité reste entière et les règles du canal la suivent"
+        assert prepares[0].content.count(REGLES_ECRITES) == 1, (
+            "une seule consigne de canal"
+        )
+
     def test_le_chat_recoit_les_regles_d_ecriture(self):
         messages = [Message(role=Role.USER, content="Bonjour")]
         prepares = _ensure_identity_prompt(messages, None, client_supplied_system=False)

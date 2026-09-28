@@ -55,6 +55,61 @@ _RENVOI = re.compile(
 )
 _CITATION = re.compile(r"\s*\[\d+\]")
 
+# 27/09/2026 : « oui », puis « Oui tu peux me les donner » reproduisaient
+# mot pour mot un refus inventé de fournir des recettes. Les démonstratifs
+# seuls ne rattachaient pas ces accords à la demande encore dans le fil.
+_ACCORD = re.compile(
+    r"^(?=[a-z])(?:(?:oui|ouais|ok(?:ay)?|d'accord|entendu|parfait)[,!. ]*)?"
+    r"(?:vas[ -]y|allez[ -]y|continue|poursuis|"
+    r"(?:tu peux\s+)?(?:me\s+)?(?:le|la|les)\s+donner|"
+    r"donne[ -](?:le|la|les)[ -]moi|fais[ -]le)?[.! ]*$"
+)
+
+
+def demande_acceptee(demande: str, tours: Sequence[tuple[str, str]]) -> str | None:
+    """La demande avant un accord bref ; ce lien n'est pas une permission."""
+
+    def accord(texte: str) -> bool:
+        plat = _plat(texte).strip()
+        return bool(plat and _ACCORD.fullmatch(plat))
+
+    if not accord(demande):
+        return None
+    sujet = next(
+        (
+            texte
+            for role, texte in reversed(tours)
+            if role == "user" and not accord(texte)
+        ),
+        "",
+    )
+    if not sujet.strip() or not any(role == "assistant" for role, _ in tours):
+        return None
+    return sujet
+
+
+def rappel_de_l_accord(demande: str, tours: Sequence[tuple[str, str]]) -> str | None:
+    """Rattacher un accord bref au fil, sans en déduire une permission d'outil."""
+    sujet = demande_acceptee(demande, tours)
+    if sujet is None:
+        return None
+    sujet = " ".join(sujet.split())
+    if len(sujet) > LONGUEUR_MAX:
+        sujet = sujet[:LONGUEUR_MAX].rsplit(" ", 1)[0] + "…"
+    return (
+        "L'utilisateur vient d'accepter la suite proposée dans l'échange. "
+        f"Sa dernière demande substantielle était : « {sujet} ». "
+        "Tiens compte de l'offre précédente et des contraintes déjà données. "
+        "Livre le contenu encore attendu au lieu de répéter l'offre ou la "
+        "même question. Une ancienne affirmation d'incapacité ne prouve pas "
+        "qu'un outil est en panne. Une rédaction générale ne dépend pas d'un "
+        "outil ; une consultation de données nécessite toujours une vraie lecture. "
+        "Ne répète pas une action déjà accomplie. Si un choix est indispensable, "
+        "demande uniquement ce choix manquant. Ce rappel ne vaut aucune "
+        "approbation d'action sensible et ne lève aucune permission."
+    )
+
+
 RAPPEL_DU_SUJET = (
     "La demande renvoie à ce qui précède (« {renvoi} ») : elle porte sur le "
     "sujet de l'échange précédent — question : « {question} »{reponse}. Réponds "
@@ -132,11 +187,17 @@ def avec_rappel(messages: Sequence[Message]) -> list[Message]:
         for m in messages[:rang]
         if m.role in (Role.USER, Role.ASSISTANT)
     ]
-    precedent = _echange_precedent(tours)
-    if precedent is None:
-        return list(messages)
-    rappel = rappel_du_sujet(demande, *precedent)
+    rappel = rappel_de_l_accord(demande, tours)
     if rappel is None:
+        precedent = _echange_precedent(tours)
+        if precedent is None:
+            return list(messages)
+        rappel = rappel_du_sujet(demande, *precedent)
+    if rappel is None:
+        return list(messages)
+    # Le routeur et la boucle d'outils passent tous deux ici. Un seul rappel
+    # suffit ; le dupliquer gonflait aussi le suffixe relu par le modèle.
+    if any(m.role == Role.SYSTEM and m.content == rappel for m in messages[rang + 1 :]):
         return list(messages)
     return [*messages, Message(role=Role.SYSTEM, content=rappel)]
 
