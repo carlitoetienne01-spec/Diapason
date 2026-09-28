@@ -98,16 +98,16 @@ class TestLeRappel:
 
 class TestLeFil:
     @pytest.mark.parametrize(
-        "accord", ["oui", "Oui tu peux me les donner", "Oui, vas-y", "Donne-les-moi"]
+        "accord", ["oui", "Ok, tu peux me la donner", "Oui, vas-y", "Donne-la-moi"]
     )
     def test_les_accords_successifs_gardent_la_demande_en_attente(self, accord):
         """§5 : trois accords ne doivent pas reproduire trois fois le même refus."""
-        demande = "Donne moi des recettes pour faire des pâtes"
+        demande = "Propose-moi une recette de soupe pour ce soir"
         fil = [
             Message(role=Role.USER, content=demande),
-            Message(role=Role.ASSISTANT, content="Tu veux les recettes ?"),
+            Message(role=Role.ASSISTANT, content="Tu veux la recette ?"),
             Message(role=Role.USER, content="oui"),
-            Message(role=Role.ASSISTANT, content="Tu veux les recettes ?"),
+            Message(role=Role.ASSISTANT, content="Tu veux la recette ?"),
             Message(role=Role.USER, content=accord),
         ]
         avec = avec_rappel(fil)

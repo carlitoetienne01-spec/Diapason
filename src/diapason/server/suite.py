@@ -55,9 +55,10 @@ _RENVOI = re.compile(
 )
 _CITATION = re.compile(r"\s*\[\d+\]")
 
-# 27/09/2026 : « oui », puis « Oui tu peux me les donner » reproduisaient
-# mot pour mot un refus inventé de fournir des recettes. Les démonstratifs
-# seuls ne rattachaient pas ces accords à la demande encore dans le fil.
+# 27/09/2026 : un « oui », puis un accord plus long qui demandait de donner
+# la réponse, reproduisaient mot pour mot un refus inventé de fournir des
+# recettes. Les démonstratifs seuls ne rattachaient pas ces accords à la
+# demande encore dans le fil.
 _ACCORD = re.compile(
     r"^(?=[a-z])(?:(?:oui|ouais|ok(?:ay)?|d'accord|entendu|parfait)[,!. ]*)?"
     r"(?:vas[ -]y|allez[ -]y|continue|poursuis|"
