@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const banc = vi.hoisted(() => ({
   cases: [] as { current: any }[], curseur: 0,
   health: vi.fn(), micro: vi.fn(), capture: vi.fn(),
+  // Le téléphone (28/09/2026) : servi par le tailnet, et le pont natif.
+  telephone: false, natif: vi.fn(), coupure: vi.fn(),
 }));
 vi.mock('react', () => ({
   useRef: (initial: unknown) => banc.cases[banc.curseur++] ??= { current: initial },
@@ -20,12 +22,17 @@ vi.mock('react', () => ({
 vi.mock('../lib/voiceLive', () => ({
   fetchVoiceLiveHealth: banc.health, canStartVoiceSession: (sante: unknown) => !!sante,
   VoiceLiveHealthError: class extends Error {},
-  motifDeFermeture: () => null, coupureCliente: () => null,
+  motifDeFermeture: () => null, coupureCliente: (...args: unknown[]) => banc.coupure(...args),
   voiceLiveDiagnosticUrl: (url: string) => url,
   voiceLiveProtocols: () => [], voiceLiveWsUrl: () => 'ws://localhost/voice-test',
 }));
 vi.mock('../lib/api', () => ({ refreshLocalApiKey: async () => {} }));
 vi.mock('../lib/captureVocale', () => ({ creerCaptureVocale: banc.capture }));
+vi.mock('../lib/tailnet', () => ({ serviParLeTailnet: () => banc.telephone }));
+vi.mock('../lib/natif', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/natif')>()),
+  demanderAuTelephone: (...args: unknown[]) => banc.natif(...args),
+}));
 import { useVoiceLive } from './useVoiceLive';
 
 class Socket {
@@ -75,6 +82,9 @@ beforeEach(() => {
   banc.health.mockReset().mockResolvedValue({ available: true });
   banc.micro.mockReset().mockResolvedValue(flux());
   banc.capture.mockReset().mockImplementation(async () => ({ arreter: vi.fn() }));
+  banc.telephone = false;
+  banc.coupure.mockReset().mockReturnValue(null);
+  banc.natif.mockReset().mockRejectedValue(new Error('pas de pont dans ce banc'));
   vi.stubGlobal('WebSocket', Socket); vi.stubGlobal('AudioContext', Contexte);
   vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: banc.micro } });
 });
@@ -466,5 +476,233 @@ describe('la voix intégrée au chat', () => {
     expect(rendu().transcripts[0]).toMatchObject({ final: true, interrupted: true });
     socket.message({ type: 'transcript', role: 'assistant', text: 'Autre réponse.', final: true });
     expect(rendu().transcripts).toHaveLength(2);
+  });
+});
+
+/**
+ * 28/09/2026, constat de Carlito : au téléphone, « Parler » affichait « Micro
+ * fermé » et « L'accès au microphone est bloqué. Autorisez Diapason dans
+ * Réglages Système… » — le message du Mac, pour TOUTE exception du bloc du
+ * micro. Cause la plus probable : un NotReadableError (la WebView sans
+ * MODIFY_AUDIO_SETTINGS), pas un refus. §5 : ne jamais faire semblant.
+ */
+describe('§5 — un micro qui ne s’ouvre pas dit pourquoi', () => {
+  const muet = () => vi.spyOn(console, 'error').mockImplementation(() => {});
+  async function echouer(erreur: unknown) {
+    banc.micro.mockRejectedValue(erreur);
+    await rendu().start();
+    const socket = Socket.tous[Socket.tous.length - 1];
+    await socket.onopen();
+    return socket;
+  }
+  const occupe = () => new DOMException('Could not start audio source', 'NotReadableError');
+  const refuse = () => new DOMException('Permission denied', 'NotAllowedError');
+
+  it('au bureau, un NotReadableError ne dit plus « accès bloqué »', async () => {
+    const journal = muet();
+    try {
+      const socket = await echouer(occupe());
+      expect(rendu().error, 'un micro occupé n’est pas un refus').toBe('microphone-busy');
+      expect(rendu().state).toBe('error');
+      expect(socket.close, 'la séance préchauffée se referme').toHaveBeenCalled();
+      expect(rendu().micro?.technique, 'au bureau, rien ne change hors de la phrase').toBeNull();
+      expect(banc.natif, 'le bureau n’a pas de coquille à interroger').not.toHaveBeenCalled();
+    } finally { journal.mockRestore(); }
+  });
+
+  it('au bureau, un refus garde le message de macOS', async () => {
+    const journal = muet();
+    try {
+      await echouer(refuse());
+      expect(rendu().error).toBe('microphone-denied');
+      expect(rendu().micro?.reglages).toBe(false);
+    } finally { journal.mockRestore(); }
+  });
+
+  it('un AudioContext qui lève après le flux n’est pas un refus, et le flux est rendu', async () => {
+    const journal = muet();
+    const stream = flux(); banc.micro.mockResolvedValue(stream);
+    vi.stubGlobal('AudioContext', class { constructor() { throw new DOMException('rate', 'NotSupportedError'); } });
+    try {
+      await rendu().start();
+      await Socket.tous[0].onopen();
+      expect(rendu().error, 'le micro s’était ouvert').toBe('microphone-audio-failed');
+      expect(stream.getTracks()[0].stop, 'le voyant d’Android s’éteint (§78)').toHaveBeenCalledOnce();
+    } finally { journal.mockRestore(); }
+  });
+
+  it('une AbortError de la capture, après le flux, est un échec audio, pas un micro occupé', async () => {
+    const journal = muet();
+    banc.capture.mockRejectedValue(new DOMException('worklet', 'AbortError'));
+    try {
+      await rendu().start();
+      await Socket.tous[0].onopen();
+      expect(rendu().error).toBe('microphone-audio-failed');
+    } finally { journal.mockRestore(); }
+  });
+
+  it('au téléphone, un NotAllowedError interroge micro/etat puis montre le bouton et le détail', async () => {
+    const journal = muet();
+    banc.telephone = true;
+    let repondre!: (r: object) => void;
+    banc.natif.mockReturnValue(new Promise((r) => { repondre = r; }));
+    try {
+      banc.micro.mockRejectedValue(refuse());
+      await rendu().start();
+      const ouverture = Socket.tous[0].onopen();
+      await vi.waitFor(() => expect(banc.natif).toHaveBeenCalledWith('micro', { action: 'etat' }));
+      expect(rendu().error, 'en attente de l’état, on le dit').toBe('microphone-phone-checking');
+      expect(rendu().micro?.reglages, 'pas de bouton avant de savoir').toBe(false);
+      repondre({ type: 'reponse', id: 'x', ok: true, donnees: { etat: 'refuseDefinitivement' } });
+      await ouverture;
+      expect(rendu().error).toBe('microphone-phone-denied-forever');
+      expect(rendu().micro).toEqual({
+        technique: 'NotAllowedError · Permission denied', reglages: true, avis: null,
+      });
+      expect(banc.natif, 'une seule demande pour la barre ET l’orbe').toHaveBeenCalledTimes(1);
+    } finally { journal.mockRestore(); }
+  });
+
+  it('au téléphone, un NotReadableError d’une coquille ancienne dit « installez la nouvelle app », sans bouton', async () => {
+    const journal = muet();
+    banc.telephone = true;
+    banc.natif.mockResolvedValue({ type: 'reponse', id: 'x', ok: false, erreur: 'verbeInconnu' });
+    try {
+      await echouer(occupe());
+      expect(rendu().error).toBe('microphone-phone-app-outdated');
+      expect(rendu().micro?.reglages).toBe(false);
+      expect(rendu().micro?.technique).toBe('NotReadableError · Could not start audio source');
+    } finally { journal.mockRestore(); }
+  });
+
+  it('une réponse tardive de micro/etat ne réécrit pas l’erreur d’une séance relancée', async () => {
+    const journal = muet();
+    banc.telephone = true;
+    let repondre!: (r: object) => void;
+    banc.natif.mockReturnValue(new Promise((r) => { repondre = r; }));
+    try {
+      banc.micro.mockRejectedValue(refuse());
+      await rendu().start();
+      const ancien = Socket.tous[0];
+      const ouverture = ancien.onopen();
+      await vi.waitFor(() => expect(banc.natif).toHaveBeenCalled());
+      // Le navigateur ferme la socket refermée par le hook.
+      ancien.onclose({});
+      banc.micro.mockResolvedValue(flux());
+      await connecter();
+      repondre({ type: 'reponse', id: 'x', ok: true, donnees: { etat: 'refuse' } });
+      await ouverture;
+      expect(rendu().error, 'la nouvelle séance écoute').toBeNull();
+      expect(rendu().state).toBe('listening');
+    } finally { journal.mockRestore(); }
+  });
+
+  it('« Terminer » pendant micro/etat : la réponse tardive ne pose rien sur la séance close', async () => {
+    // 28/09/2026, revue (sonde S1) : après stop(), la réponse passait l'erreur
+    // à « refus définitif » et montrait « Ouvrir les réglages » sur une
+    // séance close, que l'orbe rouverte affichait encore.
+    const journal = muet();
+    banc.telephone = true;
+    let repondre!: (r: object) => void;
+    banc.natif.mockReturnValue(new Promise((r) => { repondre = r; }));
+    try {
+      banc.micro.mockRejectedValue(refuse());
+      await rendu().start();
+      const ouverture = Socket.tous[0].onopen();
+      await vi.waitFor(() => expect(rendu().error).toBe('microphone-phone-checking'));
+      rendu().stop();
+      expect(rendu().error, '« Diapason demande à Android » pour une question abandonnée').toBeNull();
+      repondre({ type: 'reponse', id: 'x', ok: true, donnees: { etat: 'refuseDefinitivement' } });
+      await ouverture;
+      expect(rendu().error, 'la réponse tardive réécrit la séance close').toBeNull();
+      expect(rendu().micro, 'le bouton des réglages d’une séance close').toBeNull();
+      expect(rendu().state).toBe('idle');
+    } finally { journal.mockRestore(); }
+  });
+
+  it('« Terminer » après la réponse emporte la phrase, le détail et le bouton', async () => {
+    const journal = muet();
+    banc.telephone = true;
+    banc.natif.mockResolvedValue({ type: 'reponse', id: 'x', ok: true, donnees: { etat: 'refuse' } });
+    try {
+      await echouer(refuse());
+      await vi.waitFor(() => expect(rendu().micro?.reglages).toBe(true));
+      rendu().stop();
+      expect(rendu().error, 'l’orbe rouverte montrait l’échec d’une séance close').toBeNull();
+      expect(rendu().micro).toBeNull();
+    } finally { journal.mockRestore(); }
+  });
+
+  it('« Ouvrir les réglages » : le verbe part, et au retour on relit l’état sans rouvrir le micro (§78)', async () => {
+    const journal = muet();
+    banc.telephone = true;
+    banc.natif.mockImplementation(async (_verbe: string, donnees: { action: string }) =>
+      donnees.action === 'etat'
+        ? { type: 'reponse', id: 'x', ok: true, donnees: { etat: banc.natif.mock.calls.length > 2 ? 'accorde' : 'refuse' } }
+        : { type: 'reponse', id: 'y', ok: true });
+    let visibilite: DocumentVisibilityState = 'visible';
+    const lecture = vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibilite);
+    try {
+      const socket = await echouer(refuse());
+      // Comme le navigateur après ws.close() : rien ne retient plus une relance.
+      socket.onclose({});
+      expect(rendu().micro?.reglages).toBe(true);
+      await rendu().ouvrirReglagesMicro();
+      expect(banc.natif).toHaveBeenLastCalledWith('micro', { action: 'reglages' });
+      const appelsMicro = banc.micro.mock.calls.length;
+      const sockets = Socket.tous.length;
+      visibilite = 'hidden'; document.dispatchEvent(new Event('visibilitychange'));
+      visibilite = 'visible'; document.dispatchEvent(new Event('visibilitychange'));
+      await vi.waitFor(() => expect(rendu().error).toBe('microphone-phone-now-allowed'));
+      await new Promise((fin) => setTimeout(fin, 0));
+      expect(banc.natif).toHaveBeenLastCalledWith('micro', { action: 'etat' });
+      expect(banc.health, 'aucune séance préparée au retour des réglages').toHaveBeenCalledTimes(1);
+      expect(banc.micro, 'aucun getUserMedia au retour des réglages').toHaveBeenCalledTimes(appelsMicro);
+      expect(Socket.tous, 'aucune séance relancée au retour des réglages').toHaveLength(sockets);
+    } finally { lecture.mockRestore(); journal.mockRestore(); }
+  });
+
+  it('les réglages refusés sous le cadenas : la phrase de la page, et celle de la coquille citée', async () => {
+    const journal = muet();
+    banc.telephone = true;
+    const phrase = 'Déverrouillez Diapason pour ouvrir ses réglages.';
+    banc.natif.mockImplementation(async (_verbe: string, donnees: { action: string }) =>
+      donnees.action === 'etat'
+        ? { type: 'reponse', id: 'x', ok: true, donnees: { etat: 'refuse' } }
+        : { type: 'reponse', id: 'y', ok: false, erreur: phrase });
+    try {
+      await echouer(refuse());
+      await rendu().ouvrirReglagesMicro();
+      expect(rendu().micro?.avis).toEqual({ cle: 'talk.micro.reglagesEchec', reponse: phrase });
+    } finally { journal.mockRestore(); }
+  });
+
+  it('une autre erreur posée ensuite n’hérite ni du détail ni du bouton', async () => {
+    const journal = muet();
+    const avertir = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    banc.telephone = true;
+    banc.natif.mockResolvedValue({ type: 'reponse', id: 'x', ok: true, donnees: { etat: 'refuse' } });
+    vi.useFakeTimers();
+    try {
+      await echouer(refuse());
+      await vi.waitFor(() => expect(rendu().micro?.reglages).toBe(true));
+      // La garde du client coupe ensuite : sa phrase n'est pas celle du micro.
+      banc.coupure.mockReturnValue('voice-lost-server');
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(rendu().error).toBe('voice-lost-server');
+      expect(rendu().micro, 'le détail et le bouton du micro sous « le Mac ne répond plus »').toBeNull();
+    } finally { vi.useRealTimers(); avertir.mockRestore(); journal.mockRestore(); }
+  });
+
+  it('choisir un autre fournisseur oublie l’échec du micro', async () => {
+    const journal = muet();
+    banc.telephone = true;
+    banc.natif.mockResolvedValue({ type: 'reponse', id: 'x', ok: true, donnees: { etat: 'refuse' } });
+    try {
+      await echouer(refuse());
+      await vi.waitFor(() => expect(rendu().micro).not.toBeNull());
+      rendu().setProvider('local');
+      expect(rendu().micro, 'plus d’échec du micro à montrer').toBeNull();
+    } finally { journal.mockRestore(); }
   });
 });

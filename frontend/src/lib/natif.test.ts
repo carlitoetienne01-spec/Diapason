@@ -55,7 +55,9 @@ describe('Aucun verbe ne rend un secret au JavaScript', () => {
     // Le secret de session est un cookie HttpOnly (phase 2) : un verbe `cle`
     // ou `jeton` le rendrait lisible par toute page chargée dans la WebView.
     // Ajouter un verbe doit être une décision, donc un test à changer.
-    expect([...VERBES_SORTANTS]).toEqual(['theme', 'enregistrer', 'ouvrirExterne', 'bordRoue', 'menuApp']);
+    // `micro` (28/09/2026) ne rend qu'un état de permission d'Android, dans
+    // `donnees.etat`, ou ouvre les Paramètres d'Android : aucun secret.
+    expect([...VERBES_SORTANTS]).toEqual(['theme', 'enregistrer', 'ouvrirExterne', 'bordRoue', 'menuApp', 'micro']);
     expect([...VERBES_ENTRANTS]).toEqual(['retour', 'naviguer', 'approbations', 'partager']);
   });
 

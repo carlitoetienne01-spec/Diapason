@@ -197,6 +197,9 @@ six commits de `9a59c808` au commit qui barre ces lignes :*
 `?provider=gemini` est refusé ; une séance muette est coupée avec son motif.
 **Reste le banc sur le téléphone** (plus bas, « Le banc de la voix »), une
 fois `chantier/phases45` fusionnée : rien de ceci n'a été vu sur l'appareil.*
+*28/09/2026 : premier essai sur l'appareil — le micro ne s'ouvre pas, et la
+page affichait la phrase des Réglages Système du Mac. Voir §6, « Le micro au
+téléphone ».*
 
 ### ~~Phase 5 — Photo, partage, notifications, verrou~~ — faite le 26/09/2026
 
@@ -1464,3 +1467,136 @@ coquille) n'y est pas ; le défilement, la WebView et l'étirement, si.
    s'efface. Au Mac, rien ne change.
 6. La Discussion : comme avant, sans étirement en bout de fil (voir plus
    haut) ; elle doit rester fluide et suivre la réponse qui s'écrit.
+
+---
+
+## 6. Le micro au téléphone (28/09/2026)
+
+### Le constat
+
+Sur le Nothing Phone de Carlito (« Diapason dev », `com.diapason.mobile.dev`,
+APK de débogage du 26/09), toucher « Parler » dans la Discussion affichait
+« Micro fermé », puis « L'accès au microphone est bloqué. Autorisez Diapason
+dans Réglages Système › Confidentialité et sécurité › Microphone. » — la
+phrase du MAC (`talk.microphoneDenied`). Aucune invite d'Android. Côté Mac,
+deux WebSocket `/v1/voice/live?provider=local` acceptées, Orion et le LLM
+préchauffés, puis refermées par la page : l'échec est dans le téléphone.
+
+Dans le bundle, `useVoiceLive` n'avait qu'un `try` autour de getUserMedia,
+de l'AudioContext, de la capture et de `resume()`, et TOUTE exception y
+devenait `microphone-denied`. Le nom de l'erreur n'allait qu'en console.
+
+### La cause la plus probable (audit du même jour, non prouvée sur l'appareil)
+
+~75 % : l'APK ne déclare pas `android.permission.MODIFY_AUDIO_SETTINGS`
+(`aapt2 dump permissions` sur les trois APK construits ; `git log -S` ne la
+trouve dans aucun commit). Sur un téléphone, le Chromium de la WebView
+commence tout flux micro par `SetCommunicationDevice`, que le Java refuse
+sans elle (« Requires MODIFY_AUDIO_SETTINGS and RECORD_AUDIO ») : getUserMedia
+rejette `NotReadableError « Could not start audio source »`, RECORD_AUDIO
+accordé ou non, sans invite. Ce n'est pas un refus. ~12 % : un refus de
+RECORD_AUDIO mémorisé par Android (peut COEXISTER avec la première cause).
+Le reste (demande simultanée dans permission_handler, refus de la coquille,
+micro réellement occupé, échec après le flux, politique de la page) est
+classé dans l'audit à quelques pour cent chacun.
+
+### Le contrat du verbe `micro` (bundle ↔ coquille, identique des deux côtés)
+
+- Page → coquille, `{action: 'etat'}` : `{ok: true, donnees: {etat}}`, `etat`
+  ∈ `accorde`, `aDemander`, `refuse`, `refuseDefinitivement`, `restreint` —
+  lu par `Permission.microphone.status`, SANS rien demander. L'état voyage
+  DANS `donnees` : les deux lecteurs du pont jettent tout autre champ.
+  Permis sous le cadenas. Demandé une fois, après un échec du micro au
+  téléphone (refus ou micro indisponible), jamais au montage ni en boucle.
+- `{action: 'reglages'}` : ouvre la fiche de l'app (`openAppSettings()`),
+  `ok: true`, sur le toucher du bouton seulement ; ne change aucune
+  permission. Sous le cadenas : une phrase française. `startActivity` qui
+  échoue : `ok: false` avec une phrase. Un délai expiré ne dit rien (l'app
+  est derrière les Paramètres). La page n'affiche jamais cette phrase
+  seule — la coquille ne parle que français, et tutoie : elle dit la sienne
+  (fr ou en, au vouvoiement), puis cite celle de la coquille, attribuée
+  (« L'app du téléphone a répondu : « … » »).
+- Autre action : `ok: false`, `actionInconnue` (jamais affiché brut).
+- Coquille antérieure : `verbeInconnu`. Elle n'a pas MODIFY_AUDIO_SETTINGS.
+- **Écart assumé au texte de référence (revue du 28/09)** : le contrat
+  rangeait `SecurityError` avec le refus, donc avec la lecture de l'état
+  d'Android. La page la range en « page sans micro », sans lire l'état.
+  Dans Blink (`user_media_request.cc`, `UserMediaRequest::Fail`, relu le
+  28/09 sur la branche principale de Chromium), `SecurityError` ne vient
+  QUE de `INVALID_SECURITY_ORIGIN` ; un refus — celui de la coquille
+  (`request.deny()`), celui d'Android, ou
+  `ANDROID_CANT_REQUEST_PERMISSION` — arrive en `NotAllowedError`. Lire
+  l'état sur une `SecurityError` mènerait à « Android autorise, l'app a
+  refusé » ou au bouton des réglages : deux remèdes qui n'y peuvent rien.
+  Le détail affiché (`SecurityError · …`) dira la cause si elle survient.
+  Le classement est l'affaire de la page seule : la coquille n'en dépend
+  pas, et rien ne change de son côté. Le texte de référence du contrat
+  est à amender dans ce sens.
+
+### Ce que dit la page (fait, branche `chantier/micro-telephone-front`)
+
+`lib/echecMicro.ts` classe par ÉTAPE (avant/après l'obtention du flux) puis
+par NOM : refus (`NotAllowedError`), indisponible (`NotReadableError`,
+`AbortError`, `TrackStartError`…), aucun micro, page sans micro
+(`TypeError`, `SecurityError`), échec audio (tout ce qui suit le flux),
+inconnu. « Au téléphone » = `serviParLeTailnet()` (le pont OU l'en-tête de
+la passerelle) : jamais les Réglages Système du Mac.
+
+| Échec | État d'Android | Phrase | Bouton |
+|---|---|---|---|
+| refus ou indisponible | (en attente) | « Diapason demande à Android pourquoi… » | non |
+| refus ou indisponible | `refuseDefinitivement` | refusé, et Android ne le demandera « sans doute » plus : réglages › Autorisations › Micro | oui |
+| refus ou indisponible | `refuse`, `aDemander` | touchez Parler et acceptez si Android le demande ; sinon les réglages | oui |
+| refus ou indisponible | `restreint` | restreint par le système | non |
+| refus | `accorde` | Android autorise, l'app du téléphone a refusé sans vous la poser : réessayez, notez le détail — aucune cause devinée | non |
+| refus | `verbeInconnu` / rien | Paramètres › Applis › l'app Diapason utilisée (« Diapason dev » en développement) › Autorisations › Micro, en texte | non |
+| indisponible | `verbeInconnu` | l'app du téléphone est trop ancienne : installez la nouvelle | non |
+| indisponible | `accorde` | un appel ou une autre app l'utilise peut-être | non |
+| aucun micro, page, échec audio, inconnu | — | leur phrase ; au téléphone, échec audio et inconnu renvoient au détail affiché, pas aux journaux | non |
+
+Revue du 28/09 (après le banc) : le « définitif » de permission_handler
+peut être SUR-déclaré — la préférence
+`sp_permission_handler_permission_was_denied_before` survit aux remises à
+zéro faites par Android (banc 5 bis : `refuseDefinitivement` rendu, et
+l'invite montrée au toucher suivant) ; il était déjà sous-déclaré après un
+refus fait hors de permission_handler. D'où « sans doute », et le bouton
+dans les deux cas. Les chemins à suivre à la main nomment « Diapason dev » :
+l'app de production s'installe à côté et porte le nom « Diapason ».
+
+Sous la phrase, en petit : « Détail : NotReadableError · Could not start
+audio source » (nom · message, 120 signes au plus) — au téléphone
+seulement. Au bureau, rien ne change hors des phrases des nouvelles
+classes ; le refus garde la phrase de macOS. Au retour des Paramètres
+d'Android, la page relit l'état et met la phrase à jour (« Le micro est
+maintenant autorisé : touchez Parler ») ; elle ne relance ni la séance ni
+getUserMedia (§78). La dictée « maintenir pour parler » suit les mêmes
+règles dans son toast, et ne laisse plus le micro allumé quand le doigt se
+lève pendant l'invite d'Android.
+
+### Ce qui reste à voir sur le vrai téléphone
+
+1. **Tout de suite, sans code** : Paramètres › Applis › Diapason dev ›
+   Autorisations › Micro. « Autorisé » : la cause 1 seule, le nouvel APK
+   suffira. « Non autorisé » : un refus mémorisé EN PLUS — nouvel APK ET
+   autorisation dans cette fiche.
+2. Nouveau bundle (après fusion, `npm run build`, redémarrage du serveur),
+   APK ANCIEN : « Parler » doit dire « L'app Diapason du téléphone est trop
+   ancienne… » avec le détail `NotReadableError · Could not start audio
+   source` (ou `NotAllowedError · …` pour un refus). Noter le détail exact.
+3. Nouvel APK (MODIFY_AUDIO_SETTINGS et le verbe `micro`, dépôt
+   `diapason_mobile`) : « Parler » ouvre le micro, le voyant vert s'allume ;
+   la voix de Diapason peut sonner plus bas ou autrement pendant la capture
+   (mode communication d'Android, casque Bluetooth en SCO) — effet attendu,
+   à noter, pas une régression mystérieuse.
+4. Refuser le micro dans la fiche de l'app, puis « Parler » : la phrase
+   d'Android et « Ouvrir les réglages » ; l'autoriser, revenir : « Le micro
+   est maintenant autorisé », et rien ne s'allume tant qu'on ne retouche
+   pas Parler.
+5. Dictée tenue au premier usage : l'invite apparaît, lever le doigt pour
+   accepter ; le voyant NE reste PAS allumé.
+
+Reste aussi, hors de ce chantier : au téléphone, la WebSocket et `start`
+partent AVANT getUserMedia, si bien que chaque échec du micro coûte au Mac
+un préchauffage d'Orion et du LLM (Ollama sur un seul créneau). Obtenir le
+micro d'abord demanderait de revoir l'ordre `serveurPret` / `capturePrete`
+du 27/09.

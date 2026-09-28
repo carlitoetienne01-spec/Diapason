@@ -34,6 +34,7 @@ import { fetchSavings, getBase, isTauri, finalizeDictation, apiFetch } from '../
 import { recordDictationStat } from '../../lib/dictationStats';
 import { listConnectors, getSyncStatus } from '../../lib/connectors-api';
 import { MicButton } from './MicButton';
+import { DUREE_TOAST_MS, optionsDuToastDictee, texteDeLAvis } from './vueDuMicro';
 import { useSpeech } from '../../hooks/useSpeech';
 import { useLiveDictation } from '../../hooks/useLiveDictation';
 import { useTranslation } from '../../i18n/useTranslation';
@@ -218,9 +219,11 @@ export function InputArea() {
   const {
     state: speechState,
     error: speechError,
+    micro: speechMicro,
     available: speechAvailable,
     startRecording,
     stopRecording,
+    ouvrirReglagesMicro: ouvrirReglagesDictee,
   } = useSpeech();
 
   // Abort in-flight stream when the user switches models mid-generation.
@@ -261,10 +264,20 @@ export function InputArea() {
   }, [live.error]);
 
   useEffect(() => {
-    if (speechError) {
-      toast.error(speechError, { duration: 8000 });
-    }
-  }, [speechError]);
+    if (!speechError) return;
+    // 28/09/2026 : au téléphone, le détail technique et le bouton des
+    // réglages d'Android accompagnent la phrase — décidés par
+    // `optionsDuToastDictee`, testée seule (vueDuMicro.ts).
+    toast.error(speechError, optionsDuToastDictee(speechMicro, t, () => {
+      void ouvrirReglagesDictee().then((avis) => {
+        if (!avis) return;
+        const { texte, reponse } = texteDeLAvis(avis, t);
+        toast.error(texte, { duration: DUREE_TOAST_MS, description: reponse ?? undefined });
+      });
+    }));
+    // Une fois par échec : `t` qui change avec la langue ne rejoue pas le toast.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [speechError, speechMicro]);
 
   // Destructured so the effects below depend on stable identities: `live`
   // itself is a fresh object every render and would restart the idle timer

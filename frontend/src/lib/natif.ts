@@ -41,8 +41,22 @@ import { traduire } from '../i18n/translate';
  * bouton « Menu de l'app » de l'écran « Aller à » envoie `ouvrir: true`, et
  * la coquille ouvre son menu (Recharger, Life OS, l'Entité, Appareils,
  * Importer). Il ne rend que `ok` — aucun secret.
+ *
+ * `micro` (28/09/2026) : `{ action: 'etat' | 'reglages' }`, demandé SEULEMENT
+ * après un échec du micro, jamais au montage. Au téléphone, « Parler »
+ * affichait le message des Réglages Système du Mac pour toute exception, et
+ * rien ne permettait à la page de savoir ce qu'Android pensait du micro.
+ * `etat` rend `{ok: true, donnees: {etat}}`, où `etat` vaut `accorde`,
+ * `aDemander`, `refuse`, `refuseDefinitivement` ou `restreint` — lu par
+ * permission_handler SANS rien demander à Android, et permis sous le cadenas :
+ * il ne révèle rien. `reglages` ouvre la fiche de l'app dans les Paramètres
+ * d'Android, sur le toucher du bouton seulement, et ne change aucune
+ * permission ; sous le cadenas, la coquille répond par une phrase. Une
+ * autre action : `actionInconnue`. Une coquille antérieure répond
+ * `verbeInconnu` — la page donne alors les instructions en texte, sans
+ * bouton (lib/echecMicro.ts).
  */
-export const VERBES_SORTANTS = ['theme', 'enregistrer', 'ouvrirExterne', 'bordRoue', 'menuApp'] as const;
+export const VERBES_SORTANTS = ['theme', 'enregistrer', 'ouvrirExterne', 'bordRoue', 'menuApp', 'micro'] as const;
 /**
  * Ce que la coquille demande au bundle.
  *
@@ -72,9 +86,11 @@ export type VerbeEntrant = (typeof VERBES_ENTRANTS)[number];
  * documents, où l'on choisit un dossier à son rythme. Deux minutes, parce
  * qu'au-delà le bouton « Export… » tournerait sans fin sur un sélecteur
  * oublié ; le fichier, lui, ne sera pas annoncé tant que la coquille ne l'a
- * pas écrit. Les trois autres ne font que traverser le canal (quelques
+ * pas écrit. Les autres ne font que traverser le canal (quelques
  * millisecondes) : dix secondes couvrent une coquille occupée à démarrer,
- * pas davantage.
+ * pas davantage. `micro/reglages` rend la main dès que les Paramètres
+ * d'Android sont lancés ; si son délai expire, c'est que l'app est passée
+ * derrière eux, et rien ne s'affiche.
  */
 export const DELAIS_MS: Record<VerbeSortant, number> = {
   enregistrer: 120_000,
@@ -82,6 +98,7 @@ export const DELAIS_MS: Record<VerbeSortant, number> = {
   ouvrirExterne: 10_000,
   bordRoue: 10_000,
   menuApp: 10_000,
+  micro: 10_000,
 };
 
 export interface CanalNatif {
