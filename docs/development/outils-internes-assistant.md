@@ -102,9 +102,11 @@ avant l'audio alors que la lecture prenait 15 ms.
   pas une validation de latence inférieure à cinq secondes pour les actions.
 - Serveur installé, lectures seules : les consultations du 27 septembre,
   de la semaine du 28 septembre au 4 octobre et de l'année 2026 correspondent
-  aux comptes SQLite indépendants. L'année rend 19 tâches, dont 12 terminées
-  et 7 restantes, au moment du contrôle. La navigation explicite vers Finances
-  prend 0,6 à 0,9 s ; le chemin affiché est vérifié dans la fenêtre Tauri.
+  aux comptes SQLite indépendants, écart nul. Pour l'année, le résultat
+  détaille le total, les terminées et les restantes au moment du contrôle ;
+  les comptes de la base personnelle ne sont pas reproduits dans ce dépôt
+  public. La navigation explicite vers Finances prend 0,6 à 0,9 s ; le
+  chemin affiché est vérifié dans la fenêtre Tauri.
   Le dernier compte annuel prend 10,7 s avant le texte, les deux premiers
   comptes 18 à 21 s : ne pas présenter ces appels d'outils comme des réponses
   systématiquement sous cinq secondes.

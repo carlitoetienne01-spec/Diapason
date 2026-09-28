@@ -1,6 +1,6 @@
 # Audit de conversation et d’outils — 27 septembre 2026
 
-Audit demandé par Carlito à partir de ses recherches de jeux éducatifs. Les
+Audit demandé par Carlito à partir d’une vraie recherche sur le web. Les
 scénarios ont été joués avec le vrai modèle local, dans l’application, puis
 sur les mêmes routes locales que le chat et la voix. Les bancs vocaux de cet
 audit envoient du texte et reçoivent le vrai audio d’Orion : ils ne constituent
@@ -212,7 +212,7 @@ visible. La préparation initiale reste distincte des échanges une fois prêts.
 
 ## Complément : recettes refusées puis réponse répétée
 
-Les captures de 22 h 29 montrent un cas absent des premiers essais de recette :
+Des captures d'écran montrent un cas absent des premiers essais de recette :
 dans le fil chargé de l'audit, « Donne moi des recettes pour faire des pâtes »,
 puis « oui » et « Oui tu peux me les donner » produisent le même refus
 d'accéder aux « recettes de mes outils ». Aucun échec d'outil ne justifie ce
