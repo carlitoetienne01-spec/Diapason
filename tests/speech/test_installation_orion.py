@@ -610,6 +610,58 @@ class TestAucuneSuppressionNeSuitUnLien:
             "un nom qui traverse un lien ne doit rien effacer derrière lui"
         )
 
+    def test_les_liens_tombent_avant_les_fichiers_refuses_meme_sans_garde_fou(
+        self, banc, tmp_path, monkeypatch
+    ):
+        """§5 — l'ordre protège à lui seul le fichier derrière le lien.
+
+        Deux défenses le gardent : défaire les liens AVANT les fichiers
+        refusés, et le garde-fou de _retirer(). Dans le parcours complet,
+        chacune masque l'autre, et la revue du 28/09/2026 l'a mesuré :
+        inverser l'ordre seul, ou affaiblir le garde-fou seul
+        (is_relative_to au lieu de l'égalité), laissait tous les tests
+        verts. Preuve de l'équivalence : garde-fou en place, retirer
+        « speech_tokenizer/model.safetensors » avant le lien est refusé
+        (son dossier résolu est ailleurs) ; après le lien, le nom ne désigne
+        plus rien. Mêmes fichiers retirés, même message, dans les deux
+        ordres. Ce test éteint donc le garde-fou pour éprouver l'ordre seul ;
+        le suivant appelle _retirer() hors de tout ordre, pour éprouver le
+        garde-fou seul.
+        """
+        ailleurs = tmp_path / "codec_de_l_utilisateur"
+        self._installer_puis_lier_le_codec(
+            banc, ailleurs, {"model.safetensors": self.CODEC_PRECIEUX}
+        )
+        monkeypatch.setattr(banc.installeur, "_dans_le_modele", lambda *_: True)
+
+        with pytest.raises(RuntimeError, match="lien symbolique"):
+            banc.lancer()
+
+        assert (ailleurs / "model.safetensors").read_bytes() == self.CODEC_PRECIEUX, (
+            "le lien doit tomber avant le fichier refusé qu'il porte"
+        )
+
+    def test_un_nom_qui_traverse_un_lien_interne_n_efface_pas_le_fichier_vise(
+        self, tmp_path
+    ):
+        """§5 — le garde-fou exige le chemin écrit, pas un chemin sous model/.
+
+        speech_tokenizer lié à model/ lui-même : son model.safetensors
+        désigne le poids du LOCUTEUR, vérifié et sain. Un garde-fou qui
+        vérifierait seulement que le dossier résolu reste sous model/
+        l'effacerait pour un codec refusé.
+        """
+        installeur = _installeur()
+        modele = tmp_path / "model"
+        _ecrire(modele, {"model.safetensors": CONTENUS["model.safetensors"]})
+        (modele / "speech_tokenizer").symlink_to(modele, target_is_directory=True)
+
+        installeur._retirer(modele, "speech_tokenizer/model.safetensors")
+
+        assert (modele / "model.safetensors").read_bytes() == CONTENUS[
+            "model.safetensors"
+        ], "un nom qui traverse un lien, même vers model/, ne vise pas ce fichier"
+
     def test_une_copie_ne_passe_jamais_a_travers_un_lien(self, banc, tmp_path):
         """§5 — --model-source effaçait puis réécrivait le dossier lié.
 
