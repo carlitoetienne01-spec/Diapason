@@ -1071,3 +1071,20 @@ le contexte normal (`preparation-finale-128.log`). La séance est ensuite
 fermée sans micro ouvert ni question envoyée. Le contexte normal a bien
 été préparé ; le démarrage après chargement/changement de contexte reste
 explicitement hors de la promesse de latence des tours déjà prêts.
+
+### 28 septembre — un micro qui ne s'ouvre pas dit pourquoi
+
+Au téléphone, « Parler » affichait la phrase des Réglages Système du Mac
+pour TOUTE exception du bloc du micro : `useVoiceLive` transformait en
+`microphone-denied` aussi bien un refus qu'un `NotReadableError` (la WebView
+d'Android sans MODIFY_AUDIO_SETTINGS) ou un AudioContext qui lève après
+l'obtention du flux. `lib/echecMicro.ts` classe désormais par étape puis par
+nom, et chaque classe a sa phrase, en fr et en en ; au bureau, seul le refus
+garde la phrase de macOS. Au téléphone, la page demande à la coquille l'état
+de la permission (verbe `micro`) avant de conseiller quoi que ce soit, et
+affiche le détail technique sous la phrase. Le contrat, la table des
+messages et ce qui reste à voir sur l'appareil :
+[`diapason-mobile.md`, §6](diapason-mobile.md#6-le-micro-au-téléphone-28092026).
+
+Rien de ce chantier ne touche la séance elle-même : ni l'ordre
+`start` → getUserMedia, ni la logique `serveurPret` / `capturePrete`.
