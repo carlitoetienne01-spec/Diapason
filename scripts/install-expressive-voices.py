@@ -280,12 +280,43 @@ def verifier(modele: Path, temoin: Path) -> None:
     raise RuntimeError(f"Modèle refusé — {' ; '.join(raisons)}. {suite}")
 
 
+def _meme_fichier(a: Path, b: Path) -> bool:
+    try:
+        return os.path.samefile(a, b)
+    except OSError:
+        return False
+
+
+def _refuser_une_source_dans_le_modele(source: Path, modele: Path) -> None:
+    # 28/09/2026 : --model-source désignant model/ lui-même, ou un lien vers
+    # lui, effaçait config.json : copier() retire chaque fichier avant de le
+    # recopier (poids en lecture seule), puis copy2 le cherchait dans la
+    # source qu'il venait de vider — FileNotFoundError brut, témoin déjà
+    # retiré, fichier sain à retélécharger. Sur main, copytree butait sur
+    # SameFileError sans rien perdre. On refuse donc avant toute suppression
+    # une source résolue dans model/, et toute source dont un fichier à
+    # copier EST celui de model/ : un sous-dossier lié vers model/, ou
+    # model/ écrit dans une autre casse, qu'APFS ouvre et que resolve() ne
+    # ramène pas à « model ».
+    communs = [nom for nom in EMPREINTES if _meme_fichier(source / nom, modele / nom)]
+    if not communs and not source.resolve().is_relative_to(modele.resolve()):
+        return
+    raise RuntimeError(
+        f"Copie source refusée, rien n'a été remplacé — {source} mène au "
+        f"modèle installé lui-même ({modele}) : la copie en retirerait chaque "
+        "fichier avant de le lire. Indiquez une copie située hors de model/ ; "
+        "pour re-vérifier l'installation, relancez le script sans "
+        "--model-source."
+    )
+
+
 def copier(source: Path, modele: Path, temoin: Path) -> None:
     # 28/09/2026 : --model-source n'était lu que sans témoin, et réparer une
     # installation refusée demandait deux lancements. Copier par-dessus une
     # installation existante exige alors que la source soit vérifiée AVANT
     # qu'un seul fichier ne soit remplacé : une mauvaise source n'abîme pas
     # des poids sains.
+    _refuser_une_source_dans_le_modele(source, modele)
     refuses = _non_conformes(source)
     if refuses:
         raise RuntimeError(

@@ -135,7 +135,11 @@ seules sont tolérées la tenue de `huggingface_hub`
 `.gitattributes`. Tout fichier refusé est retiré, pour que la relance le
 retélécharge au lieu de se le voir resservir par le hub. `--model-source`
 recopie même sur une installation existante, après avoir vérifié la source :
-une copie fausse ne remplace rien.
+une copie fausse ne remplace rien. Une source qui mène au modèle installé
+lui-même (`model/`, un lien vers lui, un dossier sous lui, ou un fichier qui
+est déjà celui de `model/`) est refusée d'emblée : la copie retire chaque
+fichier avant de le lire, et effaçait ainsi `config.json` avant de le
+chercher dans la source vidée (28 septembre 2026).
 
 Un lien symbolique sous `model/`, de fichier ou de dossier, est refusé lui
 aussi : le glob du chargeur suivrait un `speech_tokenizer` lié hors de la
@@ -532,7 +536,9 @@ téléchargement au premier mot. Le défaut portable reste `faster-whisper`.
 Depuis le 28 septembre 2026, le témoin `installed.json` tombe avant que le
 modèle ne change et n'est réécrit qu'après vérification ; un fichier refusé
 est retiré, pour que la relance le retélécharge, et `--model-source` vérifie
-la source avant de remplacer quoi que ce soit. Les fichiers en trop ne sont
+la source avant de remplacer quoi que ce soit — et refuse d'emblée, comme
+pour Orion, une source qui mène à `model/` lui-même, qui effaçait le poids
+avant de le lire. Les fichiers en trop ne sont
 pas refusés ici : mlx-whisper 0.4.3 ouvre ses deux fichiers par leur nom.
 Les liens symboliques sous `model/`, eux, sont retirés (le lien seul, jamais
 sa cible) avant tout téléchargement et toute copie : sans métadonnées dans

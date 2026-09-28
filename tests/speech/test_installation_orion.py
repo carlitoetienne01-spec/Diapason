@@ -922,6 +922,75 @@ class TestUnModeleLieEstRefuseSansRienToucher:
         )
 
 
+class TestUneSourceQuiMeneAuModeleEstRefusee:
+    """28/09/2026 : --model-source désignant model/ effaçait un fichier sain.
+
+    copier() retire chaque fichier avant de le recopier (les poids sont en
+    lecture seule) : quand la source EST model/, config.json partait, puis
+    copy2 le cherchait dans la source qu'il venait de vider —
+    FileNotFoundError brut, témoin déjà retiré, installation saine abîmée.
+    """
+
+    @pytest.mark.parametrize(
+        "designation",
+        [
+            "model-lui-meme",
+            "lien-vers-model",
+            "model-dans-une-autre-casse",
+            "sous-dossier-lie-vers-model",
+            "dossier-sous-model",
+        ],
+    )
+    def test_rien_n_est_retire_et_le_refus_dit_quoi_faire(
+        self, banc, tmp_path, designation
+    ):
+        """§5 — refuser d'emblée : aucune suppression, témoin compris.
+
+        La casse : APFS ouvre MODEL comme model, resolve() ne l'y ramène
+        pas. Le sous-dossier lié : une source assemblée à côté, dont
+        speech_tokenizer désigne celui de model/. Le dossier sous model/
+        n'effaçait rien, mais le refus des empreintes ne disait pas pourquoi.
+        """
+        _ecrire(banc.source, CONTENUS)
+        banc.lancer("--model-source", str(banc.source))
+        avant = _arbre(banc.modele)
+        if designation == "model-lui-meme":
+            source = banc.modele
+        elif designation == "lien-vers-model":
+            source = tmp_path / "raccourci"
+            source.symlink_to(banc.modele, target_is_directory=True)
+        elif designation == "model-dans-une-autre-casse":
+            source = banc.racine / "MODEL"
+            if not source.exists():
+                pytest.skip("système de fichiers sensible à la casse")
+        elif designation == "sous-dossier-lie-vers-model":
+            source = tmp_path / "assemblee"
+            _ecrire(
+                source,
+                {n: o for n, o in CONTENUS.items() if "/" not in n},
+            )
+            (source / "speech_tokenizer").symlink_to(
+                banc.modele / "speech_tokenizer", target_is_directory=True
+            )
+        else:
+            source = banc.modele / "speech_tokenizer"
+
+        with pytest.raises(RuntimeError, match="mène au modèle installé") as refus:
+            banc.lancer("--model-source", str(source))
+
+        assert "rien n'a été remplacé" in str(refus.value), (
+            f"le refus doit dire que rien n'a bougé : {refus.value}"
+        )
+        assert "hors de model/" in str(refus.value), (
+            f"le refus doit dire quelle source donner : {refus.value}"
+        )
+        assert _arbre(banc.modele) == avant, (
+            "aucun fichier de l'installation saine ne doit être retiré"
+        )
+        assert banc.temoin.exists(), "un refus d'emblée ne touche pas au témoin"
+        assert moteur_installe(), "l'installation saine doit rester disponible"
+
+
 class TestLeTemoinNeSuitJamaisUnLien:
     """28/09/2026 : installed.json lié s'écrivait À TRAVERS son lien.
 
