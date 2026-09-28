@@ -73,6 +73,23 @@ macro_rules! pattern {
 // ['"]? l'admet. L'ouvrant reste hors du motif, qui garde son mot-clé en
 // tête — la retenue du flux (_OPEN_ASSIGNMENT) s'y ancre : le masque rend
 // « {"[REDACTED:password_assignment]} ».
+//
+// Le prix, mesuré le 28/09/2026. Dans la prose, rien : 97 trouvailles avant
+// comme après sur 2 838 fichiers Markdown, blocs de code ôtés (10 millions
+// de caractères). Dans le code du dépôt (src/ et frontend/src, 1 651
+// fichiers, 15 millions de caractères, 72 trouvailles avant, IPv4 à part) :
+// - la casse en ajoute 6 : 4 clés d'essai ou d'exemple, et 2 fausses, une
+//   clé camelCase finissant par Password (« invalidPassword: '…' », des
+//   messages de compte.ts) ; le PWD d'un shell (« PWD="$(pwd)/build" ») est
+//   masqué de même, pwd ne se distinguant plus de PWD ;
+// - le blanc aucune ;
+// - la clé entre guillemets 4, toutes fausses : deux messages i18n
+//   (« "…invalidPassword": "Mot de passe incorrect." »), un ternaire
+//   (« 'new-password' : 'current-password' »), le nom d'une variable
+//   d'environnement (« "api_key": "TAVILY_API_KEY" »).
+// Restreindre ce qui passe, jamais l'élargir : ce prix est accepté. Mais
+// scan_input (vrai par défaut) masque aussi les résultats d'outils : un tel
+// fichier, lu par un outil, arrive au modèle altéré.
 static SECRET_PATTERNS: Lazy<Vec<PatternDef>> = Lazy::new(|| {
     vec![
         pattern!(
