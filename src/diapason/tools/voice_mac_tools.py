@@ -472,7 +472,7 @@ def _looks_like_phone(value: str) -> bool:
 
 # « Envoie un message à Maman » (Atlas, 24 août 2026) : le destinataire
 # arrivait BRUT — sms:maman — et Messages haussait les épaules. Les fiches
-# vivent déjà dans knowledge.db (121 contacts Google + Contacts Apple),
+# vivent déjà dans knowledge.db (contacts Google + Contacts Apple),
 # téléphones dans le CONTENT (jamais dans metadata). La résolution vit ICI,
 # dans les outils, parce que c'est le seul endroit qui couvre les trois
 # chemins : le modèle vocal, le chat, et la dictée déterministe qui

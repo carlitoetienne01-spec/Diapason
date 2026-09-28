@@ -62,9 +62,10 @@ routeur = APIRouter(prefix="/api/v1")
 MIO = 1024 * 1024
 
 # §3.5 (D10) : un objet ≤ 4 Mio, 50 000 objets par compte. Une conversation
-# illustrée pèse ~115 Ko une fois ses images passées en pièces (§4.7) : 4 Mio
-# couvrent une conversation de texte de plusieurs années ; au-delà, c'est
-# qu'une image n'a pas été détachée, et le serveur ne doit pas le cacher.
+# illustrée réelle pèse une centaine de Ko une fois ses images passées en
+# pièces (§4.7) : 4 Mio couvrent une conversation de texte de plusieurs
+# années ; au-delà, c'est qu'une image n'a pas été détachée, et le serveur ne
+# doit pas le cacher.
 OBJET_MAX_OCTETS = 4 * MIO
 OBJETS_MAX = 50_000
 

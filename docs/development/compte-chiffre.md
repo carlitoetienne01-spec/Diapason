@@ -1016,7 +1016,7 @@ cycle():
 - **Pièce en 404.** L'objet est appliqué sans elle et marqué `degrade`. Avant toute poussée, le moteur relit la version du serveur et fusionne, si bien qu'un appareil dégradé n'efface jamais une image.
 - **Orphelines, sans course** (revue protocole). Un appareil ne marque orpheline une pièce qu'après avoir tiré jusqu'à `serverSeq = S`, et envoie `DELETE {asOfSeq: S}`. Le serveur refuse si `reclame_seq > S`, c'est-à-dire si quelqu'un l'a réclamée par `/pieces/missing` depuis. Chaque appareil réclame, au plus une fois par jour, toutes les pièces qu'il référence.
 - **Époques.** Après une rotation, la prochaine poussée d'un objet recalcule ses `pieceId` sous `K_piece_{e+1}` et renvoie les images. L'ancienne pièce devient orpheline.
-- **Effet mesuré** : environ 1,57 Mo passe à environ 115 Ko par poussée d'une conversation illustrée.
+- **Effet mesuré** : sur une conversation illustrée réelle, une poussée passe de plus d'un Mo à une centaine de Ko (les tailles exactes ne sont pas reproduites ici).
 - **Granularité** : un objet par conversation.
 
 ### 4.8 Ajouter une collection

@@ -329,7 +329,7 @@ class TestReintegration:
     def test_une_conversation_illustree_revient_a_l_octet_pres(self, poste, vps):
         """§4.7 : l'image devient ``"diapason-piece:<id>"`` dans l'objet et
         revient à l'identique sur l'autre appareil. Échec évité : une image
-        qui repartait DANS l'objet à chaque poussée (1,57 Mo pour quelques
+        qui repartait DANS l'objet à chaque poussée (plus d'un Mo pour quelques
         mots), ou qui revenait différente de celle qu'on avait jointe."""
         a = _inscrit(poste, vps)
         t = vps.horloge()
