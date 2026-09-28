@@ -31,6 +31,7 @@ import type { ChatMessage, Conversation, ConversationStore } from '../types';
 import { apiFetch, getApiKey } from './api';
 import { estVierge } from './discussions';
 import { CONVERSATIONS_KEY, generateId, loadConversations, saveConversations, useAppStore, viderSauvegardeConversations } from './store';
+import { serviParLeTailnet } from './tailnet';
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -298,6 +299,39 @@ export function estRefusPermanent(status: number): boolean {
 }
 
 /**
+ * Vrai si une requête de synchronisation a une chance d'être acceptée.
+ *
+ * 28/09/2026 : les deux gardes « sans clé, ne rien tenter » (16/09, écrites
+ * avant le téléphone) rendaient la synchronisation MUETTE au téléphone depuis
+ * le premier jour. Là, `getApiKey()` vaut toujours '' : la passerelle du
+ * tailnet authentifie par le cookie HttpOnly de la session d'appareil et
+ * REFUSE la clé locale (server/passerelle_tailnet.py). Le journal complet ne
+ * portait aucun GET ni PUT /v1/conversations venu du téléphone, alors que
+ * tailnet_portee.json les classe « session » : les discussions tapées au
+ * téléphone ne vivaient que dans sa WebView, celles du Mac n'y arrivaient
+ * jamais. Servi par le tailnet, le cookie suffit — `apiFetch` part sans
+ * en-tête Authorization et le navigateur joint le cookie de même origine.
+ * Hors de la passerelle et sans clé, rien ne part, comme avant.
+ */
+export function serveurJoignable(cle: string, parLeTailnet: boolean): boolean {
+  return cle !== '' || parLeTailnet;
+}
+
+/**
+ * Vrai si ce refus dit que la session d'appareil est morte (expirée,
+ * fermée ou révoquée depuis le Mac) : un 401 servi par le tailnet.
+ *
+ * 28/09/2026 : la coquille rouvre une session au retour au premier plan, et
+ * la page se recharge (diapason-mobile.md, phase 3). Rejouer le GET toutes
+ * les 10 s d'ici là n'aurait produit que des 401 à la passerelle. Au Mac, un
+ * 401 reste transitoire (la clé n'est pas encore injectée) et se réessaie au
+ * tick suivant, comme avant.
+ */
+export function sessionPerdue(status: number, parLeTailnet: boolean): boolean {
+  return status === 401 && parLeTailnet;
+}
+
+/**
  * Rend une sauvegarde importée propre, ou null si elle n'a pas la forme
  * attendue. L'import n'était validé que sur `version === 1` : un fichier
  * sans `conversations` plantait le store à chaque tick, un `pinned: null`
@@ -415,6 +449,31 @@ function signalerRetablissement(): void {
   }
 }
 
+// Vrai après un 401 servi par le tailnet (`sessionPerdue`) : les ticks se
+// taisent jusqu'à une reprise (focus, retour au premier plan, réseau). Rien
+// n'est vidé — la carte, le curseur, la file des suppressions et le
+// localStorage restent tels quels, et repartent avec la session suivante.
+let sessionEnAttente = false;
+
+function joignable(): boolean {
+  return serveurJoignable(getApiKey(), serviParLeTailnet());
+}
+
+/** Rend vrai si le statut a mis le moteur en attente de session. */
+function noterRefus(status: number, requete: string): boolean {
+  if (sessionPerdue(status, serviParLeTailnet())) {
+    if (!sessionEnAttente) {
+      sessionEnAttente = true;
+      console.warn(
+        `[convSync] ${requete} → 401 : session d'appareil perdue, la synchronisation reprendra au retour de l'app`,
+      );
+    }
+    return true;
+  }
+  signalerPanne(`${requete} → ${status}`);
+  return false;
+}
+
 function mettreEnQuarantaine(id: string, detail: string): void {
   if (quarantaine.has(id)) return;
   quarantaine.add(id);
@@ -484,9 +543,10 @@ export function tirer(): Promise<void> {
   return tirageEnCours;
 }
 async function tirerUneFois(): Promise<void> {
-  // Sans clé, ne rien tenter et ne rien afficher : le prochain tick
-  // réessaiera. Prétendre « synchronisé » ici serait un faux SUCCESS.
-  if (!getApiKey()) return;
+  // Sans clé hors du tailnet, ou session perdue, ne rien tenter et ne rien
+  // afficher : le prochain tick (ou la reprise) réessaiera. Prétendre
+  // « synchronisé » ici serait un faux SUCCESS.
+  if (!joignable() || sessionEnAttente) return;
 
   const e = getEtat();
   const query = e.curseur > 0 ? `?since=${e.curseur}` : '';
@@ -497,7 +557,7 @@ async function tirerUneFois(): Promise<void> {
   try {
     const reponse = await apiFetch(`/v1/conversations${query}`);
     if (!reponse.ok) {
-      signalerPanne(`GET /v1/conversations → ${reponse.status}`);
+      noterRefus(reponse.status, 'GET /v1/conversations');
       return;
     }
     const corps = await reponse.json();
@@ -541,7 +601,7 @@ export async function pousser(): Promise<void> {
     pousseeDemandee = true;
     return;
   }
-  if (!getApiKey()) return;
+  if (!joignable() || sessionEnAttente) return;
   pousseeEnCours = true;
   try {
     do {
@@ -572,7 +632,7 @@ async function pousserUneFois(): Promise<boolean> {
           persisterEtat();
           continue;
         }
-        signalerPanne(`DELETE /v1/conversations/${id} → ${reponse.status}`);
+        noterRefus(reponse.status, `DELETE /v1/conversations/${id}`);
         return false;
       }
       e.suppressions = sansSuppression(e, id).suppressions;
@@ -605,7 +665,7 @@ async function pousserUneFois(): Promise<boolean> {
           mettreEnQuarantaine(conv.id, `PUT → ${reponse.status}`);
           continue;
         }
-        signalerPanne(`PUT /v1/conversations/${conv.id} → ${reponse.status}`);
+        noterRefus(reponse.status, `PUT /v1/conversations/${conv.id}`);
         return false;
       }
       const corps = await reponse.json();
@@ -691,6 +751,10 @@ export function demarrerSyncConversations(): void {
   });
 
   const reprendre = () => {
+    // Une reprise est le seul moment où une session d'appareil perdue a pu
+    // être rouverte sans recharger la page (reprise d'une session de moins
+    // de 6 h) : on réessaie, UNE fois par reprise, jamais au tick.
+    sessionEnAttente = false;
     viderSauvegardeConversations();
     void tirer().then(() => pousser());
   };

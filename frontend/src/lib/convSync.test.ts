@@ -11,6 +11,8 @@ import {
   fusionnerMessages,
   normaliserImport,
   sansSuppression,
+  serveurJoignable,
+  sessionPerdue,
 } from './convSync';
 
 function msg(
@@ -263,5 +265,23 @@ describe('l’import d’une sauvegarde', () => {
     expect(propre!.conversations['bonne'].messages).toHaveLength(1);
     expect(propre!.conversations['bonne'].messages[0].id, 'un message reçoit un id').toBeTruthy();
     expect(propre!.activeId, 'un activeId qui ne pointe sur rien est annulé').toBeNull();
+  });
+});
+
+describe('qui peut synchroniser — le téléphone n’a pas de clé (28/09/2026)', () => {
+  it('servi par le tailnet, le cookie suffit : sans clé, la synchronisation part', () => {
+    expect(serveurJoignable('', true), 'au téléphone getApiKey() vaut toujours la chaîne vide').toBe(true);
+  });
+
+  it('hors de la passerelle, sans clé, rien ne part', () => {
+    expect(serveurJoignable('', false), 'la garde du 16/09 : pas de faux « synchronisé »').toBe(false);
+    expect(serveurJoignable('cle-locale', false)).toBe(true);
+  });
+
+  it('un 401 servi par le tailnet est une session perdue, pas une panne à rejouer', () => {
+    expect(sessionPerdue(401, true), 'session expirée, fermée ou révoquée depuis le Mac').toBe(true);
+    expect(sessionPerdue(401, false), 'au Mac, la clé arrive peut-être au tick suivant').toBe(false);
+    expect(sessionPerdue(403, true), 'un refus de route n’est pas une session perdue').toBe(false);
+    expect(sessionPerdue(502, true), 'le Mac arrêté se rejoue au tick').toBe(false);
   });
 });
