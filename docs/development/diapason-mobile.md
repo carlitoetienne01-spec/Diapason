@@ -940,7 +940,7 @@ Toute écriture faite après la migration (tâche, note, photo) est perdue par c
    [tailnet]
    adresse = "mac.tail0000.ts.net"
    ```
-3. Depuis `/Users/carlito.e/Projets/Diapason` :
+3. Depuis la racine du dépôt :
    ```bash
    .venv/bin/python -m diapason.cli serve-service install --maillage-reseau --tailnet
    ```

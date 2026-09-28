@@ -13,7 +13,7 @@ describe('Un lien de note n’est pas ouvrable parce qu’il ressemble à un lie
   });
 
   it('refuse file:, qui ouvrirait le disque', () => {
-    expect(estLienOuvrable('file:///Users/carlito.e/.diapason/auth')).toBe(false);
+    expect(estLienOuvrable('file:///Users/exemple/.diapason/auth')).toBe(false);
   });
 
   it('refuse data:, qui embarque son propre contenu', () => {

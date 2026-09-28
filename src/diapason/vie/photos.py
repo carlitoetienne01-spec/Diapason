@@ -751,7 +751,7 @@ class ViePhotosStore(VieFinancesStore):
 
         Pour qui passe le fichier hors du magasin (Vision). Le 25/09/2026,
         la route /ocr donnait à Vision le chemin relatif de la base, résolu
-        depuis le dossier courant du processus (/Users/carlito.e sous
+        depuis le dossier courant du processus (le dossier personnel sous
         launchd) : 502 sur chaque photo depuis que les chemins sont relatifs.
         """
         with self._connect() as conn:
