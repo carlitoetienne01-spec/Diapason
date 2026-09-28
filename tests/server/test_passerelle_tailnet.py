@@ -1587,7 +1587,7 @@ class TestUnFluxHttpEstCoupeAussi:
         assert duree < 2, f"la coupure a pris {duree:.2f} s"
 
 
-def _app_d_un_flux_long():
+def _app_d_un_flux_long(requete: str | None = "requete-du-flux-long"):
     """Un SSE du chat qui dure 4 s, pour être coupé en route."""
     import asyncio
 
@@ -1604,7 +1604,8 @@ def _app_d_un_flux_long():
                 await asyncio.sleep(0.02)
             yield b"FIN-NATURELLE\n"
 
-        return StreamingResponse(morceaux())
+        entetes = {"X-Diapason-Request-Id": requete} if requete else {}
+        return StreamingResponse(morceaux(), headers=entetes)
 
     return app
 
@@ -1617,9 +1618,9 @@ class TestLaFermetureSeLitDansLeJournal:
 
     _JOURNAL = "diapason.server.passerelle_tailnet"
 
-    def _couper_en_route(self, monde, caplog, agir) -> list:
+    def _couper_en_route(self, monde, caplog, agir, app=None) -> list:
         caplog.set_level(logging.INFO, logger=self._JOURNAL)
-        passerelle = monde.passerelle(_app_d_un_flux_long(), intervalle_s=0.05)
+        passerelle = monde.passerelle(app or _app_d_un_flux_long(), intervalle_s=0.05)
         client = TestClient(passerelle, base_url=ICI)
         jeton = _ouvrir_une_session(client, monde)
         preparer = agir(jeton)
@@ -1643,6 +1644,20 @@ class TestLaFermetureSeLitDansLeJournal:
         assert "/v1/models" in texte and PHONE in texte, (
             "le journal doit dire quel flux et quel appareil"
         )
+        assert texte.endswith(", requête requete-du-flux-long"), (
+            "la ligne chat_performance du même flux dit « cancelled » sans dire "
+            "qui a coupé : seul l'identifiant de la requête les rapproche"
+        )
+
+    def test_sans_identifiant_de_requete_la_ligne_n_en_invente_pas(self, monde, caplog):
+        lignes = self._couper_en_route(
+            monde,
+            caplog,
+            lambda _jeton: lambda: monde.registry.revoke(PHONE),
+            app=_app_d_un_flux_long(requete=None),
+        )
+        texte = lignes[0].getMessage()
+        assert "requête" not in texte and texte.endswith(PHONE), texte
 
     def test_fermer_les_sessions_ne_se_dit_pas_revoquer(self, monde, caplog):
         lignes = self._couper_en_route(

@@ -141,12 +141,18 @@ async def measured_sse(
     # 28/09/2026: a reply cut on the phone (26/09, 19:44) left
     # "completed=False" and nothing else — a client that went away and a
     # generator that raised read the same. `end` says which: done, no_done
-    # (the source stopped without [DONE]), client_gone:cancelled (the
-    # response task was cancelled — client disconnect or shutdown),
-    # client_gone:closed (the reader stopped iterating — a failed send, the
-    # tailnet gateway cutting a closed session), or error:<Type> (the source
-    # raised, or caught an exception and said so in an error chunk before
-    # [DONE] — record_stream_error).
+    # (the source stopped without [DONE]), cancelled (the response task was
+    # cancelled: an http.disconnect, or a shutdown), closed (the reader
+    # stopped iterating: a failed send), or error:<Type> (the source raised,
+    # or caught an exception and said so in an error chunk before [DONE] —
+    # record_stream_error).
+    #
+    # cancelled and closed say HOW the stream stopped, never WHO stopped it.
+    # They were "client_gone:…" until the review of 28/09/2026: when the
+    # tailnet gateway cuts a session closed from the Mac, the app receives
+    # the same http.disconnect, and the line said "client gone" while the
+    # phone was still reading. The gateway writes its own WARNING line with
+    # this request id when the Mac did the cutting.
     end = "aborted"
     try:
         # The server generators yield complete SSE frames. Close them on
@@ -183,10 +189,10 @@ async def measured_sse(
             end = f"error:{measure.stream_error}"
             completed = False
     except asyncio.CancelledError:
-        end = "client_gone:cancelled"
+        end = "cancelled"
         raise
     except GeneratorExit:
-        end = "client_gone:closed"
+        end = "closed"
         raise
     except Exception as exc:
         end = f"error:{type(exc).__name__}"

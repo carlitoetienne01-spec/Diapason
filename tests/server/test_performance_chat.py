@@ -431,9 +431,12 @@ class TestLaRaisonDeFinDuFlux:
         assert self._fin(caplog) == "no_done"
 
     @pytest.mark.asyncio
-    async def test_le_lecteur_qui_ferme_le_flux_est_un_client_parti(self, caplog):
-        """Un envoi qui échoue, la passerelle qui coupe une session fermée :
-        le lecteur cesse de lire et ferme le générateur."""
+    async def test_le_lecteur_qui_ferme_le_flux_se_dit_closed(self, caplog):
+        """Un envoi qui échoue : le lecteur cesse de lire et ferme le
+        générateur. La ligne dit COMMENT le flux s'arrête, pas QUI l'arrête :
+        « client_gone » (jusqu'à la revue du 28/09/2026) s'écrivait aussi
+        quand la passerelle coupait une session fermée depuis le Mac, le
+        téléphone lisant encore."""
         caplog.set_level("INFO", logger=self._JOURNAL)
 
         async def source():
@@ -444,7 +447,7 @@ class TestLaRaisonDeFinDuFlux:
         flux = measured_sse(source(), ChatLatency())
         await anext(flux)
         await flux.aclose()
-        assert self._fin(caplog) == "client_gone:closed"
+        assert self._fin(caplog) == "closed"
 
     @pytest.mark.asyncio
     async def test_fermee_par_la_boucle_dans_un_autre_contexte_la_ligne_s_ecrit(
@@ -466,11 +469,13 @@ class TestLaRaisonDeFinDuFlux:
         flux = measured_sse(source(), ChatLatency())
         await anext(flux)
         await asyncio.create_task(flux.aclose(), context=contextvars.Context())
-        assert self._fin(caplog) == "client_gone:closed"
+        assert self._fin(caplog) == "closed"
 
     @pytest.mark.asyncio
-    async def test_la_tache_annulee_est_un_client_parti(self, caplog):
-        """Starlette annule la réponse quand le client se déconnecte."""
+    async def test_la_tache_annulee_se_dit_cancelled(self, caplog):
+        """Starlette annule la réponse sur un http.disconnect — le client
+        parti, ou la passerelle qui coupe une session fermée : la ligne ne
+        prétend pas savoir lequel (sa ligne WARNING le dit, même requête)."""
         caplog.set_level("INFO", logger=self._JOURNAL)
         entre = asyncio.Event()
 
@@ -488,7 +493,7 @@ class TestLaRaisonDeFinDuFlux:
         tache.cancel()
         with pytest.raises(asyncio.CancelledError):
             await tache
-        assert self._fin(caplog) == "client_gone:cancelled"
+        assert self._fin(caplog) == "cancelled"
 
     @pytest.mark.asyncio
     async def test_une_exception_de_la_source_se_nomme_et_remonte(self, caplog):

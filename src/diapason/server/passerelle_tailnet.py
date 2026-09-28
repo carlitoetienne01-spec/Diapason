@@ -444,6 +444,11 @@ class PasserelleTailnet:
         websocket = scope.get("type") == "websocket"
         verrou = asyncio.Lock()
         etat = {"accepte": False, "ferme": False}
+        # L'identifiant de la réponse du chat (X-Diapason-Request-Id, posé par
+        # telemetry/chat_latency.measure_response). Revue du 28/09/2026 : la
+        # ligne chat_performance d'un flux coupé ici ne se rapprochait de la
+        # ligne WARNING ci-dessous que par l'heure.
+        requete: list[str] = []
 
         async def envoyer(message: dict) -> None:
             async with verrou:
@@ -457,6 +462,12 @@ class PasserelleTailnet:
                     etat["accepte"] = True
                 elif genre == "websocket.close":
                     etat["ferme"] = True
+                elif genre == "http.response.start":
+                    requete[:] = [
+                        valeur.decode("latin-1")
+                        for cle, valeur in message.get("headers") or []
+                        if cle.lower() == b"x-diapason-request-id"
+                    ][:1]
                 await send(message)
 
         attente_recue: asyncio.Task | None = None
@@ -523,11 +534,12 @@ class PasserelleTailnet:
                     )
                     logger.warning(
                         "passerelle : session d'appareil fermée (%s) — %s %s coupé, "
-                        "appareil %s",
+                        "appareil %s%s",
                         motif,
                         scope.get("type"),
                         scope.get("path"),
                         appareil,
+                        f", requête {requete[0]}" if requete else "",
                     )
                     await couper()
                     return
