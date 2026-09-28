@@ -33,6 +33,7 @@ import { fetchSavings, getBase, isTauri, finalizeDictation, apiFetch } from '../
 import { recordDictationStat } from '../../lib/dictationStats';
 import { listConnectors, getSyncStatus } from '../../lib/connectors-api';
 import { MicButton } from './MicButton';
+import { DUREE_TOAST_MS, optionsDuToastDictee, texteDeLAvis } from './vueDuMicro';
 import { useSpeech } from '../../hooks/useSpeech';
 import { useLiveDictation } from '../../hooks/useLiveDictation';
 import { useTranslation } from '../../i18n/useTranslation';
@@ -264,21 +265,13 @@ export function InputArea() {
   useEffect(() => {
     if (!speechError) return;
     // 28/09/2026 : au téléphone, le détail technique et le bouton des
-    // réglages d'Android accompagnent la phrase (lib/echecMicro.ts). Le
-    // bouton fait 40 px : c'est un doigt qui le touche.
-    toast.error(speechError, {
-      duration: speechMicro?.reglages ? 15000 : 8000,
-      description: speechMicro?.technique ? t('talk.micro.detail', { technique: speechMicro.technique }) : undefined,
-      action: speechMicro?.reglages ? {
-        label: t('talk.micro.ouvrirReglages'),
-        onClick: () => {
-          void ouvrirReglagesDictee().then((avis) => {
-            if (avis) toast.error('cle' in avis ? t(avis.cle) : avis.texte, { duration: 8000 });
-          });
-        },
-        actionButtonStyle: { minHeight: 40, paddingInline: 12 },
-      } : undefined,
-    });
+    // réglages d'Android accompagnent la phrase — décidés par
+    // `optionsDuToastDictee`, testée seule (vueDuMicro.ts).
+    toast.error(speechError, optionsDuToastDictee(speechMicro, t, () => {
+      void ouvrirReglagesDictee().then((avis) => {
+        if (avis) toast.error(texteDeLAvis(avis, t), { duration: DUREE_TOAST_MS });
+      });
+    }));
     // Une fois par échec : `t` qui change avec la langue ne rejoue pas le toast.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [speechError, speechMicro]);
