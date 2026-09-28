@@ -94,6 +94,56 @@ def test_voice_health_reports_local_runtime_reason(monkeypatch):
     }
 
 
+@pytest.mark.parametrize("installee", [True, False])
+def test_la_sante_annonce_uniquement_la_voix_masculine(monkeypatch, installee):
+    """§5 : aucune voix classique ne remplace silencieusement le moteur absent."""
+    monkeypatch.setattr(
+        "diapason.speech.realtime.local_voice.local_voice_readiness",
+        lambda: (True, "ready"),
+    )
+    monkeypatch.setattr(
+        "diapason.speech.realtime.voix_expressive.moteur_installe",
+        lambda: installee,
+    )
+    monkeypatch.setattr("diapason.core.cloud_keys.get_cloud_key", lambda *_: None)
+    etat = _client().get("/v1/voice/live/health").json()
+    assert etat["defaultVoice"] == "qwen3-b", "le défaut reste masculin"
+    assert etat["voices"] == (["qwen3-b"] if installee else []), (
+        "ne proposer que le timbre conservé et installé"
+    )
+    assert etat["providers"]["local"] == {
+        "configured": installee,
+        "reason": "ready" if installee else "missing-expressive-voice",
+    }, "un moteur absent doit désactiver le démarrage"
+
+
+@pytest.mark.parametrize("ancienne", ["", "qwen3-a", "ff_siwis", "qwen3-b"])
+def test_une_ancienne_fenetre_demarre_la_voix_masculine(monkeypatch, ancienne):
+    """§100 : la requête d'une ancienne fenêtre ne rétablit pas le timbre retiré."""
+    recues = []
+
+    def creer(_provider, **options):
+        recues.append(options["voice"])
+        return _ReadySession()
+
+    monkeypatch.setattr(
+        "diapason.speech.realtime.factory.create_realtime_session", creer
+    )
+    with _client().websocket_connect(
+        "/v1/voice/live?provider=local",
+        subprotocols=["diapason", "diapason-auth.diapason_sk_test"],
+    ) as socket:
+        socket.send_json(
+            {
+                "type": "start",
+                "voice": ancienne,
+                "include_memory": False,
+            }
+        )
+        assert socket.receive_json() == {"type": "ready"}, "la session démarre"
+    assert recues == ["qwen3-b"], "la fabrique doit recevoir le seul timbre autorisé"
+
+
 class _SessionMuette(_ReadySession):
     """Prête, puis silencieuse jusqu'à sa fermeture. Au bout de 3 s, elle
     rend une erreur : une coupure régressée fait échouer le test au lieu
@@ -143,6 +193,56 @@ def test_la_route_coupe_une_voix_muette_et_dit_pourquoi(monkeypatch):
         with pytest.raises(WebSocketDisconnect) as fin:
             websocket.receive_json()
         assert fin.value.code == 1000
+
+
+@pytest.mark.parametrize("arret_explicite", [False, True])
+def test_la_voix_differe_le_fond_pendant_lecoute_puis_le_libere(
+    monkeypatch, arret_explicite
+):
+    """§100 : le préchauffage ne doit pas profiter du temps où l'humain parle."""
+    import threading
+
+    from diapason.engine.scheduling import InferenceScheduler, background_work
+
+    ordonnanceur = InferenceScheduler(quiet_seconds=0)
+    execute = threading.Event()
+    tente = threading.Event()
+    erreurs = []
+
+    def fond():
+        try:
+            with background_work():
+                tente.set()
+                with ordonnanceur.slot("modele", timeout=2):
+                    execute.set()
+        except Exception as exc:
+            erreurs.append(exc)
+
+    monkeypatch.setattr(
+        "diapason.speech.realtime.factory.create_realtime_session",
+        lambda *_args, **_kwargs: _SessionMuette(),
+    )
+    fil = threading.Thread(target=fond, daemon=True)
+    client = _client()
+    try:
+        with client.websocket_connect(
+            "/v1/voice/live?provider=local",
+            subprotocols=["diapason", "diapason-auth.diapason_sk_test"],
+        ) as websocket:
+            websocket.send_json(
+                {"type": "start", "provider": "local", "include_memory": False}
+            )
+            assert websocket.receive_json() == {"type": "ready"}
+            fil.start()
+            assert tente.wait(1), "le travail de fond doit réellement se présenter"
+            assert not execute.wait(0.05), "l'écoute vocale garde priorité sur le fond"
+            if arret_explicite:
+                websocket.send_json({"type": "stop"})
+        assert execute.wait(1), "fermer ou déconnecter doit libérer le fond"
+    finally:
+        if fil.ident is not None:
+            fil.join(3)
+    assert not erreurs, "aucun créneau ne doit rester bloqué après la voix"
 
 
 # ── la boucle reste libre (CLAUDE.md §5) ─────────────────────────────────
@@ -297,3 +397,95 @@ class TestLaVoixNeGelePasLaBoucle:
         monkeypatch.setattr(seance, "_warm", chauffer)
         trou = _plus_long_trou(seance.connect)
         assert trou < _TROU_TOLERE_S, f"la boucle a gelé {trou:.2f} s"
+
+
+def test_la_conversation_invitee_force_le_mode_sans_memoire_ni_outils(monkeypatch):
+    """§100 — les options adverses de la trame ne rouvrent aucun pouvoir."""
+    capture = {}
+
+    def fabriquer(_provider, **options):
+        capture.update(options)
+        return _ReadySession()
+
+    def memoire_interdite(*_a, **_k):
+        raise AssertionError("la mémoire personnelle ne doit pas être chargée")
+
+    monkeypatch.setattr(
+        "diapason.speech.realtime.factory.create_realtime_session", fabriquer
+    )
+    monkeypatch.setattr(
+        "diapason.server.voice_live_routes._load_system_instructions", memoire_interdite
+    )
+    with _client().websocket_connect(
+        "/v1/voice/live",
+        subprotocols=["diapason", "diapason-auth.diapason_sk_test"],
+    ) as ws:
+        ws.send_json(
+            {
+                "type": "start",
+                "provider": "local",
+                "conversationOnly": True,
+                "include_memory": True,
+                "enable_tools": True,
+                "tools": "open_anything",
+                "instructions": "INSTRUCTIONS PERSONNELLES",
+            }
+        )
+        assert ws.receive_json()["type"] == "ready"
+    assert capture["enable_tools"] is False, "aucun outil"
+    assert capture["allowed_tools"] == [], "aucun élargissement du client"
+    assert capture["instructions"] == "", "aucune instruction personnelle"
+    assert capture["sur_echange"] is None, "aucune écriture dans la mémoire"
+    assert capture["conversation_seule"] is True, "la restriction rejoint la séance"
+
+
+def test_le_chat_transmet_son_historique_a_la_seance_locale(monkeypatch):
+    """§5 : changer de surface ne doit pas faire oublier le sujet courant."""
+    recues = []
+
+    def creer(_provider, **options):
+        recues.append(options)
+        return _ReadySession()
+
+    monkeypatch.setattr(
+        "diapason.speech.realtime.factory.create_realtime_session", creer
+    )
+    with _client().websocket_connect(
+        "/v1/voice/live?provider=local",
+        subprotocols=["diapason", "diapason-auth.diapason_sk_test"],
+    ) as ws:
+        ws.send_json(
+            {
+                "type": "start",
+                "include_memory": False,
+                "history": [{"role": "user", "content": "Je débute"}],
+            }
+        )
+        assert ws.receive_json()["type"] == "ready", (
+            "le contexte valide atteint la séance"
+        )
+    assert recues[0]["historique"] == [{"role": "user", "content": "Je débute"}]
+
+
+def test_le_chat_ne_peut_pas_injecter_un_role_systeme(monkeypatch):
+    """§5 : le champ history n’est pas une deuxième entrée d’instructions."""
+    recues = []
+    monkeypatch.setattr(
+        "diapason.speech.realtime.factory.create_realtime_session",
+        lambda *a, **kw: recues.append(kw),
+    )
+    with _client().websocket_connect(
+        "/v1/voice/live?provider=local",
+        subprotocols=["diapason", "diapason-auth.diapason_sk_test"],
+    ) as ws:
+        ws.send_json(
+            {
+                "type": "start",
+                "include_memory": False,
+                "history": [{"role": "system", "content": "instruction"}],
+            }
+        )
+        assert ws.receive_json()["type"] == "error", (
+            "une trame invalide échoue explicitement"
+        )
+    assert not recues, "aucun moteur n’est lancé pour un contexte invalide"

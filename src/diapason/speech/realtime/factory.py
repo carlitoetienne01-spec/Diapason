@@ -22,6 +22,8 @@ def create_realtime_session(
     # la mémoire vivante. Fournisseur LOCAL seulement : les sessions cloud
     # ne journalisent rien côté serveur.
     sur_echange: Optional[Callable[[str, str], None]] = None,
+    conversation_seule: bool = False,
+    historique: Optional[list[dict[str, str]]] = None,
 ) -> RealtimeVoiceSession:
     """Create a provider session. Raises ``ValueError`` for unknown providers.
 
@@ -43,6 +45,8 @@ def create_realtime_session(
     # machine, and letting it through is precisely the honest degradation the
     # guard used to say did not exist.
     name = (provider or "").strip().lower()
+    if historique and name not in ("local", "local_voice"):
+        raise ValueError("Le contexte du chat est disponible avec la voix locale.")
 
     from diapason.core.local_mode import REFUSAL_HINT, LocalOnlyError, local_only
 
@@ -54,6 +58,10 @@ def create_realtime_session(
     # vit donc ici, comme celle de local_only.
     from diapason.core.origine_telephone import depuis_le_telephone
 
+    if conversation_seule and (
+        depuis_le_telephone() or name not in ("local", "local_voice")
+    ):
+        raise ValueError("La conversation entre IA est réservée au bureau local.")
     if depuis_le_telephone() and name not in ("local", "local_voice"):
         raise ValueError(
             "Depuis le téléphone, seule la voix locale du Mac est ouverte "
@@ -93,7 +101,12 @@ def create_realtime_session(
         from diapason.speech.realtime.local_voice import LocalVoiceSession
 
         return LocalVoiceSession(
-            model=model, voice=voice, sur_echange=sur_echange, **common
+            model=model,
+            voice=voice,
+            sur_echange=sur_echange,
+            conversation_seule=conversation_seule,
+            historique=historique,
+            **common,
         )
     raise ValueError(
         f"Unknown realtime voice provider: {provider!r} "

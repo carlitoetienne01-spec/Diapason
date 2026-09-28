@@ -79,10 +79,25 @@ async def _drain_ready(harness: Harness) -> None:
 def test_readiness_rejects_a_missing_local_voice_extra(monkeypatch):
     monkeypatch.setattr(
         "diapason.speech.realtime.local_voice.importlib.util.find_spec",
-        lambda name: None if name == "kokoro" else object(),
+        lambda name: None if name == "faster_whisper" else object(),
     )
 
     assert local_voice_readiness() == (False, "missing-dependencies")
+
+
+def test_la_voix_classique_retiree_ne_bloque_plus_parler(monkeypatch):
+    """§5 : le moteur masculin n'utilise ni Kokoro ni son phonémiseur."""
+    monkeypatch.setattr(
+        "diapason.speech.realtime.local_voice.importlib.util.find_spec",
+        lambda name: object() if name in ("faster_whisper", "soundfile") else None,
+    )
+    monkeypatch.setattr(
+        "diapason.speech.realtime.local_voice.ollama_reachable",
+        lambda **_: True,
+    )
+    assert local_voice_readiness() == (True, "ready"), (
+        "les composants de la voix supprimée ne doivent pas désactiver Parler"
+    )
 
 
 @pytest.mark.asyncio
@@ -153,6 +168,21 @@ class TestTurnDetection:
         assert not harness.transcribed
 
     @pytest.mark.asyncio
+    async def test_un_mot_bref_attend_sa_fin_puis_est_transcrit(self):
+        """§5 : un « oui » de 240 ms n'est pas jeté avec les clics de 100 ms."""
+        harness = Harness()
+        session = harness.session
+        await session.send_audio(pcm(0.24))
+        await session.send_audio(pcm(0.3, amplitude=0.0))
+        assert session._speculative is None, "pas de calcul sur un mot encore ouvert"
+        assert session._partial is None, "pas de sous-titre prématuré"
+        await session.send_audio(pcm(END_OF_TURN_S, amplitude=0.0))
+        assert session._respond_task is not None, "le mot complet doit atteindre le STT"
+        await session._respond_task
+        assert harness.transcribed, "le filtre de capture ne doit pas perdre ce mot"
+        await session.close()
+
+    @pytest.mark.asyncio
     async def test_leading_silence_is_not_buffered(self):
         harness = Harness()
         session = harness.session
@@ -221,6 +251,37 @@ class TestRealtimeIntentLatency:
         assert not _turn_needs_tools([{"role": "user", "content": "   "}])
 
     @pytest.mark.asyncio
+    async def test_le_compte_direct_garde_ses_preuves_et_son_plafond(self, monkeypatch):
+        """§100 : pas de calcul inventé ni d'outil hors de la sélection vocale."""
+        import time
+        from unittest.mock import MagicMock
+
+        execute = MagicMock(
+            return_value={
+                "handled": True,
+                "success": True,
+                "detail": "Tu as 2 tâches : 1 terminée et 1 restante.",
+            }
+        )
+        monkeypatch.setattr(
+            "diapason.desktop.voice_commands.execute_voice_action", execute
+        )
+        harness = Harness()
+        assert await harness.session._try_fast_voice_action(
+            "Combien de tâches ai-je en 2026 ?", turn_started=time.monotonic()
+        ), "le compte simple ne nécessite pas d'inférence"
+        assert not harness.llm_calls and harness.spoken == [
+            execute.return_value["detail"]
+        ]
+        events = [event async for event in _collect(harness.session)]
+        assert any(e.kind == "tool" and e.tool_name == "vie_tasks" for e in events)
+        harness.session._allowed_tools = ["current_time"]
+        assert not await harness.session._try_fast_voice_action(
+            "Combien de tâches ai-je en 2026 ?", turn_started=time.monotonic()
+        ), "le raccourci ne doit pas élargir les outils autorisés"
+        assert execute.call_count == 1, "aucune deuxième lecture hors plafond"
+
+    @pytest.mark.asyncio
     async def test_explicit_open_notes_bypasses_the_llm(self, monkeypatch):
         harness = Harness()
         harness.session._stt = lambda _audio: "Ouvres-moi l'application note"
@@ -277,7 +338,7 @@ class TestBargeIn:
         session._respond_task = asyncio.get_running_loop().create_task(
             slow_tts_never_finishes()
         )
-        await session.send_audio(pcm(0.1))
+        await session.send_audio(pcm(0.15))
         await asyncio.sleep(0)
         assert session._respond_task.cancelled() or session._respond_task.done()
         kinds = [e.kind async for e in _collect(session)]
@@ -638,7 +699,7 @@ class TestPlaybackInterruption:
         # The respond task is DONE, but 5 s of audio are still playing
         # client-side.
         session._speaking_until = time.monotonic() + 5.0
-        await session.send_audio(pcm(0.1, amplitude=0.08))  # voix franche
+        await session.send_audio(pcm(0.15, amplitude=0.08))  # voix confirmée
         kinds = [e.kind async for e in _collect(session)]
         assert "interrupted" in kinds
         assert session._speaking_until == 0.0
@@ -675,6 +736,44 @@ class TestPlaybackInterruption:
         session._speaking_until = 0.0  # plus rien ne joue
         await session.send_audio(pcm(0.4, amplitude=0.015))  # voix douce
         assert session._in_speech, "soft speech must count again"
+
+
+class TestUnBruitNeSupprimePasLaReponse:
+    """§5 — le 26/09/2026, un clic de micro annulait le tour sans réponse."""
+
+    @pytest.mark.asyncio
+    async def test_un_clic_de_vingt_ms_ne_tue_pas_la_reponse(self):
+        session = Harness().session
+        attente = asyncio.Event()
+        session._respond_task = asyncio.create_task(attente.wait())
+        await session.send_audio(pcm(0.02))
+        await session.send_audio(pcm(0.1, amplitude=0))
+        assert not session._respond_task.cancelling(), "un clic n'est pas une reprise"
+        assert session._queue.empty(), "pas de fausse interruption dans le client"
+        attente.set()
+        await session._respond_task
+
+    @pytest.mark.asyncio
+    async def test_des_clics_separes_ne_sadditionnent_pas(self):
+        session = Harness().session
+        attente = asyncio.Event()
+        session._respond_task = asyncio.create_task(attente.wait())
+        for _ in range(10):
+            await session.send_audio(pcm(0.02))
+            await session.send_audio(pcm(0.02, amplitude=0))
+        assert not session._respond_task.cancelling(), "la parole doit être continue"
+        attente.set()
+        await session._respond_task
+
+    @pytest.mark.asyncio
+    async def test_la_reprise_parlee_interrompt_et_garde_le_debut_du_mot(self):
+        session = Harness().session
+        session._respond_task = asyncio.create_task(asyncio.sleep(60))
+        for _ in range(6):
+            await session.send_audio(pcm(0.02))
+        assert session._respond_task.cancelling(), "une vraie reprise doit interrompre"
+        assert len(session._buffer) == len(pcm(0.12)), "aucune syllabe amputée"
+        await asyncio.gather(session._respond_task, return_exceptions=True)
 
 
 class TestStopPhrases:

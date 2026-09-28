@@ -66,7 +66,14 @@ MOTIF_DUREE = "maxDuration"
 def event_to_client_json(event: SessionEvent) -> dict[str, Any]:
     """Serialize a :class:`SessionEvent` for the browser protocol."""
     if event.kind == "ready":
-        return {"type": "ready"}
+        return {
+            "type": "ready",
+            **(
+                {"conversationOnly": True} if event.detail == "conversationOnly" else {}
+            ),
+        }
+    if event.kind == "status":
+        return {"type": "status", "stage": event.detail}
     if event.kind == "audio":
         return {
             "type": "audio",
@@ -99,8 +106,11 @@ def event_to_client_json(event: SessionEvent) -> dict[str, Any]:
         return {"type": "verification", **(event.verification or {})}
     if event.kind == "error":
         return {"type": "error", "detail": event.detail or "unknown error"}
-    if event.kind == "closed":
-        return {"type": "closed"}
+    if event.kind in ("closing", "closed"):
+        return {
+            "type": event.kind,
+            **({"reason": "farewell"} if event.detail == "farewell" else {}),
+        }
     return {"type": "error", "detail": f"unknown event {event.kind}"}
 
 
@@ -225,6 +235,10 @@ class VoiceLiveBridge:
                 task.cancel()
             if garde in done:
                 await self._couper(garde.result())
+            elif self.motif_de_fermeture == "farewell":
+                # Le client a déjà reçu closed après le dernier son. La
+                # connexion peut tomber sans couper sa lecture finale.
+                await self._client.close(code=1000, reason="farewell")
             for task in done:
                 if task is garde:
                     continue
@@ -239,6 +253,8 @@ class VoiceLiveBridge:
     async def _forward_provider_events(self) -> None:
         async for event in self._session.events():
             self._noter(event)
+            if event.kind == "closed" and event.detail == "farewell":
+                self.motif_de_fermeture = "farewell"
             await self._client.send_json(event_to_client_json(event))
             if event.kind in ("closed", "error"):
                 break

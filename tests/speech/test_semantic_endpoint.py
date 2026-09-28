@@ -119,6 +119,62 @@ class TestLeClassificateur:
 
 class TestLaCouvertureGardeLeRaccourci:
     @pytest.mark.asyncio
+    async def test_une_respiration_ne_separe_pas_la_demande_sur_un_ancien_partiel(self):
+        """§100 — une pause de 600 ms ne doit pas jeter l'amorce de la demande."""
+        s = LocalVoiceSession(stt=lambda _: "", llm=lambda _: None, tts=lambda _: b"")
+        liberer = asyncio.Event()
+        recus = []
+
+        async def decoder(audio, **_):
+            await liberer.wait()
+            recus.append(audio)
+            return "la demande complète"
+
+        async def recevoir(*_, **__):
+            pass
+
+        s._transcription_serie = decoder
+        s._dispatch_text = recevoir
+        debut = trame(2.4, 0.3)
+        pause = trame(0.1, 0.0)
+        suite = trame(0.4, 0.3)
+        try:
+            await s.send_audio(debut)
+            s._partial_text = "Je veux apprendre."
+            s._partial_text_mark = INPUT_RATE * 2 * 2
+            for _ in range(6):
+                await s.send_audio(pause)
+                await asyncio.sleep(0)
+            assert s._respond_task is None, (
+                "le premier fragment ne doit pas être abandonné à la reprise"
+            )
+            await s.send_audio(suite)
+            for _ in range(8):
+                await s.send_audio(pause)
+                await asyncio.sleep(0)
+            liberer.set()
+            assert s._respond_task is not None, "la fin réelle ouvre bien un tour"
+            await s._respond_task
+            attendu = debut + pause * 6 + suite
+            assert any(audio.startswith(attendu) for audio in recus), (
+                "le décodeur final doit recevoir les deux parties sans perdre le début"
+            )
+        finally:
+            liberer.set()
+            await s.close()
+
+    @pytest.mark.asyncio
+    async def test_la_derniere_syllabe_absente_interdit_de_couper(self):
+        """§100 — 400 ms non transcrites peuvent contenir « pas » ou « que »."""
+        s = LocalVoiceSession(stt=lambda _: "", llm=lambda _: None, tts=lambda _: b"")
+        s._partial_text = "Je veux apprendre."
+        s._partial_text_mark = int(INPUT_RATE * 2 * 2.0)
+        s._speech_end_mark = int(INPUT_RATE * 2 * 2.4)
+        assert s._end_of_turn_s() == pytest.approx(0.8), (
+            "la ponctuation d'un texte incomplet n'autorise pas à couper la suite"
+        )
+
+    @pytest.mark.asyncio
     async def test_un_partiel_en_retard_ne_raccourcit_pas(self):
         """Le partiel dit « Quelle heure est-il ? » mais ne couvre pas la fin
         de la parole : la personne a peut-être ajouté « à Tokyo » — ou « à »
@@ -136,3 +192,32 @@ class TestLaCouvertureGardeLeRaccourci:
         s._speech_end_mark = INPUT_RATE * 2 * 3  # 3 s de parole
         s._speculative = None
         assert s._end_of_turn_s() == pytest.approx(0.8)
+
+    @pytest.mark.asyncio
+    async def test_le_prochain_calcul_ne_rajeunisse_pas_l_ancien_texte(self):
+        """§100 — un partiel en calcul n'a pas encore compris la suite."""
+        s = LocalVoiceSession(stt=lambda _: "", llm=lambda _: None, tts=lambda _: b"")
+        s._partial_mark = INPUT_RATE * 2
+        s._partial = asyncio.create_task(
+            asyncio.sleep(0, result="Quelle heure est-il ?")
+        )
+        await s._partial
+        await s._harvest_partial()
+        s._speech_end_mark = INPUT_RATE * 2 * 4
+        s._partial_mark = s._speech_end_mark  # nouveau calcul, texte encore ancien
+        assert s._end_of_turn_s() == pytest.approx(0.8), (
+            "la nouvelle couverture ne doit pas écourter le délai à 450 ms"
+        )
+
+    @pytest.mark.asyncio
+    async def test_un_texte_identique_actualise_quand_meme_sa_couverture(self):
+        s = LocalVoiceSession(stt=lambda _: "", llm=lambda _: None, tts=lambda _: b"")
+        s._partial_text = "Bonjour."
+        s._partial_mark = INPUT_RATE * 2 * 4
+        s._speech_end_mark = s._partial_mark
+        s._partial = asyncio.create_task(asyncio.sleep(0, result="Bonjour."))
+        await s._partial
+        await s._harvest_partial()
+        assert s._end_of_turn_s() == pytest.approx(0.45), (
+            "une vraie couverture complète peut raccourcir la fin du tour"
+        )

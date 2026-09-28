@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import platform
 from collections.abc import AsyncIterator, Sequence
 from contextlib import aclosing
 from typing import Any, Dict, List
@@ -115,6 +116,25 @@ def _default_num_ctx() -> int:
     return _num_ctx_configure or NUM_CTX_PAR_DEFAUT
 
 
+def runtime_batch_options(model: str) -> dict[str, int]:
+    """Keep chat, voice and prewarm on the same inference runner."""
+    # 27/09/2026 : le cache récurrent de Qwen3.5 relisait encore ~1 000
+    # jetons après la chauffe de la trousse vocale. Sur le Mac M5, des lots
+    # de 128 ramènent le premier jeton de 3,3 s à 0,7 s (256 : 1,0 s),
+    # sans retirer un outil ni raccourcir le contexte. Le coût initial
+    # supplémentaire du banc est de 2,6 s, avant READY, pas par échange.
+    # Le réglage doit être commun :
+    # Ollama recharge son runner quand num_batch change entre chat et voix.
+    # Les autres plateformes/modèles, non mesurés, gardent leur défaut.
+    if (
+        model.split(":", 1)[0] == "qwen3.5"
+        and platform.system() == "Darwin"
+        and platform.machine() == "arm64"
+    ):
+        return {"num_batch": 128}
+    return {}
+
+
 @EngineRegistry.register("ollama")
 class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
     """Ollama backend via its native HTTP API."""
@@ -178,6 +198,11 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
                     "prompt": "",
                     "stream": False,
                     "keep_alive": self._keep_alive,
+                    **(
+                        {"options": {"num_ctx": _default_num_ctx(), **batch}}
+                        if (batch := runtime_batch_options(model))
+                        else {}
+                    ),
                 },
             )
             response.raise_for_status()
@@ -231,6 +256,7 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
             "stream": False,
             "keep_alive": kwargs.get("keep_alive", self._keep_alive),
             "options": {
+                **runtime_batch_options(model),
                 "temperature": temperature,
                 "num_predict": max_tokens,
                 "num_ctx": kwargs.get("num_ctx", _default_num_ctx()),
@@ -379,6 +405,7 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
             "stream": True,
             "keep_alive": kwargs.get("keep_alive", self._keep_alive),
             "options": {
+                **runtime_batch_options(model),
                 "temperature": temperature,
                 "num_predict": max_tokens,
                 "num_ctx": kwargs.get("num_ctx", _default_num_ctx()),
@@ -507,6 +534,7 @@ class OllamaEngine(AsyncHTTPEngineMixin, InferenceEngine):
             "stream": True,
             "keep_alive": kwargs.get("keep_alive", self._keep_alive),
             "options": {
+                **runtime_batch_options(model),
                 "temperature": temperature,
                 "num_predict": max_tokens,
                 "num_ctx": kwargs.get("num_ctx", _default_num_ctx()),

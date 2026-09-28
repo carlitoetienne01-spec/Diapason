@@ -12,9 +12,11 @@ EventKind = Literal[
     "transcript",
     "interrupted",
     "error",
+    "closing",
     "closed",
     "tool",
     "verification",
+    "status",
 ]
 
 

@@ -72,6 +72,13 @@ def setup_logging(
     if not quiet:
         console_handler.setLevel(min(level, logging.INFO))
         logging.getLogger("diapason.speech.realtime.local_voice").setLevel(logging.INFO)
+        logging.getLogger("diapason.speech.realtime.transcription_serie").setLevel(
+            logging.INFO
+        )
+        logging.getLogger("diapason.speech.realtime.voix_expressive").setLevel(
+            logging.INFO
+        )
+        logging.getLogger("diapason.speech.faster_whisper").setLevel(logging.INFO)
         # Même défaut, même remède, le 20 septembre 2026 : la ligne
         # « chat_performance » du 19 (phases, jetons, attente d'admission, sans
         # contenu) n'a jamais atteint serve.err.log — les 89 s d'une traduction

@@ -162,10 +162,8 @@ class TestLaGardeVocale:
         assert note["role"] == "system" and "Mark Carney [2]" in note["content"], (
             "le modèle est prévenu avant de rédiger"
         )
-        assert " ".join(journal["spoken"]) == (
-            "Je vérifie en ligne. Mark Carney, depuis mars 2025."
-        ), (
-            "l'accusé pendant la recherche, puis la réponse — sans le « [2] » "
+        assert " ".join(journal["spoken"]) == ("Mark Carney, depuis mars 2025."), (
+            "une recherche immédiate ne rajoute pas d'attente — sans le « [2] » "
             "que Kokoro prononçait « deux » ; réponse vérifiée : rien à ajouter"
         )
 
@@ -744,7 +742,7 @@ class TestLaLectureSurNonReponseALaVoix:
             )
         )
         assert " ".join(journal["spoken"]) == (
-            "Je vérifie en ligne. Je n'ai pas trouvé le vainqueur dans les résultats. "
+            "Je n'ai pas trouvé le vainqueur dans les résultats. "
             "Je lis la source. "
             "Selon la LNH, les Panthers de la Floride ont gagné la Coupe Stanley."
         ), "l'aveu reste, « Je lis la source. » couvre le silence, la réponse suit"

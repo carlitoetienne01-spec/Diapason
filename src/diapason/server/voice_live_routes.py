@@ -180,7 +180,23 @@ async def websocket_voice_live(websocket: WebSocket) -> None:
             return
 
         provider = (raw.get("provider") or provider or "gemini").lower()
+        conversation_seule = raw.get("conversationOnly") is True
+        if conversation_seule and (
+            depuis_le_telephone() or provider not in ("local", "local_voice")
+        ):
+            await websocket.send_json(
+                {
+                    "type": "error",
+                    "detail": "La conversation entre IA est réservée au bureau local.",
+                }
+            )
+            await websocket.close()
+            return
         voice = raw.get("voice") or voice
+        if provider in ("local", "local_voice"):
+            from diapason.speech.realtime.voix_expressive import normaliser_voix
+
+            voice = normaliser_voix(voice or "")
         model = raw.get("model") or model
         language = raw.get("language") or language
         if "enable_tools" in raw:
@@ -198,7 +214,13 @@ async def websocket_voice_live(websocket: WebSocket) -> None:
             from diapason.speech.realtime.tools import outils_vocaux_du_telephone
 
             enable_tools = bool(outils_vocaux_du_telephone(allowed_tools))
-        if raw.get("instructions"):
+        if conversation_seule:
+            # 26/09/2026 : ce choix accepte une voix invitée. Ni un champ
+            # client ni la configuration ne doivent lui rendre les outils.
+            enable_tools = False
+            allowed_tools = []
+            instructions = ""
+        elif raw.get("instructions"):
             instructions = str(raw["instructions"])
         elif raw.get("include_memory", True):
             # En fil (26/09/2026) : SOUL.md, USER.md et la mémoire se lisent
@@ -226,6 +248,9 @@ async def websocket_voice_live(websocket: WebSocket) -> None:
             )
 
         try:
+            from diapason.speech.realtime.historique_chat import lire_historique_chat
+
+            historique = lire_historique_chat(raw.get("history"))
             session = create_realtime_session(
                 provider,
                 model=model or "",
@@ -235,15 +260,31 @@ async def websocket_voice_live(websocket: WebSocket) -> None:
                 enable_tools=enable_tools,
                 max_tool_steps=max_tool_steps,
                 allowed_tools=allowed_tools,
-                sur_echange=_vers_la_memoire,
+                sur_echange=None if conversation_seule else _vers_la_memoire,
+                **({"conversation_seule": True} if conversation_seule else {}),
+                **({"historique": historique} if historique else {}),
             )
         except ValueError as exc:
             await websocket.send_json({"type": "error", "detail": str(exc)})
             await websocket.close()
             return
 
+        from contextlib import nullcontext
+
+        from diapason.engine.scheduling import interactive_turn
+
         bridge = VoiceLiveBridge(websocket, session)
-        await bridge.run()
+        # 27/09/2026 : un préchauffage de fond de 31,08 s est passé devant
+        # la parole (premier jeton en 24,45 s). Protéger toute la séance
+        # locale, écoute comprise, pas seulement le POST de réponse : une
+        # chauffe lancée pendant la question n'est plus préemptible ensuite.
+        # Le pont borne toujours l'inactivité et la durée de cette séance.
+        with (
+            interactive_turn()
+            if provider in ("local", "local_voice")
+            else nullcontext()
+        ):
+            await bridge.run()
     except WebSocketDisconnect:
         pass
     except Exception as exc:
@@ -283,10 +324,19 @@ def _sante_de_la_voix(app_state: Any) -> dict[str, Any]:
     openai = bool(get_cloud_key("OPENAI_API_KEY"))
     from diapason.speech.realtime.local_voice import local_voice_readiness
 
-    # Local has no API key, but its optional STT/TTS stack and phonemizer must
-    # exist too. Reporting only Ollama made the UI enable Start for a session
-    # that was guaranteed to fail during Kokoro warm-up.
+    # La reconnaissance et le moteur masculin sont requis : annoncer
+    # seulement Ollama prêt autoriserait une séance incapable de parler.
     local, local_reason = local_voice_readiness()
+    from diapason.speech.realtime.voix_expressive import (
+        VOIX_EXPRESSIVES,
+        moteur_installe,
+        voix_configuree,
+        voix_disponibles,
+    )
+
+    voix = voix_configuree(defaults.get("voice") or "")
+    if local and voix in VOIX_EXPRESSIVES and not moteur_installe():
+        local, local_reason = False, "missing-expressive-voice"
     tool_ids: list[str] = []
     if defaults.get("enable_tools"):
         try:
@@ -315,6 +365,8 @@ def _sante_de_la_voix(app_state: Any) -> dict[str, Any]:
         "available": defaults.get("enabled", True) and (gemini or openai or local),
         "enabled": defaults.get("enabled", True),
         "default_provider": default_provider,
+        "defaultVoice": voix,
+        "voices": voix_disponibles(),
         "enable_tools": defaults.get("enable_tools", True),
         "max_tool_steps": defaults.get("max_tool_steps", 6),
         "tools": tool_ids,

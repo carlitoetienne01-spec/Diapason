@@ -33,6 +33,20 @@ class TestSetupLogging:
         assert mesure.isEnabledFor(logging.INFO), "la ligne doit atteindre le journal"
         voix = logging.getLogger("diapason.speech.realtime.local_voice")
         assert voix.isEnabledFor(logging.INFO)
+        reconnaissance = logging.getLogger(
+            "diapason.speech.realtime.transcription_serie"
+        )
+        assert reconnaissance.isEnabledFor(logging.INFO), (
+            "le détail file/calcul doit sortir avec le total vocal"
+        )
+        assert logging.getLogger("diapason.speech.faster_whisper").isEnabledFor(
+            logging.INFO
+        ), "les reprises du décodeur doivent être observables"
+        assert logging.getLogger(
+            "diapason.speech.realtime.voix_expressive"
+        ).isEnabledFor(logging.INFO), (
+            "la réserve d'Orion doit pouvoir être diagnostiquée"
+        )
         chauffe = logging.getLogger("diapason.server.prechauffage")
         assert chauffe.isEnabledFor(logging.INFO)
 

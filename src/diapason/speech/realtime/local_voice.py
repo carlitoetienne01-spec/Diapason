@@ -1,13 +1,10 @@
-"""Fully local realtime voice: Whisper → Ollama → Kokoro, nothing leaves.
+"""Fully local realtime voice: Whisper → Ollama → Qwen TTS, nothing leaves.
 
 The other two providers stream the raw microphone to Google or OpenAI; this
-one keeps the whole loop on the machine. It is honest about what that buys
-and what it costs: turn-based with barge-in rather than full duplex, first
-spoken word ~1.5–2.5 s after the user's last syllable (measured: STT ~1 s for
-a 4 s French utterance, qwen3.5:9b first token 0.47 s warm, Kokoro RTF 0.28)
-— against ~0.5 s for Gemini Live. In exchange: no key, no account, and the
-factory's local-only guard can finally let voice through instead of refusing
-it wholesale.
+one keeps the whole loop on the machine. It is turn-based with barge-in,
+not a native audio-to-audio model. Latency must be measured end to end:
+the live test on 26 September 2026 took several seconds per stage despite
+much faster isolated benchmarks. No cloud account or key is required.
 
 Structure: ``send_audio`` only buffers and detects turn boundaries; the
 response pipeline (transcribe → stream tokens → speak sentence by sentence)
@@ -24,21 +21,44 @@ import importlib.util
 import json
 import logging
 import re
-import shutil
 import time
 import urllib.error
 import urllib.request
 from typing import Any, AsyncIterator, Callable, List, Optional, Sequence
 
 from diapason.core.tool_turn import NO_TOOL_TURN_RE, turn_needs_tools
+from diapason.engine.ollama import runtime_batch_options
+from diapason.server.liens_verifies import (
+    CONSIGNE_LIENS,
+    CONSIGNE_REPRISE_LIENS,
+    adresses,
+    demande_de_liens,
+    erreur_destination,
+    liens_sans_preuve,
+    page_a_verifier,
+    repli_liens,
+)
 from diapason.server.suite import rappel_pour_la_voix
 from diapason.speech.realtime import actualite_vocale
 from diapason.speech.realtime.base import RealtimeVoiceSession, SessionEvent
+from diapason.speech.realtime.fin_conversation import demande_fin_conversation
+from diapason.speech.realtime.transcription_serie import TranscriptionSerie
 
 logger = logging.getLogger(__name__)
 
 INPUT_RATE = 16_000
 OUTPUT_RATE = 24_000
+
+# 27/09/2026 : un au revoir ne doit pas retenir une séance si Orion tombe
+# en panne. Huit secondes couvrent la phrase courte, même au-delà des 2–3 s
+# mesurées à chaud ; le micro est déjà fermé pendant cette attente.
+DELAI_AU_REVOIR_S = 8.0
+
+# Les appels qui répondent en moins de 400 ms ne méritent pas une phrase
+# d'attente. Les autres s'exécutent pendant sa synthèse, jamais après elle.
+SEUIL_ANNONCE_S = 0.4
+ANNONCES_RECHERCHE = ("Je vérifie en ligne.", "Je regarde ça.", "Je fais la recherche.")
+ANNONCES_LECTURE = ("Je consulte la source.", "Je regarde le document.")
 
 # End-of-turn detection on raw RMS of int16/32768 samples. Ordinary speech
 # sits near 0.01–0.05 on this scale; an untouched microphone well below.
@@ -66,12 +86,11 @@ SEMANTIC_END_S = 0.45
 # que… » n'est PAS fini, même après 800 ms — couper là, c'est répondre à une
 # phrase que la personne est encore en train de construire. On attend plus.
 HESITATION_END_S = 1.15
-# Le verdict « complet » n'est cru que si la transcription couvre la parole
-# jusqu'à ~ce près de sa fin. Un partiel en retard peut dire « Quelle heure
-# est-il » — complet — alors que la personne a ajouté « à » et réfléchit à
-# la suite. L'hésitation, elle, accepte une couverture lâche : se tromper
-# dans ce sens ne coûte que de l'attente.
-ENDPOINT_COVERAGE_S = 0.75
+# 27/09/2026 : tolérer 750 ms de parole non transcrite permettait à un
+# ancien « Bonjour. » de clore le tour pendant une respiration. Le banc
+# perdait alors l'amorce « Bonjour, je suis prêt. » à la reprise suivante.
+# Un raccourci de fin de tour exige désormais TOUTE la parole reçue.
+# Une hésitation peut en revanche allonger l'attente avec un texte partiel.
 
 # After this much silence the utterance is PROBABLY over, so transcription
 # starts speculatively while the remaining silence confirms it. If the user
@@ -84,13 +103,21 @@ SPECULATE_AFTER_S = 0.25
 # relit tout le tampon depuis le début, donc les lancer plus souvent ne rend
 # pas l'affichage plus vif, seulement la machine plus chaude.
 PARTIAL_EVERY_S = 0.7
-# Ignore blips shorter than this — a cough is not a turn.
+# Seuil des calculs PROVISOIRES, pas des mots complets en fin de tour.
 MIN_SPEECH_S = 0.35
+# 27/09/2026 : « oui » (240–260 ms au banc) était jeté avant le STT.
+# On accepte 200 ms à la FIN, comme le filtre d'empreinte, sans lancer de
+# sous-titre ou de spéculation sur ce fragment encore incomplet.
+PAROLE_MIN_TOUR_S = 0.2
 # While the assistant's audio is still playing on the client, the microphone
 # hears the speakers. Interrupting on the ordinary speech threshold would let
 # the assistant cut ITSELF off; requiring a markedly stronger signal means
 # only a real voice over the top does it.
 BARGE_RMS = SPEECH_RMS * 3
+# 26/09/2026 : une seule trame sonore annulait la transcription ou la
+# réponse en cours. Six trames de 20 ms (120 ms) écartent un clic bref,
+# sans attendre la fin d'un mot pour permettre de reprendre la parole.
+BARGE_CONFIRM_S = 0.12
 
 # Utterances that mean "stop talking" and deserve silence, not a reply.
 # With barge-in the playback already stopped the moment the user spoke;
@@ -98,7 +125,7 @@ BARGE_RMS = SPEECH_RMS * 3
 _STOP_PHRASES = re.compile(
     r"^(?:diapason[,\s]*)?"
     r"(?:arr[êe]te(?:[- ]toi)?(?:\s+de\s+parler)?|stop|tais[- ]toi|chut+"
-    r"|silence|[çc]a suffit|c'?est bon)"
+    r"|silence|attends|attendez|[çc]a suffit|c'?est bon)"
     r"(?:[,\s]+(?:s'?il\s+te\s+pla[îi]t|merci))?[\s.!…]*$",
     re.IGNORECASE,
 )
@@ -147,13 +174,18 @@ def classify_endpoint(text: str) -> str:
 
 
 def is_stop_phrase(text: str) -> bool:
-    return bool(_STOP_PHRASES.match((text or "").strip()))
+    return bool(_STOP_PHRASES.match((text or "").strip().replace("’", "'")))
 
 
 # Sentence boundary for incremental speech: synthesise as soon as a sentence
 # is complete instead of waiting for the whole answer — this is what turns
 # "LLM total time" into "LLM time to first sentence" in perceived latency.
 _SENTENCE_END = re.compile(r"([.!?…:;]+[\s»”)]*\s+|\n+)")
+# 27/09/2026 : « Dites à voix haute : » ne donnait que 1,76 s de son,
+# puis 2,82 s de silence avant son exemple. Orion garde la proposition
+# annoncée après deux-points/point-virgule ; le modèle cède le GPU à la
+# même frontière que le lecteur, jamais au milieu de cette proposition.
+_FIN_PHRASE_ORION = re.compile(r"([.!?…]+[\s»”’\"')\]]*\s+|\n+)")
 
 # For the very first audible chunk only, a comma is also a boundary: "Oui,"
 # reaching the speakers half a second before the rest of the sentence is what
@@ -243,6 +275,7 @@ class _SpecTurn:
         ``None`` que le draineur aura relayé.
         """
         q = _AbortableQueue()
+        q.source_reprise = self.source
 
         async def pump() -> None:
             i = 0
@@ -268,7 +301,7 @@ class _SpecTurn:
 
 
 DEFAULT_MODEL = "qwen3.5:9b"
-DEFAULT_VOICE = "ff_siwis"
+DEFAULT_VOICE = "qwen3-b"
 
 # Loaded once per process, not per session: Kokoro takes ~22 s to build its
 # pipeline and Whisper several seconds — a per-session cost would make every
@@ -331,41 +364,56 @@ def french_today(now=None) -> str:
     return f"{day} {now.day} {month} {now.year}"
 
 
-def _prewarm_prefix(model: str, system: str, tools_schema: list) -> None:
-    """Fait lire le préfixe (système + outils) au modèle, en tâche de fond."""
-    import threading
+async def _prewarm_prefix(
+    model: str, system: str, tools_schema: list, historique: Optional[List[dict]] = None
+) -> None:
+    """Préparer le contexte réel avant READY, sans fil détaché non annulable."""
+    import httpx
 
-    def _lire() -> None:
-        try:
-            from diapason.core.local_mode import assert_may_leave
+    from diapason.core.local_mode import assert_may_leave
+    from diapason.engine.scheduling import scheduler_for
 
-            assert_may_leave("the voice prefix prewarm", destination=_ollama_base())
-            dated = (
-                f"{system}\n\nDate actuelle : {french_today()}. "
-                "Pour l'heure exacte, appelle l'outil current_time."
-            )
-            payload: dict[str, Any] = {
-                "model": model,
-                "messages": [{"role": "system", "content": dated}],
-                "stream": False,
-                "think": False,
-                "keep_alive": "30m",
-                "options": {"num_predict": 1},
-            }
-            if tools_schema:
-                payload["tools"] = tools_schema
-            request = urllib.request.Request(
-                f"{_ollama_base()}/api/chat",
-                json.dumps(payload).encode(),
-                {"Content-Type": "application/json"},
-            )
-            with urllib.request.urlopen(request, timeout=120):
-                pass
-            logger.debug("voice prefix prewarmed")
-        except Exception:  # noqa: BLE001 - le confort ne casse rien
-            logger.debug("voice prefix prewarm failed", exc_info=True)
-
-    threading.Thread(target=_lire, daemon=True, name="voice-prewarm").start()
+    assert_may_leave("the voice prefix prewarm", destination=_ollama_base())
+    dated = (
+        f"{system}\n\nDate actuelle : {french_today()}. "
+        "Pour l'heure exacte, appelle l'outil current_time."
+    )
+    payload: dict[str, Any] = {
+        "model": model,
+        "messages": [{"role": "system", "content": dated}] + list(historique or []),
+        "stream": False,
+        "think": False,
+        "keep_alive": "30m",
+        # Même fenêtre que la conversation, sinon la chauffe prépare un
+        # autre contexte (constaté le 27/09/2026).
+        "options": {
+            **runtime_batch_options(model),
+            "num_predict": 1,
+            "num_ctx": _num_ctx(),
+        },
+    }
+    if tools_schema:
+        payload["tools"] = tools_schema
+    debut = time.monotonic()
+    async with (
+        scheduler_for(_ollama_base()).async_slot(model, timeout=120),
+        httpx.AsyncClient(timeout=120.0) as client,
+    ):
+        response = await client.post(f"{_ollama_base()}/api/chat", json=payload)
+        if (
+            response.status_code == 400
+            and tools_schema
+            and "does not support tools" in response.text
+        ):
+            # Même repli que le parcours de réponse pour un modèle sans
+            # outils ; ne pas condamner la séance dès sa préparation.
+            payload.pop("tools", None)
+            response = await client.post(f"{_ollama_base()}/api/chat", json=payload)
+        response.raise_for_status()
+    logger.info(
+        "local voice timing: stage=llm_warm ms=%.0f",
+        (time.monotonic() - debut) * 1000,
+    )
 
 
 def _ollama_base() -> str:
@@ -392,21 +440,14 @@ def local_voice_readiness(timeout_s: float = 1.5) -> tuple[bool, str]:
     """Return whether every local voice runtime component is available.
 
     Keep this check cheap: model construction belongs to ``connect()``, but a
-    missing optional extra or system phonemizer must disable Start instead of
+    missing optional extra must disable Start instead of
     letting the WebSocket claim readiness and fail a few seconds later.
     """
-    required_modules = ("faster_whisper", "kokoro", "soundfile")
+    # 27/09/2026 : la voix classique est retirée de Parler. Son moteur et
+    # son phonémiseur ne doivent plus bloquer la seule voix conservée.
+    required_modules = ("faster_whisper", "soundfile")
     if any(importlib.util.find_spec(name) is None for name in required_modules):
         return False, "missing-dependencies"
-    # The voice-local extra installs espeakng-loader, which supplies a bundled
-    # phonemizer even when launchd's minimal PATH cannot see Homebrew's binary.
-    has_phonemizer = (
-        shutil.which("espeak-ng") is not None
-        or shutil.which("espeak") is not None
-        or importlib.util.find_spec("espeakng_loader") is not None
-    )
-    if not has_phonemizer:
-        return False, "missing-phonemizer"
     if not ollama_reachable(timeout_s=timeout_s):
         return False, "ollama-unavailable"
     return True, "ready"
@@ -458,16 +499,35 @@ def _default_stt() -> Callable[[bytes], str]:
     from diapason.core.config import load_config
     from diapason.speech.faster_whisper import FasterWhisperBackend
 
+    config = load_config()
+    moteur = getattr(config.speech.realtime, "stt_backend", "faster-whisper")
+    if moteur == "mlx-whisper":
+        from diapason.speech.realtime.reconnaissance_mlx import ReconnaissanceMLX
+
+        oreille = _SHARED.get("stt_mlx")
+        if oreille is None:
+            oreille = ReconnaissanceMLX(str(config.speech.language or ""))
+            oreille.preload()
+            _SHARED["stt_mlx"] = oreille
+
+        def transcrire_mlx(pcm: bytes) -> str:
+            return polish_transcript(oreille.transcrire(pcm))
+
+        transcrire_mlx.partiel = lambda pcm: polish_transcript(
+            oreille.transcrire(pcm, provisoire=True)
+        )
+        return transcrire_mlx
+    if moteur != "faster-whisper":
+        raise ValueError("Moteur de reconnaissance vocale inconnu")
     backend = _SHARED.get("stt")
     if backend is None:
-        config = load_config()
         backend = FasterWhisperBackend(
             model_size=_taille_stt(config),
             language=str(getattr(config.speech, "language", "") or ""),
             # Realtime audio must not inherit the dictation hotword list:
             # on pure background noise it reproducibly hallucinated the first
-            # brand in that list, "Google Chrome". Silero VAD plus a greedy,
-            # independent decode is both safer and substantially faster.
+            # brand in that list, "Google Chrome". Silero VAD and an
+            # independent decode reject it without inventing vocabulary.
             use_dictionary_hints=False,
             realtime=True,
         )
@@ -490,27 +550,6 @@ def _default_stt() -> Callable[[bytes], str]:
     return transcribe
 
 
-def _default_tts(voice: str) -> Callable[[str], bytes]:
-    """Kokoro, shared across sessions. Returns PCM16 @ 24 kHz."""
-    pipeline = _SHARED.get("tts")
-    if pipeline is None:
-        from kokoro import KPipeline
-
-        pipeline = KPipeline(lang_code="f")
-        _SHARED["tts"] = pipeline
-
-    def speak(text: str) -> bytes:
-        import numpy as np
-
-        chunks = [audio for _, _, audio in pipeline(text, voice=voice)]
-        if not chunks:
-            return b""
-        samples = np.concatenate(chunks)
-        return (np.clip(samples, -1.0, 1.0) * 32767.0).astype("<i2").tobytes()
-
-    return speak
-
-
 # Le choix « envoyer la trousse ou non » a été extrait dans core/tool_turn.py
 # le 22 août 2026, quand le chat en flux a reçu ses outils et a hérité du même
 # arbitrage. Le raisonnement — liste de REFUS, jamais d'autorisation — y est
@@ -522,6 +561,28 @@ _turn_needs_tools = turn_needs_tools
 
 # Voir le payload de _default_llm : mesuré, pas choisi.
 VOICE_TOOL_TURN_TEMPERATURE = 0.1
+
+# 27/09/2026 : avec A/B, une phrase de 156 caractères attendait 5,20 s
+# de synthèse avant le premier son. Sur trois questions, cette consigne
+# ramène les amorces de 20–24 mots à 11–16, sans couper un mot ni rejouer
+# de faux « je réfléchis ». C'est une préférence de formulation, pas une
+# limite qui tronque les réponses demandées plus longues.
+AMORCE_VOCALE = (
+    " Commence, quand le sens le permet, par une première phrase courte et "
+    "concrète d'environ huit à douze mots qui répond vraiment à la question. "
+    "Puis développe toutes les précisions utiles : ne supprime aucune nuance "
+    "ni aucun élément demandé pour raccourcir cette amorce. "
+    "Évite toute formule d'attente ou annonce de ce que tu vas dire."
+)
+# 27/09/2026 : « réponds dans sa langue » faisait donner en français
+# l'exemple à répéter d'un exercice d'anglais. La langue des explications
+# ne doit pas remplacer celle du contenu que l'utilisateur veut apprendre.
+LANGUE_DES_EXEMPLES = (
+    " Dans un exercice de langue, garde les exemples et les phrases à répéter "
+    "dans la langue apprise, selon le contexte des échanges. Explique-les dans "
+    "la langue de l'utilisateur ; une traduction accompagne l'original mais "
+    "ne le remplace jamais."
+)
 
 # Le filet anti-promesse vit désormais dans core/promesse.py (partagé avec
 # le chat, affiné le 24 août 2026 : les OFFRES — « veux-tu que je
@@ -556,6 +617,20 @@ class _AbortableQueue(asyncio.Queue):
 
     producer: Optional["asyncio.Task[None]"] = None
 
+    def __init__(self):
+        super().__init__()
+        self.reprise = asyncio.Event()
+        self.source_reprise = None
+
+    def reprendre(self) -> None:
+        source = self.source_reprise
+        if source is not None:
+            reprise = getattr(source, "reprendre", None)
+            if reprise is not None:
+                reprise()
+        else:
+            self.reprise.set()
+
     def abort(self) -> None:
         if self.producer is not None and not self.producer.done():
             self.producer.cancel()
@@ -580,6 +655,7 @@ def _default_llm(
     tools_schema: Optional[List[dict]] = None,
     *,
     mesures: Optional[dict] = None,
+    pause_phrases: bool = False,
 ) -> Callable[[List[dict]], "asyncio.Queue[Any]"]:
     """Streamed chat against Ollama; the queue carries tokens and tool calls.
 
@@ -603,11 +679,17 @@ def _default_llm(
         # (-np 1) n'en cache qu'un — c'est l'ALTERNANCE qui coûtait les
         # ~2,4 s de relecture, pas la taille. Un préfixe stable reste chaud.
         needs_tools = bool(tools_schema)
+        budget_fragments = 320
+        pauses = 0
 
-        async def stream_once(with_tools: bool) -> None:
+        async def stream_once(
+            with_tools: bool, reprise: Optional[str] = None
+        ) -> Optional[str]:
+            nonlocal budget_fragments, pauses
             import httpx
 
             from diapason.core.local_mode import assert_may_leave
+            from diapason.engine.scheduling import scheduler_for
 
             assert_may_leave(
                 "the realtime voice transcript", destination=_ollama_base()
@@ -628,7 +710,8 @@ def _default_llm(
                 "stream": True,
                 "think": False,
                 "options": {
-                    "num_predict": 320,
+                    **runtime_batch_options(model),
+                    "num_predict": max(1, budget_fragments),
                     # La même fenêtre que le chat (config, sinon le défaut) :
                     # sans elle, Ollama prenait la sienne, et deux fenêtres
                     # font deux modèles chargés (revue vocale du 21/09).
@@ -659,12 +742,30 @@ def _default_llm(
                 # — the single worst "why is it slow now" in a session.
                 "keep_alive": "30m",
             }
+            if reprise is not None:
+                # Préremplissage assistant de Qwen : le préfixe EST la
+                # réponse déjà produite, pas une nouvelle consigne ni une
+                # demande « continue » qui changerait le contexte.
+                payload["messages"] = payload["messages"] + [
+                    {"role": "assistant", "content": reprise}
+                ]
             if with_tools and tools_schema:
                 payload["tools"] = tools_schema
             calls: List[dict] = []
+            texte_produit = ""
+            dernier_jeton = None
             t0 = time.monotonic()
             premier_jeton: Optional[float] = None
-            async with httpx.AsyncClient(timeout=120.0) as client:
+            ordonnanceur = scheduler_for(_ollama_base())
+            # Même admission que le chat : la voix ne passe plus derrière
+            # une tâche de fond en attente. Un calcul déjà envoyé reste
+            # non préemptible ; son attente est mesurée, pas dissimulée.
+            async with (
+                ordonnanceur.async_slot(model, timeout=120) as creneau,
+                httpx.AsyncClient(timeout=120.0) as client,
+            ):
+                if mesures is not None:
+                    mesures["queue_ms"] = round(creneau.wait_ms)
                 async with client.stream(
                     "POST", f"{_ollama_base()}/api/chat", json=payload
                 ) as response:
@@ -678,24 +779,54 @@ def _default_llm(
                         raise RuntimeError(
                             f"Ollama HTTP {response.status_code}: {detail[:300]}"
                         )
+                    ordonnanceur.remember_model(model)
+                    if mesures is not None:
+                        # Les flux cédés à Orion n'ont pas de chunk done :
+                        # les compter seulement à done les rendait invisibles.
+                        mesures["rounds"] = (mesures.get("rounds") or 0) + 1
                     async for line in response.aiter_lines():
                         if not line.strip():
                             continue
                         data = json.loads(line)
                         message = data.get("message") or {}
+                        calls.extend(message.get("tool_calls") or [])
                         token = message.get("content", "")
                         if token:
+                            texte_produit += token
+                            # Un fragment contient au moins un jeton. Le
+                            # compteur est conservateur (Unicode peut en
+                            # regrouper), pas une fausse mesure du tokenizer.
+                            budget_fragments -= 1
                             if premier_jeton is None:
                                 premier_jeton = time.monotonic()
                                 ttft_ms = (premier_jeton - t0) * 1000
-                                if mesures is not None:
+                                if mesures is not None and reprise is None:
                                     mesures["ttft_ms"] = round(ttft_ms)
                                 logger.info(
                                     "local voice timing: stage=llm ttft_ms=%.0f",
                                     ttft_ms,
                                 )
+                            if (
+                                pause_phrases
+                                and pauses < 8
+                                and budget_fragments > 0
+                                and not calls
+                                and not data.get("done")
+                                and _FIN_PHRASE_ORION.search(texte_produit) is not None
+                            ):
+                                # 27/09/2026 : Orion seul commence en 0,52 s,
+                                # mais concurrence le modèle pendant 2–4 s.
+                                # Fermer le flux AVANT de livrer la frontière
+                                # au lecteur libère le GPU pour cette phrase.
+                                # Huit reprises bornent aussi les sorties
+                                # pathologiques faites de phrases minuscules ;
+                                # la dernière passe finit normalement, sans
+                                # couper le texte au nombre de phrases.
+                                pauses += 1
+                                queue.reprise.clear()
+                                dernier_jeton = token
+                                break
                             queue.put_nowait(token)
-                        calls.extend(message.get("tool_calls") or [])
                         if data.get("done"):
                             # Les métriques du chunk final (nanosecondes) :
                             # prefill est LE témoin du cache de préfixe.
@@ -709,7 +840,6 @@ def _default_llm(
                                     eval_ms=round(eval_ms),
                                     load_ms=round(load_ms),
                                     prompt_tokens=jetons,
-                                    rounds=(mesures.get("rounds") or 0) + 1,
                                 )
                             logger.info(
                                 "local voice timing: stage=llm prefill_ms=%.0f "
@@ -720,23 +850,43 @@ def _default_llm(
                                 jetons,
                             )
                             break
+            if dernier_jeton is not None:
+                if mesures is not None:
+                    mesures["llm_pauses"] = (mesures.get("llm_pauses") or 0) + 1
+                logger.info(
+                    "local voice timing: stage=llm_pause request_ms=%.0f chars=%d",
+                    (time.monotonic() - t0) * 1000,
+                    len(texte_produit),
+                )
+                queue.put_nowait(dernier_jeton)
+                return (reprise or "") + texte_produit
             if calls:
                 queue.put_nowait(("tools", calls))
+            return None
+
+        async def appeler(reprise: Optional[str] = None) -> Optional[str]:
+            try:
+                return await stream_once(with_tools=needs_tools, reprise=reprise)
+            except _RefusOutils:
+                # Some models (gemma3 among them) refuse the tools field
+                # outright — Ollama 400s the whole request. A voice that
+                # cannot act is degraded; one that errors on every single
+                # turn is broken. Retry once without tools and say so.
+                logger.warning(
+                    "%s does not support tools; local voice continues without them",
+                    model,
+                )
+                return await stream_once(with_tools=False, reprise=reprise)
 
         async def produire() -> None:
             try:
-                try:
-                    await stream_once(with_tools=needs_tools)
-                except _RefusOutils:
-                    # Some models (gemma3 among them) refuse the tools field
-                    # outright — Ollama 400s the whole request. A voice that
-                    # cannot act is degraded; one that errors on every single
-                    # turn is broken. Retry once without tools and say so.
-                    logger.warning(
-                        "%s does not support tools; local voice continues without them",
-                        model,
-                    )
-                    await stream_once(with_tools=False)
+                amorce = await appeler()
+                while amorce is not None:
+                    # Ni créneau d'inférence ni requête HTTP conservés
+                    # pendant la voix. L'abandon du tour annule aussi cette
+                    # attente ; la reprise ne peut pas survivre au barge-in.
+                    await queue.reprise.wait()
+                    amorce = await appeler(amorce)
             except asyncio.CancelledError:
                 # L'abandon n'est pas une panne : le finally clôt la file.
                 raise
@@ -779,10 +929,21 @@ def _tool_note(call: dict, reply: dict) -> str:
             payload = {}
         ok = "ok" if payload.get("ok") else "failed"
         outcome = str(payload.get("content") or payload.get("error") or "")
+        if name in {"vie_workspace", "vie_tasks"} and payload.get("metadata"):
+            outcome += " " + json.dumps(payload["metadata"], ensure_ascii=False)
     except (ValueError, TypeError):
         ok = "?"
     detail = f"({arg[:80]})" if arg else ""
-    tail = f": {outcome[:160]}" if outcome else ""
+    # 27/09/2026 : 160 caractères perdaient les URL et identifiants utiles
+    # au tour suivant. 4 000 reprend le plafond d'une observation du chat.
+    limite = (
+        4000
+        if name in {"web_search", "web_read", "vie_workspace", "vie_tasks"}
+        else 160
+    )
+    tail = f": {outcome[:limite]}" if outcome else ""
+    if len(outcome) > limite:
+        tail += " [résultat tronqué]"
     return f"{name}{detail} -> {ok}{tail}"
 
 
@@ -847,6 +1008,8 @@ class LocalVoiceSession(RealtimeVoiceSession):
     # Au niveau de la classe aussi : des bancs d'essai construisent la
     # séance par __new__ sans passer par __init__.
     _du_telephone = False
+    _conversation_seule = False
+    _tts_flux = None
 
     def __init__(
         self,
@@ -864,15 +1027,23 @@ class LocalVoiceSession(RealtimeVoiceSession):
         tts: Optional[Callable[[str], bytes]] = None,
         tool_executor: Optional[Callable[[str, dict], dict]] = None,
         sur_echange: Optional[Callable[[str, str], None]] = None,
+        conversation_seule: bool = False,
+        historique: Optional[list[dict[str, str]]] = None,
     ) -> None:
         self._model = model or DEFAULT_MODEL
-        self._voice = voice or DEFAULT_VOICE
+        from diapason.speech.realtime.voix_expressive import normaliser_voix
+
+        self._voice = normaliser_voix(voice)
         self._instructions = instructions
         self._language = language
         self._stt = stt
+        self._transcription_serie = TranscriptionSerie(
+            self._transcrire_audio, partiel=self._transcrire_partiel
+        )
         self._llm = llm
         self._tts = tts
-        self._enable_tools = bool(enable_tools)
+        self._conversation_seule = conversation_seule
+        self._enable_tools = bool(enable_tools) and not conversation_seule
         self._allowed_tools = list(allowed_tools) if allowed_tools else None
         # La séance née du téléphone RESTE du téléphone (26/09/2026). La
         # marque de la passerelle est lue ICI, dans le contexte de la route,
@@ -882,6 +1053,8 @@ class LocalVoiceSession(RealtimeVoiceSession):
         from diapason.core.origine_telephone import depuis_le_telephone
 
         self._du_telephone = depuis_le_telephone()
+        if conversation_seule and self._du_telephone:
+            raise ValueError("La conversation entre IA est réservée au bureau local.")
         if self._du_telephone:
             from diapason.speech.realtime.tools import outils_vocaux_du_telephone
 
@@ -892,7 +1065,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
         from diapason.speech.realtime.tools import VoiceToolBudget
 
         self._budget = VoiceToolBudget(max_tool_steps)
-        self._tool_executor = tool_executor
+        self._tool_executor = None if conversation_seule else tool_executor
         self._queue: asyncio.Queue[Optional[SessionEvent]] = asyncio.Queue()
         self._buffer = bytearray()
         self._preroll = bytearray()
@@ -941,6 +1114,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
         # rôle est que l'écran suive la voix.
         self._partial: Optional[asyncio.Task[str]] = None
         self._partial_mark = 0
+        self._partial_text_mark = 0
         self._partial_text = ""
         # Longueur du tampon à la dernière trame PARLÉE : la couverture d'un
         # partiel se juge contre la fin de la parole, pas celle du tampon,
@@ -952,8 +1126,19 @@ class LocalVoiceSession(RealtimeVoiceSession):
         # clock is what lets speech interrupt a playback with no task left to
         # cancel. That gap was exactly the reported "il ne s'arrête pas".
         self._speaking_until = 0.0
-        self._history: List[dict] = []
+        self._barge_samples = 0
+        from diapason.speech.realtime.historique_chat import lire_historique_chat
+
+        self._history: List[dict] = lire_historique_chat(historique)
+        # 27/09/2026 : importer 16 messages saturait immédiatement la fenêtre
+        # glissante. Chaque tour en retirait le début, et relisait 2 000 à
+        # 3 000 jetons : 8–10 s avant le premier mot du modèle dans le chat.
+        # Le contexte écrit reste donc fixe pendant la séance ; les échanges
+        # vocaux conservent séparément leur borne de 16 messages récents.
+        # Au plus 32 messages, sans retirer un seul des 16 messages importés.
+        self._taille_contexte_chat = len(self._history)
         self._closed = False
+        self._fin_demandee = False
 
     # -- lifecycle -----------------------------------------------------------
 
@@ -974,38 +1159,31 @@ class LocalVoiceSession(RealtimeVoiceSession):
         # Ré-engager à l'ouverture : qui clique « Démarrer » s'adresse à nous.
         self._engagee_jusqua = time.monotonic() + ADDRESS_WINDOW_S
         self._warm_task = asyncio.get_running_loop().create_task(self._warm())
-        if await self._warm_task:
-            await self._queue.put(SessionEvent(kind="ready"))
+        if await self._warm_task and not self._closed:
+            # 26/09/2026 : le chargement des modèles consommait déjà la
+            # fenêtre d'adresse ; « prêt » doit ouvrir une fenêtre entière.
+            self._engagee_jusqua = time.monotonic() + ADDRESS_WINDOW_S
+            await self._queue.put(
+                SessionEvent(
+                    kind="ready",
+                    detail="conversationOnly" if self._conversation_seule else "",
+                )
+            )
 
     async def _warm(self) -> bool:
         async with _SHARED_LOCK:
             try:
                 if self._stt is None:
                     self._stt = await asyncio.to_thread(_default_stt)
+                from diapason.speech.realtime.voix_expressive import (
+                    VoixExpressive,
+                )
+
                 if self._tts is None:
-                    self._tts = await asyncio.to_thread(_default_tts, self._voice)
-                    if not _SHARED.get("tts_warmed"):
-                        # Kokoro loads the selected voice weights lazily on
-                        # its first synthesis. Pay that one-off cost before
-                        # the ready event, while the UI already says it is
-                        # preparing, instead of after the user's first words.
-                        await asyncio.to_thread(self._tts, "Prêt.")
-                        _SHARED["tts_warmed"] = True
-                    if not _SHARED.get("acks"):
-                        # Les accusés OPTIMISTES, payés une fois au chauffage :
-                        # sur « monte le son », la voix répond en ~1 s au lieu
-                        # de 3-5 — la 2e passe LLM se déroule pendant que
-                        # l'accusé joue. Un échec = pas d'accusés, jamais une
-                        # session en panne.
-                        accuses: dict[str, bytes] = {}
-                        for phrase in ("Ça marche.", "Je regarde."):
-                            try:
-                                pcm = await asyncio.to_thread(self._tts, phrase)
-                                if pcm:
-                                    accuses[phrase] = pcm
-                            except Exception:  # noqa: BLE001
-                                logger.debug("ack prerender failed", exc_info=True)
-                        _SHARED["acks"] = accuses
+                    self._tts_flux = VoixExpressive(
+                        self._voice, conserver_au_repos=True
+                    )
+                    await self._tts_flux.preparer()
                 if self._llm is None:
                     schema: List[dict] = []
                     if self._enable_tools:
@@ -1018,20 +1196,24 @@ class LocalVoiceSession(RealtimeVoiceSession):
                         schema = await asyncio.to_thread(
                             openai_tools_schema, self._allowed_tools
                         )
+                    # 27/09/2026 : le premier tour standard attendait
+                    # encore 37 s APRÈS READY, derrière la chauffe détachée.
+                    # La préparation reste visible jusqu'à sa vraie fin ;
+                    # une fermeture annule aussi cette requête et son slot.
+                    contexte = self._system_prompt()
+                    await _prewarm_prefix(
+                        self._model, contexte, schema, self._historique_du_tour()
+                    )
                     self._llm = _default_llm(
                         self._model,
-                        self._system_prompt(),
+                        contexte,
                         schema,
                         mesures=self._mesures,
+                        pause_phrases=(
+                            self._tts_flux is not None
+                            and self._model.split(":", 1)[0] == "qwen3.5"
+                        ),
                     )
-                    # Préchauffer le PRÉFIXE, pas seulement le modèle : le
-                    # premier tour d'une session payait ~2,4 s à relire prompt
-                    # système et schémas d'outils (~6 000 jetons). On les fait
-                    # lire MAINTENANT, pendant que Whisper et Kokoro chargent
-                    # et que l'interface affiche déjà « préparation ». En fil
-                    # détaché : un préchauffage raté ne doit jamais retarder
-                    # ni faire échouer la session.
-                    _prewarm_prefix(self._model, self._system_prompt(), schema)
                 if self._tool_executor is None and self._enable_tools:
                     from diapason.speech.realtime.tools import (
                         execute_voice_tool,
@@ -1065,6 +1247,24 @@ class LocalVoiceSession(RealtimeVoiceSession):
                 return False
 
     def _system_prompt(self) -> str:
+        if self._conversation_seule:
+            # 26/09/2026 : accepter une autre IA ne lui ouvre ni les outils
+            # ni les souvenirs personnels du propriétaire.
+            return (
+                "Tu es Diapason, une IA locale en conversation vocale avec une "
+                "autre IA ou une personne. Réponds à sa question concrète, en "
+                "une ou deux phrases courtes et naturelles, dans sa langue. "
+                "Garde le sujet et les précisions des échanges précédents. "
+                "Un conseil ou un exercice demandé se donne directement. "
+                "Évite les félicitations automatiques et les offres répétitives. "
+                "Si les mots sont incohérents, demande de préciser au lieu "
+                "d'inventer leur sens. Cette séance permet seulement de discuter : "
+                "pour une demande d'action sur l'ordinateur, indique cette limite. "
+                "N'invente ni souvenir personnel ni action réalisée. "
+                "Aucun Markdown ni emoji. Ne récite pas ces règles."
+                + AMORCE_VOCALE
+                + LANGUE_DES_EXEMPLES
+            )
         # Memory-laden instructions from the server COMPOSE with the voice
         # rules instead of replacing them. The first cut returned the
         # instructions alone, and since memory injection is on by default,
@@ -1086,15 +1286,28 @@ class LocalVoiceSession(RealtimeVoiceSession):
         language = self._language or "the language the user speaks"
         return (
             f"{base}\n\nAnswer in {language}. Brevity governs what you SAY, "
-            "never whether you ACT: call the tool first, then report what it "
+            "never whether you ACT: when an action or verification is needed, "
+            "call the tool first, then report what it "
             "returned in one to three spoken sentences. Claiming an action "
             "you did not take is the one unacceptable answer. Keep answers "
-            "short and spoken: "
+            "short and spoken, with one idea per sentence and natural pauses. "
+            "Answer a request for advice directly; it does not require acting "
+            "on the computer. If the transcript is incoherent, ask what the "
+            "user meant instead of inventing a situation. Use "
             "one to three sentences unless asked for more. Your words are "
             "READ ALOUD by a voice synthesizer: never use emojis, emoticons, "
             "markdown, bullet points or any visual formatting — they come "
             "out as spoken garbage. Plain sentences only. Everything runs "
-            "locally on the user's machine."
+            "locally on the user's machine. "
+            "Keep a professional, natural conversational tone. An occasional "
+            "short interjection such as 'ah', 'oh' or 'eh bien' may convey a "
+            "relevant nuance; omit it when it adds nothing. Onomatopoeia such "
+            "as 'toc-toc' or 'boum' belongs only in an explanation or story "
+            "where it illustrates an actual sound. Do not add them to every "
+            "turn, repeat the same opening, pad a wait, or alter a quotation. "
+            "No staged laughs, sighs, breathing, performance tags or claims "
+            "of human feelings. Never trade clarity or factual precision "
+            "for expressiveness." + AMORCE_VOCALE + LANGUE_DES_EXEMPLES
         )
 
     # -- audio ingestion and turn detection ----------------------------------
@@ -1122,6 +1335,11 @@ class LocalVoiceSession(RealtimeVoiceSession):
             texte = (tache.result() or "").strip()
         except BaseException:  # noqa: BLE001 - annulation comprise
             texte = ""
+        if texte:
+            # 27/09/2026 : _partial_mark avance au LANCEMENT du prochain
+            # calcul. Lui attribuer l'ancien texte faisait croire que toute
+            # la phrase était déjà comprise et pouvait couper la suite.
+            self._partial_text_mark = self._partial_mark
         if texte and texte != self._partial_text:
             self._partial_text = texte
             await self._queue.put(
@@ -1170,8 +1388,16 @@ class LocalVoiceSession(RealtimeVoiceSession):
         self._partial_mark = len(self._buffer)
         instantane = bytes(self._buffer)
         self._partial = asyncio.get_running_loop().create_task(
-            asyncio.to_thread(self._stt, instantane)
+            self._transcription_serie(instantane, etape="partial")
         )
+
+    def _transcrire_audio(self, audio: bytes) -> str:
+        assert self._stt is not None
+        return self._stt(audio)
+
+    def _transcrire_partiel(self, audio: bytes) -> str:
+        assert self._stt is not None
+        return getattr(self._stt, "partiel", self._stt)(audio)
 
     def _drop_partial(self) -> None:
         """Oublier la transcription en cours et le texte affiché.
@@ -1183,6 +1409,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
             self._partial.cancel()
             self._partial = None
         self._partial_mark = 0
+        self._partial_text_mark = 0
         self._partial_text = ""
         self._speech_end_mark = 0
 
@@ -1233,6 +1460,15 @@ class LocalVoiceSession(RealtimeVoiceSession):
             # qu'elle ne dorme pas sur un événement que plus personne ne met.
             spec.grew.set()
 
+    def _historique_du_tour(self) -> List[dict]:
+        initial = self._taille_contexte_chat
+        return self._history[:initial] + self._history[initial:][-15:]
+
+    def _borner_historique(self) -> None:
+        debut = self._taille_contexte_chat
+        if len(self._history) > debut + 16:
+            del self._history[debut:-16]
+
     def _turn_messages(self, text: str) -> List[dict]:
         """L'assemblage du tour — LE MÊME pour la spéculation et l'adoption.
 
@@ -1240,7 +1476,9 @@ class LocalVoiceSession(RealtimeVoiceSession):
         spéculation bâtie sur d'autres messages répondrait à un autre
         contexte que celui que l'adoption croit servir.
         """
-        hist = list(self._history)[-15:]
+        hist = self._historique_du_tour()
+        if self._conversation_seule:
+            return hist + [{"role": "user", "content": text}]
         note = self._anti_loop_note(hist)
         extra = [note] if note else []
         # 26/09/2026 : les quatre perceptions qui suivent disent ce que le MAC
@@ -1411,7 +1649,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
         pas dangereux — la file ne serait jamais drainée — seulement du
         calcul chauffé pour rien.
         """
-        if is_stop_phrase(text):
+        if is_stop_phrase(text) or demande_fin_conversation(text):
             return True
         if not self._enable_tools:
             return False
@@ -1424,13 +1662,13 @@ class LocalVoiceSession(RealtimeVoiceSession):
 
     def _endpoint_hint(self) -> tuple[Optional[str], bool]:
         """Le meilleur texte disponible pour juger la fin de tour, et si sa
-        couverture de la parole est assez serrée pour un verdict « complet ».
+        couverture de la parole est intégrale pour un verdict « complet ».
 
         La transcription spéculative couvre TOUT le tampon : autoritaire.
         Le partiel, lui, peut être en retard d'un cycle — dire « Quelle
         heure est-il », complet, quand la personne a ajouté « à » et
-        réfléchit. D'où la marge de couverture, exigée seulement pour
-        raccourcir.
+        réfléchit. Il faut donc couvrir la dernière trame parlée pour
+        raccourcir, sans tolérance qui pourrait avaler le dernier mot.
         """
         spec = self._speculative
         if spec is not None and spec[1].done():
@@ -1441,8 +1679,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
             if texte:
                 return texte, True
         if self._partial_text:
-            marge = int(ENDPOINT_COVERAGE_S * INPUT_RATE) * 2
-            couvre = self._partial_mark >= self._speech_end_mark - marge
+            couvre = self._partial_text_mark >= self._speech_end_mark
             return self._partial_text, couvre
         return None, False
 
@@ -1467,18 +1704,41 @@ class LocalVoiceSession(RealtimeVoiceSession):
         return END_OF_TURN_S
 
     async def send_audio(self, pcm16: bytes) -> None:
-        if self._closed or not pcm16:
+        if self._closed or self._fin_demandee or not pcm16:
             return
         import time as _time
 
         rms = _rms(pcm16)
         playback_live = _time.monotonic() < self._speaking_until
+        reponse_en_cours = (
+            self._respond_task is not None and not self._respond_task.done()
+        )
+        if self._conversation_seule and (
+            reponse_en_cours or _time.monotonic() < self._speaking_until + 0.3
+        ):
+            # Sans anti-écho, sa propre voix reviendrait comme question.
+            # 26/09/2026, essai réel : le premier morceau était joué, mais
+            # le suivant encore en synthèse. Ce trou rouvrait l'écoute et
+            # un écho tuait la réponse. Le TOUR entier garde donc la parole.
+            # 300 ms après lecture couvrent la réverbération ; le client
+            # applique aussi cette garde sur la fin réellement jouée.
+            self._preroll.clear()
+            return
         # Over live playback the microphone hears the speakers, so only a
         # markedly stronger signal counts as the user. Below that, the frame
         # is neither speech nor silence: it is the assistant's own echo, and
         # buffering it would transcribe the assistant back at itself.
         threshold = BARGE_RMS if playback_live else SPEECH_RMS
         speaking_now = rms >= threshold
+        if not speaking_now:
+            self._barge_samples = 0
+        elif playback_live or reponse_en_cours:
+            self._barge_samples += len(pcm16) // 2
+            if self._barge_samples < int(BARGE_CONFIRM_S * INPUT_RATE):
+                self._feed_preroll(pcm16)
+                return
+        else:
+            self._barge_samples = 0
         if playback_live and not speaking_now:
             # Echo of our own playback — but a user starting to talk over
             # the assistant ALSO lands here until they cross the barge
@@ -1501,10 +1761,14 @@ class LocalVoiceSession(RealtimeVoiceSession):
                 self._speaking_until = 0.0
                 interrupted = True
             if interrupted:
+                logger.info("local voice turn interrupted (sustained speech)")
                 await self._queue.put(SessionEvent(kind="interrupted"))
+            self._barge_samples = 0
             # Any speculative transcription was of an utterance that turned
             # out not to be finished; it no longer describes the buffer.
-            self._speculative = None
+            if self._speculative is not None:
+                self._speculative[1].cancel()
+                self._speculative = None
             if self._spec_llm is not None:
                 # La génération en vol répond à une phrase qui n'était pas
                 # finie. On l'abandonne — même coût qu'un barge-in : le flux
@@ -1549,7 +1813,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
             self._speculative = (
                 len(self._buffer),
                 asyncio.get_running_loop().create_task(
-                    asyncio.to_thread(self._stt, snapshot)
+                    self._transcription_serie(snapshot, etape="speculative")
                 ),
             )
 
@@ -1588,7 +1852,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
 
         if self._silence_samples >= int(self._end_of_turn_s() * INPUT_RATE):
             utterance = bytes(self._buffer)
-            had_speech = self._speech_samples >= int(MIN_SPEECH_S * INPUT_RATE)
+            had_speech = self._speech_samples >= int(PAROLE_MIN_TOUR_S * INPUT_RATE)
             # Hand over the speculative result only if it covers everything
             # heard: trailing silence grows the buffer, so equality is on the
             # snapshot boundary having remained the end of speech.
@@ -1609,7 +1873,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
 
     async def send_text(self, text: str) -> None:
         text = (text or "").strip()
-        if not text or self._closed:
+        if not text or self._closed or self._fin_demandee:
             return
         if self._respond_task is not None and not self._respond_task.done():
             self._respond_task.cancel()
@@ -1618,6 +1882,8 @@ class LocalVoiceSession(RealtimeVoiceSession):
         )
 
     async def interrupt(self) -> None:
+        if self._fin_demandee:
+            return
         if self._respond_task is not None and not self._respond_task.done():
             self._respond_task.cancel()
             await self._queue.put(SessionEvent(kind="interrupted"))
@@ -1632,6 +1898,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
     ) -> None:
         turn_started = time.monotonic()
         try:
+            await self._queue.put(SessionEvent(kind="status", detail="transcribing"))
             await self._wait_warm()
             assert self._stt is not None
             if early_stt is not None:
@@ -1640,7 +1907,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
                 # dead time either way.
                 text = await early_stt
             else:
-                text = await asyncio.to_thread(self._stt, utterance)
+                text = await self._transcription_serie(utterance)
             stt_ms = (time.monotonic() - turn_started) * 1000
             logger.info(
                 "local voice timing: stage=stt ms=%.0f audio_ms=%.0f chars=%d",
@@ -1650,6 +1917,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
             )
             if not text:
                 logger.info("local voice rejected non-speech turn")
+                await self._queue.put(SessionEvent(kind="status", detail="noSpeech"))
                 return
             await self._dispatch_text(
                 text,
@@ -1670,6 +1938,8 @@ class LocalVoiceSession(RealtimeVoiceSession):
                 spec_llm.abort()
 
     def _voice_lock_actif(self) -> bool:
+        if self._conversation_seule:
+            return False
         if self._voice_lock is None:
             try:
                 from diapason.core.config import load_config
@@ -1707,6 +1977,8 @@ class LocalVoiceSession(RealtimeVoiceSession):
         une mémoire qui rate le mode principal d'usage. record_response_trace
         est best-effort : jamais une exception dans le chemin de la parole.
         """
+        if self._conversation_seule:
+            return
         if question.strip() and reponse.strip() and self._sur_echange is not None:
             try:
                 self._sur_echange(question.strip(), reponse.strip())
@@ -1743,6 +2015,8 @@ class LocalVoiceSession(RealtimeVoiceSession):
         spec_llm: Optional[_SpecTurn] = None,
         utterance: Optional[bytes] = None,
     ) -> None:
+        if self._closed or self._fin_demandee:
+            return
         nomme = mentions_assistant_name(text)
         engagee = time.monotonic() < self._engagee_jusqua
         if not nomme and not engagee:
@@ -1751,45 +2025,43 @@ class LocalVoiceSession(RealtimeVoiceSession):
             # film serait aussi impoli que d'y répondre. Une trace sobre au
             # journal, pour pouvoir diagnostiquer sans écouter personne.
             logger.info("voice turn ignored (not addressed): %d chars", len(text))
+            await self._queue.put(SessionEvent(kind="status", detail="waitingForName"))
             return
-        # L'EMPREINTE VOCALE tranche après le nom : la garde par le nom
-        # filtre le film et le bruit, elle ne filtre pas un tiers qui DIT
-        # « Diapason ». Demandé le 23 août 2026 : ne répondre qu'à la voix du
-        # propriétaire. Tant que le profil n'est pas nourri (cinq tours
-        # adressés), chaque tour adressé l'enrôle en silence ; ensuite le
-        # verrou s'arme. Le doute profite au propriétaire — un faux rejet
-        # rendrait l'assistant sourd à son maître.
+        # 27/09/2026 : les tours brefs étaient soit refusés comme étrangers,
+        # soit acceptés sans empreinte. Même un mot court est comparé ; le
+        # doute n'ouvre ni le contexte personnel ni les commandes.
         if utterance is not None and self._voice_lock_actif():
+            await self._queue.put(SessionEvent(kind="status", detail="checkingVoice"))
             from diapason.speech.speaker_id import get_verifier
 
-            verifier = get_verifier()
-            if verifier.arme:
-                score, proprietaire = await asyncio.to_thread(
-                    verifier.verify, utterance
-                )
-                if not proprietaire:
-                    logger.info(
-                        "voice turn ignored (unknown voice, score=%.2f): %d chars",
-                        score,
-                        len(text),
-                    )
-                    return
-            else:
-                await asyncio.to_thread(verifier.enroll, utterance)
+            verdict = await asyncio.to_thread(lambda: get_verifier().evaluer(utterance))
+            if not verdict.reconnu:
+                etat = {
+                    "insufficientAudio": "voiceNeedsMoreSpeech",
+                    "profileMissing": "voiceProfileRequired",
+                    "unavailable": "voiceCheckUnavailable",
+                }.get(verdict.etat, "voiceNotRecognized")
                 logger.info(
-                    "voice enrollment: %d/%d samples",
-                    verifier.echantillons,
-                    5,
+                    "voice turn ignored (%s): %d chars", verdict.etat, len(text)
                 )
+                await self._queue.put(SessionEvent(kind="status", detail=etat))
+                return
         # Chaque tour adressé prolonge la conversation ; dire le nom rouvre
         # une conversation éteinte.
         self._engagee_jusqua = time.monotonic() + ADDRESS_WINDOW_S
+        # La formule est jugée AVANT de retirer le nom, après les contrôles
+        # d'adresse et d'identité. Une citation ne devient pas une commande.
+        if demande_fin_conversation(text):
+            if spec_llm is not None:
+                spec_llm.abort()
+            await self._terminer_vocalement(text)
+            return
         # Le cliché du bureau se rafraîchit EN PARALLÈLE du tour (~100 ms
         # d'osascript) : le tour ne lit que le cache, jamais l'osascript.
         # La référence est gardée, sinon la tâche part au ramasse-miettes.
         # Pas pour le téléphone (26/09/2026) : le cliché nomme l'app au
         # premier plan du Mac, que le tour du téléphone ne lit pas.
-        if not self._du_telephone:
+        if not self._du_telephone and not self._conversation_seule:
             try:
                 from diapason.desktop.etat_bureau import etat_du_bureau
 
@@ -1812,15 +2084,52 @@ class LocalVoiceSession(RealtimeVoiceSession):
             # to stop. La spéculation en vol est tuée, pas seulement ignorée.
             if spec_llm is not None:
                 spec_llm.abort()
+            await self._queue.put(SessionEvent(kind="status", detail="listening"))
             return
+        await self._queue.put(SessionEvent(kind="status", detail="responding"))
         if await self._try_fast_voice_action(text, turn_started=turn_started):
             # Une action directe n'a pas besoin de la génération spéculative.
             # Avant, « la file abandonnée court[ait] jusqu'à son plafond » —
             # c'était le zombie qui bloquait le créneau -np 1 du tour suivant.
             if spec_llm is not None:
                 spec_llm.abort()
+            await self._queue.put(SessionEvent(kind="status", detail="listening"))
             return
         await self._respond_to_text(text, already_queued=True, spec_llm=spec_llm)
+
+    async def _terminer_vocalement(self, texte: str) -> None:
+        self._fin_demandee = True
+        self._drop_partial()
+        if self._spec_llm is not None:
+            self._spec_llm.abort()
+            self._spec_llm = None
+        self._buffer.clear()
+        self._preroll.clear()
+        await self._queue.put(SessionEvent(kind="closing", detail="farewell"))
+        await self._queue.put(
+            SessionEvent(kind="transcript", role="user", text=texte, final=True)
+        )
+        try:
+            async with asyncio.timeout(DELAI_AU_REVOIR_S):
+                await self._wait_warm()
+                await self._speak_sentence("À bientôt.", [])
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("voice farewell unavailable: %s", type(exc).__name__)
+        except asyncio.CancelledError:
+            # X reste immédiat : aucun nouveau son ni message après l'arrêt.
+            raise
+        await self._queue.put(
+            SessionEvent(
+                kind="transcript",
+                role="assistant",
+                text="À bientôt.",
+                final=True,
+                replace=True,
+            )
+        )
+        await self._queue.put(SessionEvent(kind="closed", detail="farewell"))
+        # Le pont appelle close() et libère les ressources : ne pas appeler
+        # close depuis le tour courant, qui s'annulerait lui-même.
 
     async def _try_fast_voice_action(self, text: str, *, turn_started: float) -> bool:
         """Execute an explicit open/search command without two LLM rounds.
@@ -1847,6 +2156,15 @@ class LocalVoiceSession(RealtimeVoiceSession):
         if not is_explicit_voice_command(text):
             return False
         action = parse_voice_command(text)
+        # 27/09/2026 : demander un lien ou une synthèse ouvrait une page de
+        # recherche sans en lire les résultats. Le modèle doit rechercher.
+        if action.kind == "search" and (
+            demande_de_liens(text)
+            or re.search(
+                r"\b(?:explique|compare|resume|résume|propose|donne)\b", text, re.I
+            )
+        ):
+            return False
         # L'ENCHAÎNEMENT, mains libres : « ouvre l'App Store » puis
         # « recherche-moi des jeux » — sans redire où. Une recherche nue qui
         # suit une ouverture s'applique à ce qui vient d'être ouvert, pas à
@@ -1866,8 +2184,23 @@ class LocalVoiceSession(RealtimeVoiceSession):
         # ``open_anything`` is intentionally left to the regular tool path:
         # its target may be an app, file, folder or web page and a failed
         # deterministic guess must not swallow the model's richer resolver.
-        if action.kind not in {"focus_app", "open_uri", "search", "app_search"}:
+        if action.kind not in {
+            "focus_app",
+            "open_uri",
+            "search",
+            "app_search",
+            "app_page",
+            "app_task_count",
+        }:
             return False
+        outil_interne = {"app_page": "diapason_app", "app_task_count": "vie_tasks"}.get(
+            action.kind
+        )
+        if outil_interne:
+            from diapason.speech.realtime.tools import list_voice_tool_ids
+
+            if outil_interne not in list_voice_tool_ids(self._allowed_tools):
+                return False
 
         action_started = time.monotonic()
         result = await asyncio.to_thread(execute_voice_action, action)
@@ -1896,7 +2229,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
         await self._queue.put(
             SessionEvent(
                 kind="tool",
-                tool_name="open_anything",
+                tool_name=outil_interne or "open_anything",
                 tool_ok=success,
                 detail="" if success else str(result.get("detail") or "")[:200],
             )
@@ -1915,11 +2248,11 @@ class LocalVoiceSession(RealtimeVoiceSession):
         # devant », « lancée »), sa phrase dit la vérité — elle prime sur
         # le verbe générique (demandé le 23 août 2026 : la parole suit la
         # réalité, jamais l'inverse).
-        if success and result.get("etat") and result.get("detail"):
+        if (outil_interne or (success and result.get("etat"))) and result.get("detail"):
             response = str(result["detail"])
         await self._speak_sentence(response, spoken)
         self._history.append({"role": "assistant", "content": response})
-        del self._history[:-16]
+        self._borner_historique()
         self._journaliser_echange(
             text, response, duree_s=time.monotonic() - action_started
         )
@@ -1961,7 +2294,9 @@ class LocalVoiceSession(RealtimeVoiceSession):
                 spec_llm = None
                 logger.info("local voice timing: stage=spec_llm outcome=mismatch")
             await self._wait_warm()
-            assert self._llm is not None and self._tts is not None
+            assert self._llm is not None and (
+                self._tts is not None or self._tts_flux is not None
+            )
             if not already_queued:
                 await self._queue.put(
                     SessionEvent(kind="transcript", role="user", text=text, final=True)
@@ -1980,11 +2315,13 @@ class LocalVoiceSession(RealtimeVoiceSession):
             # lieu de laisser passer « Justin Trudeau ».
             tour_actualite = self._tour_actualite(text)
             messages = self._turn_messages(text)
+            controler_liens = demande_de_liens(text)
+            reprise_liens = False
+            if controler_liens:
+                messages.append({"role": "system", "content": CONSIGNE_LIENS})
             index_note: Optional[int] = None
             self._history.append({"role": "user", "content": text})
-            # A cap on history keeps a long session from slowly pushing the
-            # first-token latency past conversational.
-            del self._history[:-16]
+            self._borner_historique()
             spoken: List[str] = []
             debut_passe = 0
             tool_notes: List[str] = []
@@ -2020,8 +2357,62 @@ class LocalVoiceSession(RealtimeVoiceSession):
                     if item.startswith("\x00ERROR\x00"):
                         raise RuntimeError(item.split("\x00", 2)[2])
                     pending += item
+                    avant_lecture = pending
+                    if not controler_liens:
+                        pending = await self._speak_complete_sentences(pending, spoken)
+                    else:
+                        # Le producteur peut céder le GPU avant le contrôle.
+                        reprendre = getattr(tokens, "reprendre", None)
+                        if reprendre is not None:
+                            reprendre()
+                    if pending != avant_lecture:
+                        reprendre = getattr(tokens, "reprendre", None)
+                        if reprendre is not None:
+                            reprendre()
+                if controler_liens and not tool_calls:
+                    connus = getattr(self, "_liens_recus", [])
+                    if liens_sans_preuve(pending, connus):
+                        from diapason.speech.realtime.tools import list_voice_tool_ids
+
+                        candidate = page_a_verifier(pending, text, connus)
+                        if (
+                            candidate
+                            and not reprise_liens
+                            and self._enable_tools
+                            and self._budget.allow()
+                            and "web_read" in list_voice_tool_ids(self._allowed_tools)
+                        ):
+                            reprise_liens = True
+                            tool_calls = [
+                                {
+                                    "function": {
+                                        "name": "web_read",
+                                        "arguments": {"url": candidate},
+                                    }
+                                }
+                            ]
+                            messages.append(
+                                {"role": "system", "content": CONSIGNE_REPRISE_LIENS}
+                            )
+                        if (
+                            not tool_calls
+                            and not reprise_liens
+                            and self._enable_tools
+                            and self._budget.allow()
+                        ):
+                            reprise_liens = True
+                            messages.append(
+                                {
+                                    "role": "system",
+                                    "content": CONSIGNE_REPRISE_LIENS,
+                                }
+                            )
+                            continue
+                        if not tool_calls:
+                            pending = repli_liens(connus, text)
+                if controler_liens and not tool_calls:
                     pending = await self._speak_complete_sentences(pending, spoken)
-                if pending.strip():
+                if pending.strip() and (not controler_liens or not tool_calls):
                     await self._speak_sentence(pending.strip(), spoken)
                 if (
                     tour_actualite is not None
@@ -2136,19 +2527,11 @@ class LocalVoiceSession(RealtimeVoiceSession):
                     # — la deuxième passe LLM (1-2,5 s, le plus gros silence
                     # du tour) se déroule pendant qu'il joue.
                     await self._emit_optimistic_ack(tool_calls, spoken)
-                if tour_actualite is not None and not spoken:
-                    noms_appeles = {
-                        (c.get("function") or {}).get("name", "") for c in tool_calls
-                    }
-                    if "web_search" in noms_appeles:
-                        # Une recherche et une lecture font une à trois
-                        # secondes de silence que rien ne signalait (21/09).
-                        await self._speak_sentence(
-                            actualite_vocale.ACCUSE_RECHERCHE, spoken
-                        )
                 for call in tool_calls:
                     debut_outil = time.monotonic()
-                    reply = await self._run_tool(call, tour=tour_actualite)
+                    reply = await self._run_tool(
+                        call, tour=tour_actualite, spoken=spoken
+                    )
                     logger.info(
                         "local voice timing: stage=tool_exec tool=%s ms=%.0f",
                         (call.get("function") or {}).get("name", ""),
@@ -2203,7 +2586,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
                 self._history.append({"role": "assistant", "content": answer})
                 # Cap again here: trimming only before the user turn leaves
                 # the list one entry over after this append, and it drifts.
-                del self._history[:-16]
+                self._borner_historique()
                 await self._queue.put(
                     SessionEvent(
                         kind="transcript",
@@ -2223,6 +2606,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
                 len(answer),
                 self._budget.used,
             )
+            await self._queue.put(SessionEvent(kind="status", detail="listening"))
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001
@@ -2273,7 +2657,11 @@ class LocalVoiceSession(RealtimeVoiceSession):
         return args
 
     async def _run_tool(
-        self, call: dict, tour: Optional["actualite_vocale.TourVocal"] = None
+        self,
+        call: dict,
+        tour: Optional["actualite_vocale.TourVocal"] = None,
+        *,
+        spoken: Optional[List[str]] = None,
     ) -> dict:
         """Execute one tool call and shape the result for the transcript.
 
@@ -2288,6 +2676,12 @@ class LocalVoiceSession(RealtimeVoiceSession):
         """
         function = call.get("function") or {}
         name = str(function.get("name") or "")
+        if self._conversation_seule:
+            return {
+                "role": "tool",
+                "tool_name": name,
+                "content": json.dumps({"ok": False, "error": "Conversation only"}),
+            }
         raw_args = function.get("arguments") or {}
         args = raw_args if isinstance(raw_args, dict) else {}
         if isinstance(raw_args, str):
@@ -2312,7 +2706,18 @@ class LocalVoiceSession(RealtimeVoiceSession):
             "voice tool %s args=%s", name, json.dumps(args, ensure_ascii=False)[:200]
         )
 
-        if not self._budget.allow():
+        demande = next(
+            (
+                m.get("content", "")
+                for m in reversed(self._history)
+                if m.get("role") == "user"
+            ),
+            "",
+        )
+        destination = erreur_destination(name, demande)
+        if destination:
+            result = {"ok": False, "error": destination}
+        elif not self._budget.allow():
             result = {
                 "ok": False,
                 "error": f"Voice tool budget exceeded ({self._budget.max_steps})",
@@ -2321,7 +2726,21 @@ class LocalVoiceSession(RealtimeVoiceSession):
             result = {"ok": False, "error": "tools unavailable"}
         else:
             self._budget.consume()
-            result = await asyncio.to_thread(self._tool_executor, name, args)
+            result = await self._executer_avec_annonce(name, args, spoken)
+
+        if result.get("ok") and name in {"web_search", "web_read"}:
+            connus = list(getattr(self, "_liens_recus", []))
+            meta = result.get("metadata") or {}
+            connus.extend(
+                str(source["url"])
+                for source in meta.get("sources", [])
+                if isinstance(source, dict) and source.get("url")
+            )
+            if name == "web_read" and args.get("url"):
+                connus.append(str(args["url"]))
+            # 27/09/2026 : garder les adresses réellement reçues de la séance,
+            # même si la parole n'en lit pas les caractères à voix haute.
+            self._liens_recus = list(dict.fromkeys(connus))[-40:]
 
         from diapason.server.details_outils import details_du_fil
 
@@ -2388,8 +2807,9 @@ class LocalVoiceSession(RealtimeVoiceSession):
 
     async def _speak_complete_sentences(self, pending: str, spoken: List[str]) -> str:
         while True:
-            match = _SENTENCE_END.search(pending)
-            if match is None and not spoken:
+            fin = _FIN_PHRASE_ORION if self._tts_flux is not None else _SENTENCE_END
+            match = fin.search(pending)
+            if match is None and not spoken and self._tts_flux is None:
                 # Nothing audible yet: a comma will do. The half-second this
                 # buys on the opening syllables is worth more than anywhere
                 # else in the pipeline, because it is the half-second the
@@ -2403,6 +2823,41 @@ class LocalVoiceSession(RealtimeVoiceSession):
             pending = pending[match.end() :]
             if sentence:
                 await self._speak_sentence(sentence, spoken)
+
+    async def _executer_avec_annonce(
+        self, nom: str, arguments: dict, spoken: Optional[List[str]]
+    ) -> dict:
+        assert self._tool_executor is not None
+        phrases = {"web_search": ANNONCES_RECHERCHE, "web_read": ANNONCES_LECTURE}.get(
+            nom
+        )
+        if not phrases or spoken is None or spoken:
+            return await asyncio.to_thread(self._tool_executor, nom, arguments)
+
+        # 27/09/2026 : l'ancien accusé parlait AVANT la recherche, même si
+        # l'outil était indisponible ou son budget épuisé. Ici les gardes
+        # ont déjà accepté l'appel, qui s'exécute pendant la préparation.
+        operation = asyncio.create_task(
+            asyncio.to_thread(self._tool_executor, nom, arguments)
+        )
+        try:
+            faites, _ = await asyncio.wait({operation}, timeout=SEUIL_ANNONCE_S)
+            if not faites:
+                phrase = phrases[self._ack_suivant % len(phrases)]
+                self._ack_suivant += 1
+                # Une fois commencée, la courte phrase va au bout. Annuler
+                # morceaux() tue l'ouvrier Orion et impose un rechargement
+                # au vrai résultat : pire que la seconde gagnée. Seule une
+                # interruption demandée par l'utilisateur annule ce calcul.
+                try:
+                    await self._speak_sentence(phrase, spoken)
+                except Exception:  # noqa: BLE001 - le résultat ne se perd pas
+                    logger.warning("voice waiting announcement unavailable")
+            return await operation
+        finally:
+            if not operation.done():
+                operation.cancel()
+            await asyncio.gather(operation, return_exceptions=True)
 
     async def _emit_optimistic_ack(
         self, tool_calls: List[dict], spoken: List[str]
@@ -2420,6 +2875,10 @@ class LocalVoiceSession(RealtimeVoiceSession):
             return
         noms = [(c.get("function") or {}).get("name", "") for c in tool_calls]
         if not noms or not all(n in FAST_ACK_TOOL_IDS for n in noms):
+            return
+        # 27/09/2026 : les anciens accusés Kokoro ne doivent pas introduire
+        # un autre timbre au milieu d'une réponse de la voix A ou B.
+        if self._tts_flux is not None:
             return
         accuses = _SHARED.get("acks") or {}
         if not accuses:
@@ -2451,11 +2910,62 @@ class LocalVoiceSession(RealtimeVoiceSession):
         logger.info("local voice timing: stage=first_audio ms=%.0f", ms)
 
     async def _speak_sentence(self, sentence: str, spoken: List[str]) -> None:
-        assert self._tts is not None
+        affichage = sentence.strip() if adresses(sentence) else speakable(sentence)
         sentence = speakable(sentence)
+        if not sentence and affichage:
+            spoken.append(affichage)
+            return
         if not sentence:
             # A chunk that was all emoji: nothing to say, nothing to record.
             return
+        # 27/09/2026 : le panneau attendait la FIN de toute la réponse pour
+        # montrer le texte. Le chat reçoit maintenant chaque phrase réellement
+        # préparée, puis le même message est finalisé sans créer de doublon.
+        await self._queue.put(
+            SessionEvent(
+                kind="transcript",
+                role="assistant",
+                text=" ".join([*spoken, affichage]),
+                final=False,
+                replace=True,
+            )
+        )
+        if self._tts_flux is not None:
+            # 27/09/2026 : le banc avec Ollama produit 18,56 s de voix en
+            # 43,31 s. Jouer chaque paquet de 480 ms dès sa naissance crée
+            # 38 trous, jusque dans les mots. Un petit tampon ne peut pas
+            # compenser une synthèse durablement plus lente que la lecture.
+            # Le tampon complet reste le défaut. Orion seul peut publier
+            # des préfixes fidèles au même décodeur, avec une réserve mesurée.
+            # Les phrases suivantes se calculent pendant la lecture.
+            debut_tts = time.monotonic()
+            audio: list[bytes] = []
+            anticipee = getattr(self._tts_flux, "lecture_anticipee", False) is True
+            morceaux = self._tts_flux.morceaux(sentence)
+            try:
+                async for pcm in morceaux:
+                    audio.append(pcm)
+                    if anticipee:
+                        await self._emettre_pcm(pcm)
+            finally:
+                await morceaux.aclose()
+            if not audio:
+                raise RuntimeError("Le moteur vocal n’a produit aucun son.")
+            logger.info(
+                "local voice timing: stage=tts_sentence ms=%.0f "
+                "audio_ms=%.0f chunks=%d",
+                (time.monotonic() - debut_tts) * 1000,
+                sum(len(pcm) for pcm in audio) / 2 / OUTPUT_RATE * 1000,
+                len(audio),
+            )
+            # Garder des trames bornées : l'envoi d'une longue phrase dans
+            # un unique JSON pourrait dépasser la limite du WebSocket.
+            if not anticipee:
+                for pcm in audio:
+                    await self._emettre_pcm(pcm)
+            spoken.append(affichage)
+            return
+        assert self._tts is not None
         pcm: Optional[bytes] = None
         spec_audio, self._spec_audio = self._spec_audio, None
         if spec_audio is not None and spec_audio[0] == sentence:
@@ -2475,25 +2985,28 @@ class LocalVoiceSession(RealtimeVoiceSession):
                 "local voice timing: stage=tts ms=%.0f spec_hit=0",
                 (time.monotonic() - debut_tts) * 1000,
             )
-        spoken.append(sentence)
+        spoken.append(affichage)
         if pcm:
-            import time as _time
-
-            duration = len(pcm) / 2 / OUTPUT_RATE
-            now = _time.monotonic()
-            # Chunks queue up on the client, so each one starts when the
-            # previous ends — never before now.
-            self._speaking_until = max(now, self._speaking_until) + duration
-            await self._queue.put(
-                SessionEvent(
-                    kind="audio",
-                    audio_b64=base64.b64encode(pcm).decode("ascii"),
-                    sample_rate=OUTPUT_RATE,
-                )
-            )
-            self._marquer_premier_audio(now)
+            await self._emettre_pcm(pcm)
             if spec_hit:
                 logger.info("local voice timing: stage=tts ms=0 spec_hit=1")
+
+    async def _emettre_pcm(self, pcm: bytes) -> None:
+        now = time.monotonic()
+        self._speaking_until = (
+            max(now, self._speaking_until) + len(pcm) / 2 / OUTPUT_RATE
+        )
+        # 27/09/2026 : une réponse de 93 s consommait les 90 s d'engagement
+        # et le suivi immédiat était ignoré. Le silence commence après le son.
+        self._engagee_jusqua = self._speaking_until + ADDRESS_WINDOW_S
+        await self._queue.put(
+            SessionEvent(
+                kind="audio",
+                audio_b64=base64.b64encode(pcm).decode("ascii"),
+                sample_rate=OUTPUT_RATE,
+            )
+        )
+        self._marquer_premier_audio(now)
 
     async def _wait_warm(self) -> None:
         # Await the warm-up TASK, not the lock: between connect() returning
@@ -2516,11 +3029,20 @@ class LocalVoiceSession(RealtimeVoiceSession):
         if self._closed:
             return
         self._closed = True
+        if self._warm_task is not None and not self._warm_task.done():
+            self._warm_task.cancel()
+            await asyncio.gather(self._warm_task, return_exceptions=True)
+        self._drop_partial()
+        if self._speculative is not None:
+            self._speculative[1].cancel()
+            self._speculative = None
         if self._respond_task is not None and not self._respond_task.done():
             self._respond_task.cancel()
         if self._spec_llm is not None:
             self._spec_llm.abort()
             self._spec_llm = None
+        if self._tts_flux is not None:
+            await self._tts_flux.fermer()
         await self._queue.put(SessionEvent(kind="closed"))
         await self._queue.put(None)
 
