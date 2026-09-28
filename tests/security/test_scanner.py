@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from diapason.security.scanner import PIIScanner, SecretScanner
+import pytest
+
+from diapason.security.scanner import PIIScanner, SecretScanner, _scan_python
 from diapason.security.types import ThreatLevel
 
 # ---------------------------------------------------------------------------
@@ -173,3 +175,77 @@ class TestScanResult:
         text = 'password = "secret123" and key sk-abc123def456ghi789jkl012'
         result = scanner.scan(text)
         assert len(result.findings) >= 2
+
+
+# ---------------------------------------------------------------------------
+# Le repli Python face à l'extension
+# ---------------------------------------------------------------------------
+#
+# 28/09/2026 : scanner.py dit son repli « intentionally feature-equivalent »
+# à l'extension. Il ne l'est pas, et ces tests le MONTRENT sans le corriger :
+# la décision (quel côté a raison, quel nom garder) reste à prendre. strict :
+# le jour où l'écart se ferme, le test passe et échoue, pour qu'on retire la
+# marque au lieu de laisser une promesse périmée.
+
+
+def _trouves(scanner, texte: str) -> list[tuple[str, str]]:
+    return sorted(
+        (f.pattern_name, f.matched_text) for f in scanner.scan(texte).findings
+    )
+
+
+def _trouves_du_repli(scanner, texte: str) -> list[tuple[str, str]]:
+    return sorted(
+        (f.pattern_name, f.matched_text)
+        for f in _scan_python(texte, type(scanner).PATTERNS).findings
+    )
+
+
+def _ecarts(scanner, textes: list[str]) -> list[str]:
+    if scanner._rust_impl is None:
+        pytest.skip("extension absente : seul le repli s'applique, rien à comparer")
+    return [
+        f"{texte!r} : l'extension trouve {_trouves(scanner, texte)}, "
+        f"le repli {_trouves_du_repli(scanner, texte)}"
+        for texte in textes
+        if _trouves(scanner, texte) != _trouves_du_repli(scanner, texte)
+    ]
+
+
+class TestLeRepliFaitCommeLExtension:
+    """§5 : un repli qui se dit équivalent doit l'être, ou cesser de le dire."""
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason=(
+            "écart relevé le 28/09/2026, à trancher : le repli (ipv4_public) "
+            "écarte 10/8, 172.16/12, 192.168/16, 127/8 et 0/8 par des regards "
+            "avant, l'extension (ipv4_address) masque toute adresse ; et les "
+            "noms diffèrent, [REDACTED:ipv4_public] contre "
+            "[REDACTED:ipv4_address]"
+        ),
+    )
+    def test_le_repli_et_l_extension_trouvent_les_memes_adresses_ipv4(self):
+        """§5 : selon que l'extension charge ou non, 10.0.0.1 sort masqué ou pas."""
+        ecarts = _ecarts(
+            PIIScanner(),
+            ["Serveur interne 10.0.0.1 joint.", "DNS public 8.8.8.8 ici."],
+        )
+        assert not ecarts, "le repli n'est pas équivalent :\n" + "\n".join(ecarts)
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason=(
+            "écart relevé le 28/09/2026, à trancher : _scan_python compile "
+            "chaque motif avec re.IGNORECASE, scanner.rs est sensible à la "
+            'casse — « Password: "…" » passe EN CLAIR par l\'extension, celle '
+            "que le flux applique"
+        ),
+    )
+    def test_le_repli_et_l_extension_lisent_la_casse_pareil(self):
+        """§5 : « Password: "…" » n'est masqué que si l'extension manque."""
+        ecarts = _ecarts(
+            SecretScanner(),
+            ['Password: "correct horse battery"', "SK-abcdefghijklmnopqrstuvwxyz"],
+        )
+        assert not ecarts, "le repli n'est pas équivalent :\n" + "\n".join(ecarts)
