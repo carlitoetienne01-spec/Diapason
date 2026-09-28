@@ -9,6 +9,7 @@ import {
   fusionner,
   fusionnerConversations,
   fusionnerMessages,
+  idNonAdressable,
   normaliserImport,
   sansSuppression,
   serveurJoignable,
@@ -232,6 +233,16 @@ describe('les refus du serveur', () => {
     expect(estRefusPermanent(401), 'la clé arrive peut-être au tick suivant').toBe(false);
     expect(estRefusPermanent(429)).toBe(false);
     expect(estRefusPermanent(500), 'un 5xx se rejoue').toBe(false);
+  });
+
+  it('ne jette une tombale que si le serveur ne peut pas adresser l’id', () => {
+    // Revue du 28/09/2026 : un 403 de la passerelle (« Origine refusée »)
+    // jetait la tombale, et la conversation supprimée revenait au tirage.
+    expect(idNonAdressable(404)).toBe(true);
+    expect(idNonAdressable(422)).toBe(true);
+    expect(idNonAdressable(403), 'une requête refusée n’est pas un id inconnu').toBe(false);
+    expect(idNonAdressable(400)).toBe(false);
+    expect(idNonAdressable(409)).toBe(false);
   });
 });
 

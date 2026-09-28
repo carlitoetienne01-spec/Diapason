@@ -169,3 +169,40 @@ describe('un 401 de la passerelle : session perdue, rien ne boucle ni ne se vide
     expect(appels('GET').length, 'le démarrage puis deux ticks : trois GET').toBe(3);
   });
 });
+
+describe('un DELETE refusé pour de bon', () => {
+  async function supprimerSous(status: number) {
+    repondre(() => reponse({ conversations: [], deleted: [], seq: 3 }));
+    sync.demarrerSyncConversations();
+    await vi.advanceTimersByTimeAsync(0);
+    reseau.mockReset();
+    reseau.mockImplementation(async (_url: string, init?: RequestInit) => {
+      if (init?.method === 'DELETE') return reponse({ detail: 'refusé' }, status);
+      if (init?.method === 'PUT') return reponse({ conversation: JSON.parse(String(init.body)) });
+      // Le DELETE n'a pas abouti : le serveur détient toujours « tel ».
+      return reponse({ conversations: [duTelephone], deleted: [], seq: 4 });
+    });
+    store.useAppStore.getState().deleteConversation('tel');
+    await vi.advanceTimersByTimeAsync(31_500);
+  }
+
+  it('un 403 de la passerelle garde la tombale : la conversation ne revient pas au tirage', async () => {
+    // Revue du 28/09/2026 : « Origine refusée par la passerelle. » dit que la
+    // REQUÊTE est refusée, pas que l'id est inconnu. La tombale était jetée
+    // et le tirage suivant rendait la conversation supprimée.
+    await supprimerSous(403);
+    expect(appels('DELETE').length, 'mise de côté pour la session : pas un DELETE par tick').toBe(1);
+    expect(appels('GET').length, 'les tirages continuent').toBeGreaterThan(0);
+    expect(store.loadConversations().conversations.tel, 'la conversation supprimée ne ressuscite pas')
+      .toBeUndefined();
+    expect(JSON.parse(stockage.get(sync.ETAT_SYNC_KEY)!).suppressions, 'la tombale attend le rechargement')
+      .toEqual(['tel']);
+  });
+
+  it('un 404 dit que le serveur ne peut pas adresser l’id : la tombale est retirée', async () => {
+    await supprimerSous(404);
+    expect(appels('DELETE').length).toBe(1);
+    expect(JSON.parse(stockage.get(sync.ETAT_SYNC_KEY)!).suppressions, 'un id non adressable n’est pas chez lui')
+      .toEqual([]);
+  });
+});

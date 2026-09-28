@@ -299,6 +299,21 @@ export function estRefusPermanent(status: number): boolean {
 }
 
 /**
+ * Vrai si ce refus d'un DELETE dit que le serveur ne peut pas ADRESSER l'id
+ * (404, 422) : il ne l'a donc pas, et la tombale n'a plus rien à tuer.
+ *
+ * 28/09/2026 : tout refus permanent jetait la tombale. Un 403 de la
+ * passerelle du tailnet (« Origine refusée par la passerelle. ») dit
+ * pourtant que la REQUÊTE est refusée, pas que l'id est inconnu : la file se
+ * vidait, et le tirage suivant — qui porte l'écriture du téléphone lui-même
+ * — rendait la conversation supprimée. Tout autre refus permanent garde la
+ * tombale en file, mise de côté pour la session.
+ */
+export function idNonAdressable(status: number): boolean {
+  return status === 404 || status === 422;
+}
+
+/**
  * Vrai si une requête de synchronisation a une chance d'être acceptée.
  *
  * 28/09/2026 : les deux gardes « sans clé, ne rien tenter » (16/09, écrites
@@ -619,17 +634,28 @@ async function pousserUneFois(): Promise<boolean> {
   const e = getEtat();
 
   for (const id of [...e.suppressions]) {
+    // Une tombale refusée pour de bon dans cette session attend le
+    // rechargement suivant, comme un PUT mis de côté ; elle reste en file,
+    // donc aucun tirage ne ressuscite sa conversation.
+    if (quarantaine.has(id)) continue;
     try {
       const reponse = await apiFetch(`/v1/conversations/${encodeURIComponent(id)}`, {
         method: 'DELETE',
       });
       if (!reponse.ok) {
-        if (estRefusPermanent(reponse.status)) {
+        if (idNonAdressable(reponse.status)) {
           // Un id que le serveur ne peut pas adresser ne le sera jamais : il
           // n'est pas chez lui non plus. On passe.
           mettreEnQuarantaine(id, `DELETE → ${reponse.status}`);
           e.suppressions = sansSuppression(e, id).suppressions;
           persisterEtat();
+          continue;
+        }
+        if (estRefusPermanent(reponse.status)) {
+          // 28/09/2026 : un 403 de la passerelle jetait la tombale, et la
+          // conversation supprimée revenait au tirage suivant (voir
+          // `idNonAdressable`). Refusée n'est pas inconnue : on la garde.
+          mettreEnQuarantaine(id, `DELETE → ${reponse.status}`);
           continue;
         }
         noterRefus(reponse.status, `DELETE /v1/conversations/${id}`);

@@ -145,6 +145,13 @@ file des suppressions restent tels quels et repartent avec la session
 suivante. Au Mac, un 401 reste transitoire (la clé n'est pas encore injectée)
 et se réessaie au tick, comme avant.
 
+**Une tombale refusée n'est pas jetée.** Un `DELETE` refusé pour de bon ne
+retire l'id de la file que si le serveur ne peut pas l'ADRESSER (404, 422 :
+`idNonAdressable`). Tout autre refus — un 403 de la passerelle, « Origine
+refusée » — garde la tombale en file, mise de côté pour la session : jetée,
+la conversation supprimée revenait au tirage suivant.
+
 Tenu par `lib/convSync.telephone.test.ts` (le moteur entier sans clé : tirer,
-pousser, supprimer, curseur, 401) et `lib/convSync.test.ts` (les deux
-fonctions pures). Sept mutations, sept tests qui échouent.
+pousser, supprimer, curseur, 401 ; un 403 et un 404 sur le `DELETE`) et
+`lib/convSync.test.ts` (les fonctions pures). Onze mutations, onze tests qui
+échouent.
