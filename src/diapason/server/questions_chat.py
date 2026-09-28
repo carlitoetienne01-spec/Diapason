@@ -292,7 +292,12 @@ def ajouter_consigne(
     messages: list[Message], consigne: str = CONSIGNE
 ) -> list[Message]:
     copie = list(messages)
-    for i in range(len(copie) - 1, -1, -1):
+    # 27/09/2026 : la consigne fixe suivait l'horloge dans le dernier
+    # système. Le cache récurrent ne retrouvait aucun point antérieur à
+    # l'heure modifiée : 36 s de relecture pour une question de deux lignes.
+    # Les règles durables rejoignent l'identité ; le rappel au tour courant
+    # reste séparé, près de la demande.
+    for i in range(len(copie)):
         if copie[i].role == Role.SYSTEM:
             copie[i] = replace(
                 copie[i], content=(copie[i].content or "") + "\n\n" + consigne

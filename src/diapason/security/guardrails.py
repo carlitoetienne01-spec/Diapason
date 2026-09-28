@@ -21,11 +21,12 @@ class SecurityBlockError(Exception):
     """Raised when mode is BLOCK and security findings are detected."""
 
 
-# 2026-09-19: the rich stream withheld the whole answer; the plain stream
-# released long secrets in pieces. 128 only covers FIXED patterns (at most
-# 36 characters), never arbitrary keys, email addresses or quoted values.
-_STREAM_HOLDBACK = 128
-_STREAM_RELEASE_STEP = 48  # amortize scanning without waiting for a paragraph
+# 2026-09-27: after fixing prefill, the 128-character tail still withheld
+# 3 seconds of ordinary prose. 48 covers FIXED patterns (at most 36
+# characters); unbounded keys, addresses and assignments retain the whole
+# open token/value below. No scanner or BLOCK guarantee is removed.
+_STREAM_HOLDBACK = 48
+_STREAM_RELEASE_STEP = 16  # check the next few words, not an entire paragraph
 
 # An assignment may contain arbitrarily much whitespace and a multiline
 # quoted value. Retain its beginning until the closing quote makes it
@@ -301,7 +302,7 @@ class GuardrailsEngine(InferenceEngine):
                 new_chars = 0
                 # An unusually long token/open quote cannot yet be released.
                 # Back off geometrically instead of rescanning a growing
-                # megabyte at every token; normal prose keeps the 48-char step.
+                # megabyte at every token; normal prose keeps the 16-char step.
                 check_after = max(_STREAM_RELEASE_STEP, pending_chars // 2)
                 if not self._scan_text(text).clean:
                     progressive = False

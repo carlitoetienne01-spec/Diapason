@@ -2,11 +2,16 @@
 
 import re
 import unicodedata
+from dataclasses import replace
 
 from diapason.core.types import Message, Role
-from diapason.server.questions_chat import ajouter_consigne
 
 CONSIGNE_VISUELS = """VISUELS DANS LE CHAT
+Ces formats sont des possibilités, pas un format obligatoire de réponse.
+Une demande de lecture de note, de texte exact ou de résultat d'outil reste
+du texte. Appelle d'abord l'outil concerné ; ne remplace jamais la lecture
+par un graphique ni par des valeurs fictives. Il n'existe pas de graphique
+de type "text". La demande courante prime sur tous les exemples ci-dessous.
 Si un schéma, une illustration ou un graphique est demandé ou aide vraiment,
 produis directement le visuel dans un bloc Markdown fermé. N'annonce pas un
 fichier inexistant et ne demande pas d'installer un logiciel. Choisis :
@@ -137,4 +142,15 @@ def instruire_visuels(messages: list[Message]) -> list[Message]:
     consigne = CONSIGNE_VISUELS
     if demande_diagramme_ikigai(messages):
         consigne += "\n" + EXEMPLE_IKIGAI
-    return ajouter_consigne(messages, consigne)
+    # 27/09/2026 : ajouter_consigne visait le DERNIER système, donc la
+    # mémoire fraîche juste avant « relis ma note ». Les exemples graphiques
+    # y dominaient la demande et changeaient le préfixe à chaque recherche.
+    # Le contrat stable appartient à l'identité, avant l'historique.
+    copie = list(messages)
+    for i, message in enumerate(copie):
+        if message.role == Role.SYSTEM:
+            copie[i] = replace(
+                message, content=(message.content or "") + "\n\n" + consigne
+            )
+            return copie
+    return [Message(role=Role.SYSTEM, content=consigne), *copie]

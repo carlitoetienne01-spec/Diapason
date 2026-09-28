@@ -14,6 +14,7 @@ from diapason.engine.ollama import OllamaEngine
 from diapason.server.agentic_stream import stream_with_tools
 from diapason.server.questions_chat import (
     POSER_QUESTIONS,
+    ajouter_consigne,
     cadrer_sans_outils,
     est_un_cadrage_textuel,
     filtrer_questions_texte,
@@ -35,6 +36,27 @@ DEMANDE = {
         }
     ],
 }
+
+
+class TestLePrefixeDesQuestions:
+    def test_le_cadrage_reste_avant_l_horloge_et_ne_modifie_pas_l_historique(self):
+        """§5 : les règles fixes ne doivent pas rendre chaque heure coûteuse."""
+        identite = Message(role=Role.SYSTEM, content="Identité")
+        question = Message(role=Role.USER, content="Prépare mon programme")
+        horloge = Message(role=Role.SYSTEM, content="Horloge du tour")
+        historique = [identite, question, horloge]
+        resultat = ajouter_consigne(historique, "Règles fixes")
+        assert resultat[0].content == "Identité\n\nRègles fixes", (
+            "le préchauffage et les vrais tours partagent leur préfixe"
+        )
+        assert resultat[1:] == historique[1:], "l'heure et la demande sont préservées"
+        assert identite.content == "Identité", "ne pas réécrire l'historique partagé"
+
+    def test_sans_identite_les_regles_precedent_toujours_la_demande(self):
+        """§5 : un client sans système conserve le cadrage interactif."""
+        question = Message(role=Role.USER, content="Prépare mon programme")
+        resultat = ajouter_consigne([question], "Règles fixes")
+        assert resultat == [Message(role=Role.SYSTEM, content="Règles fixes"), question]
 
 
 def questionnaire(nombre):

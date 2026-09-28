@@ -90,29 +90,93 @@ class TestLesModelesAChauffer:
 
 
 class TestLePromptDuPrefixe:
+    @pytest.mark.asyncio
+    async def test_le_vrai_flux_commence_par_le_prefixe_chauffe(self):
+        """§100 : comparer au moteur appelé, pas à une seconde copie du montage."""
+        from diapason.engine._stubs import StreamChunk
+        from diapason.server.agentic_stream import stream_with_tools
+        from diapason.server.routes import _ensure_identity_prompt
+        from diapason.server.visuels_chat import instruire_visuels
+
+        cfg = config()
+        outils = [Outil("web_search")]
+        chauffe, schemas = prechauffage.prompt_du_prefixe(
+            etat(MoteurLocal(), cfg, outils), cfg
+        )
+        messages = instruire_visuels(
+            _ensure_identity_prompt(
+                [Message(role=Role.USER, content="Bonjour")],
+                cfg,
+                client_supplied_system=False,
+            )
+        )
+        recus = []
+
+        class Moteur:
+            async def stream_full(self, messages, **kwargs):
+                recus.append((list(messages), kwargs))
+                yield StreamChunk(content="Bonjour.", finish_reason="stop")
+
+        _ = [
+            event
+            async for event in stream_with_tools(
+                Moteur(),
+                "test",
+                messages,
+                tools=outils,
+                executor=None,
+                interactive_questions=True,
+            )
+        ]
+        assert len(recus) == 1, "aucun calcul supplémentaire pour un salut"
+        reel, options = recus[0]
+        assert reel[: len(chauffe)] == chauffe, (
+            "la chauffe doit précéder tout suffixe variable"
+        )
+        assert options["tools"] == schemas, "même ordre et même contenu des outils"
+        assert any(m.content == "Horloge" for m in reel), (
+            "l'heure actuelle reste fournie"
+        )
+        assert any(m.content == "Bonjour" for m in reel), "la demande reste fournie"
+
     def test_meme_identite_meme_trousse_que_le_bureau(self):
         cfg = config()
         outils = [Outil("succes_tasks"), Outil("web_search")]
         messages, specs = prechauffage.prompt_du_prefixe(
             etat(MoteurLocal(), cfg, outils), cfg
         )
-        assert messages[0].role == Role.SYSTEM and messages[0].content == "Identité", (
-            "l'identité ouvre le prompt, comme pour un vrai tour"
-        )
-        assert messages[-1] == Message(role=Role.USER, content="Bonjour")
+        assert messages[0].role == Role.SYSTEM and messages[0].content.startswith(
+            "Identité"
+        ), "l'identité ouvre le prompt, comme pour un vrai tour"
+        assert len(messages) == 1, "aucune horloge ni fausse demande dans le cache"
+        assert "Horloge" not in messages[0].content
         noms = [s["function"]["name"] for s in specs]
         assert noms == ["succes_tasks", "web_search", POSER_QUESTIONS], (
             "tous les schémas, puis celui des questions interactives : la trousse "
             "du bureau, dans son ordre, sans catalogue"
         )
         assert CHARGER_OUTILS not in noms
+        from diapason.server.questions_chat import ajouter_consigne
+        from diapason.server.routes import _ensure_identity_prompt
+        from diapason.server.visuels_chat import instruire_visuels
+
+        reel = ajouter_consigne(
+            instruire_visuels(
+                _ensure_identity_prompt(
+                    [Message(role=Role.USER, content="Bonjour")],
+                    cfg,
+                    client_supplied_system=False,
+                )[:1]
+            )
+        )
+        assert messages == reel, "chauffer le préfixe stable exact du bureau"
 
     def test_sans_trousse_le_prompt_tient_quand_meme(self):
         cfg = config()
         etat_sans = SimpleNamespace(engine=MoteurLocal(), model="m", config=cfg)
         etat_sans._chat_tooling_cache = None
         messages, specs = prechauffage.prompt_du_prefixe(etat_sans, cfg)
-        assert messages[-1].content == "Bonjour"
+        assert len(messages) == 1 and messages[0].role == Role.SYSTEM
         assert [s["function"]["name"] for s in specs] == [POSER_QUESTIONS]
 
 
@@ -132,7 +196,7 @@ class TestPrechauffer:
                 "succes_tasks",
                 POSER_QUESTIONS,
             ]
-            assert messages[-1].content == "Bonjour"
+            assert len(messages) == 1 and messages[0].role == Role.SYSTEM
 
     def test_un_moteur_occupe_est_laisse_tranquille(self):
         cfg = config()

@@ -152,6 +152,56 @@ class TestFrontieresDuFlux:
 class TestDiffusion:
     """§100 : recevoir avant la fin doit être prouvé, pas déduit du nom stream."""
 
+    @pytest.mark.parametrize("python", [False, True], ids=["rust", "python"])
+    @pytest.mark.parametrize("riche", [True, False])
+    async def test_une_reponse_courte_commence_avant_sa_seconde_phrase(
+        self, python, riche
+    ):
+        """§100 : la vérification ne doit pas retenir toute une réponse courte."""
+        debut = (
+            "Un peu de pratique chaque jour aide à retenir les mots plus facilement. "
+        )
+        moteur = Moteur(
+            [StreamChunk(content=debut), StreamChunk(content="Voici un exemple.")]
+        )
+        engine = GuardrailsEngine(moteur, scanners=scanners(python))
+        flux = (
+            engine.stream_full([], model="test")
+            if riche
+            else engine.stream([], model="test")
+        )
+        try:
+            premier = await anext(flux)
+            texte = premier.content if riche else premier
+            assert texte and debut.startswith(texte), "les premiers mots sont déjà sûrs"
+            assert not moteur.termine, (
+                "la seconde phrase n'a pas besoin d'être produite"
+            )
+        finally:
+            await flux.aclose()
+
+    @pytest.mark.parametrize("python", [False, True], ids=["rust", "python"])
+    async def test_chaque_frontiere_d_un_motif_fixe_reste_masquee(self, python):
+        """§5 : la petite réserve garde les motifs coupés, même entre deux mots."""
+        fixes = [
+            SECRETS["private_key"],
+            SECRETS["aws_access_key"],
+            *[valeur for nom, valeur in PII.items() if nom != "email"],
+        ]
+        objets = scanners(python)
+        for secret in fixes:
+            for coupure in range(1, len(secret)):
+                debut = AVANT + secret[:coupure]
+                fin = secret[coupure:] + APRES
+                engine = GuardrailsEngine(
+                    Moteur([StreamChunk(content=debut), StreamChunk(content=fin)]),
+                    scanners=objets,
+                    scan_input=False,
+                )
+                assert "".join(await recevoir(engine, True)) == engine._redact_text(
+                    debut + fin
+                ), "la taille du tampon ne doit laisser passer aucun début de motif"
+
     @pytest.mark.parametrize("riche", [True, False])
     async def test_le_debut_arrive_avant_que_la_generation_finisse(self, riche):
         moteur = Moteur([StreamChunk(content=AVANT), StreamChunk(content=APRES)])

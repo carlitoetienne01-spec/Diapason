@@ -14,6 +14,18 @@ from diapason.server.visuels_chat import (
 
 
 class TestVisuelsDuChat:
+    def test_le_contrat_reste_dans_le_prefixe_et_pas_dans_la_memoire_fraiche(self):
+        origine = [
+            Message(role=Role.SYSTEM, content="Identité stable"),
+            Message(role=Role.USER, content="Crée une note"),
+            Message(role=Role.SYSTEM, content="Souvenir retrouvé"),
+            Message(role=Role.USER, content="Relis cette note"),
+        ]
+        resultat = instruire_visuels(origine)
+        assert CONSIGNE_VISUELS in resultat[0].content, "contrat dans le préfixe"
+        assert resultat[2].content == "Souvenir retrouvé", "mémoire non transformée"
+        assert resultat[-1].content == "Relis cette note", "demande intacte"
+
     @pytest.mark.parametrize(
         "demande",
         [

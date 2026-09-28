@@ -7,8 +7,10 @@ une fois en cache. Or ce cache meurt avec le runner : `keep_alive` est de
 « Quelle heure est-il ? » après le déjeuner : 7 s de chargement + 24 s de
 préremplissage avant un mot, pour un modèle qui n'a rien à réfléchir.
 
-Ce module rejoue le préfixe exact du chat toutes les dix minutes : même
-identité, même trousse, un « Bonjour » et un seul jeton de sortie. Chaud, la
+Ce module rejoue la partie stable du chat toutes les dix minutes : même
+identité, mêmes règles, même trousse et un seul jeton de sortie. Ni horloge
+ni demande factice : depuis le 27/09/2026, leur ajout plaçait les points de
+reprise après les premiers jetons qui changent et annulait le gain. Chaud, la
 requête coûte ~0,3 s de GPU ; froid, elle paie les 24 s pendant que personne
 n'attend. Elle passe par l'admission de fond (engine/scheduling.py) : un tour
 interactif la fait attendre, jamais l'inverse. Dix minutes, parce que trois
@@ -115,10 +117,11 @@ def modeles_a_chauffer(config: Any, modele_du_serveur: str) -> list[str]:
 
 
 def prompt_du_prefixe(app_state: Any, config: Any) -> tuple[list[Message], list[dict]]:
-    """Le prompt du bureau, tel que routes._handle_stream le construit."""
+    """Le préfixe stable du bureau, sans les perceptions ni la demande du tour."""
     from diapason.server.questions_chat import ajouter_consigne, schema_questions
     from diapason.server.routes import _chat_tooling, _ensure_identity_prompt
     from diapason.server.trousse_chat import TrousseChat
+    from diapason.server.visuels_chat import instruire_visuels
 
     tooling = getattr(app_state, "_chat_tooling_cache", "absent")
     if tooling == "absent":
@@ -134,7 +137,14 @@ def prompt_du_prefixe(app_state: Any, config: Any) -> tuple[list[Message], list[
     specs = list(TrousseChat(outils, messages, adaptative=adaptative).specs)
     # Le bureau envoie interactiveQuestions à chaque tour ordinaire : la
     # consigne rejoint le message système, le schéma des questions la trousse.
-    messages = ajouter_consigne(messages)
+    # 27/09/2026 : le bureau annonce aussi ses rendus graphiques. Chauffer
+    # une identité sans ce bloc ne prépare pas le préfixe réellement envoyé.
+    # 27/09/2026 : chauffer l'horloge et « Bonjour » plaçait les points de
+    # reprise APRÈS le premier jeton variable. Qwen3.5 relisait alors les
+    # 12 811 jetons (36,4 s) malgré 94 % de préfixe commun. Arrêter la
+    # préparation à l'identité et aux règles fixes rend ce point réutilisable.
+    # L'horloge et la vraie demande restent intégralement dans le vrai tour.
+    messages = ajouter_consigne(instruire_visuels(messages[:1]))
     specs.append(schema_questions())
     return messages, specs
 
