@@ -230,8 +230,13 @@ class TestReactivite:
                 reponse = await requete
             assert reponse.status_code == 200
             if operation == "memoire":
+                # 28/09/2026 : depuis 32e20a83, l'identité est construite
+                # entière, puis les règles du canal écrit la suivent
+                # (habiller_pour_le_chat) — le test attendait l'identité seule.
+                from diapason.prompt.regles_ecrites import habiller_pour_le_chat
+
                 assert [m.content for m in capture] == [
-                    "Identité",
+                    habiller_pour_le_chat("Identité"),
                     "Avant",
                     "Passé",
                     "Souvenir",
