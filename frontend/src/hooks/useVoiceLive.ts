@@ -267,6 +267,18 @@ export function useVoiceLive() {
     setConversationSeule(false);
     generationRef.current++;
     demarrageRef.current = false;
+    // 28/09/2026 (revue) : « Terminer », l'orbe fermée ou une autre page
+    // laissaient l'échec du micro en place. La réponse tardive de micro/etat
+    // posait ensuite « Ouvrir les réglages » sur la séance close, et l'orbe
+    // rouverte montrait encore son détail — ou « Diapason demande à Android
+    // pourquoi… » pour une question que plus personne n'attendait. La séance
+    // close emporte son échec ; une erreur posée APRÈS stop() (la garde, la
+    // fermeture du Mac) n'est pas touchée.
+    const echec = echecMicroRef.current;
+    if (echec) {
+      setError((courante) => (courante === echec.code ? null : courante));
+      oublierEchecMicro();
+    }
     retirerRetourDesReglages();
     const ws = wsRef.current;
     wsRef.current = null;
@@ -278,7 +290,7 @@ export function useVoiceLive() {
     stopPlayback();
     setState('idle');
     setStatusLabel('Idle');
-  }, [cleanupCapture, retirerRetourDesReglages, stopPlayback]);
+  }, [cleanupCapture, oublierEchecMicro, retirerRetourDesReglages, stopPlayback]);
 
   const interrupt = useCallback(() => {
     if (fermetureRef.current) { fermetureRef.current.finir(); return; }
@@ -489,8 +501,10 @@ export function useVoiceLive() {
           // Une seule demande, ici : la barre de la Discussion et l'orbe
           // partagent ce hook (ContexteVoix).
           const etat = await lireEtatDuMicro(demanderMicro);
-          // Une séance relancée entre-temps (ou un autre fournisseur choisi)
-          // a oublié cet échec : une réponse tardive ne réécrit pas sa phrase.
+          // Une séance relancée ou terminée entre-temps (ou un autre
+          // fournisseur choisi) a oublié cet échec — start(), stop() et
+          // chooseProvider() l'oublient tous trois : une réponse tardive ne
+          // réécrit pas sa phrase.
           if (echecMicroRef.current !== provisoire) return;
           afficherEchecMicro(echecCourant, messageDuMicro({ classe: echec.classe, auTelephone, etat }));
         }

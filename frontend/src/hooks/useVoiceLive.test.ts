@@ -597,6 +597,42 @@ describe('§5 — un micro qui ne s’ouvre pas dit pourquoi', () => {
     } finally { journal.mockRestore(); }
   });
 
+  it('« Terminer » pendant micro/etat : la réponse tardive ne pose rien sur la séance close', async () => {
+    // 28/09/2026, revue (sonde S1) : après stop(), la réponse passait l'erreur
+    // à « refus définitif » et montrait « Ouvrir les réglages » sur une
+    // séance close, que l'orbe rouverte affichait encore.
+    const journal = muet();
+    banc.telephone = true;
+    let repondre!: (r: object) => void;
+    banc.natif.mockReturnValue(new Promise((r) => { repondre = r; }));
+    try {
+      banc.micro.mockRejectedValue(refuse());
+      await rendu().start();
+      const ouverture = Socket.tous[0].onopen();
+      await vi.waitFor(() => expect(rendu().error).toBe('microphone-phone-checking'));
+      rendu().stop();
+      expect(rendu().error, '« Diapason demande à Android » pour une question abandonnée').toBeNull();
+      repondre({ type: 'reponse', id: 'x', ok: true, donnees: { etat: 'refuseDefinitivement' } });
+      await ouverture;
+      expect(rendu().error, 'la réponse tardive réécrit la séance close').toBeNull();
+      expect(rendu().micro, 'le bouton des réglages d’une séance close').toBeNull();
+      expect(rendu().state).toBe('idle');
+    } finally { journal.mockRestore(); }
+  });
+
+  it('« Terminer » après la réponse emporte la phrase, le détail et le bouton', async () => {
+    const journal = muet();
+    banc.telephone = true;
+    banc.natif.mockResolvedValue({ type: 'reponse', id: 'x', ok: true, donnees: { etat: 'refuse' } });
+    try {
+      await echouer(refuse());
+      await vi.waitFor(() => expect(rendu().micro?.reglages).toBe(true));
+      rendu().stop();
+      expect(rendu().error, 'l’orbe rouverte montrait l’échec d’une séance close').toBeNull();
+      expect(rendu().micro).toBeNull();
+    } finally { journal.mockRestore(); }
+  });
+
   it('« Ouvrir les réglages » : le verbe part, et au retour on relit l’état sans rouvrir le micro (§78)', async () => {
     const journal = muet();
     banc.telephone = true;
