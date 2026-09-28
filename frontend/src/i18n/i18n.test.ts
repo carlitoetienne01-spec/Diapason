@@ -201,15 +201,18 @@ describe('le domaine vie s’affiche sous le nom Diapason', () => {
     }
   });
 
-  it('le titre du groupe dit Diapason, et la barre latérale le lit', () => {
+  it('le titre du groupe a disparu avec le rail, et sa clé avec lui', () => {
+    // 28/09/2026 : le rail du bureau (navigation-rail.md) pose les pages
+    // directement, sans titre de groupe ; la roue du téléphone non plus.
+    // `nav.vie` restait traduite en deux langues et lue nulle part (§5).
     for (const locale of LOCALES) {
-      expect(MESSAGES[locale]['nav.vie'], `nav.vie en ${locale}`).toBe('Diapason');
+      expect(MESSAGES[locale]['nav.vie' as never], `nav.vie en ${locale}`).toBeUndefined();
     }
     const barre = readFileSync(
       join(process.cwd(), 'src/components/Sidebar/Sidebar.tsx'),
       'utf-8',
     );
-    expect(barre, 'une clé que rien ne lit est une promesse morte').toContain("t('nav.vie')");
+    expect(barre, 'le rail ne lit plus de titre de groupe').not.toContain("t('nav.vie')");
   });
 
   it('aucun écran n’écrit « Succès » en dur', () => {

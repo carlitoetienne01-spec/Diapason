@@ -50,7 +50,6 @@ export const MESSAGES = {
     'composer.sessionTokens': 'Tokens generated',
     // ── navigation ──────────────────────────────────────────────────────
     'nav.chat': 'Chat',
-    'nav.vie': 'Diapason',
     'nav.viePlanner': 'Planner',
     'nav.vieDashboard': 'Dashboard',
     'nav.vieTasks': 'Tasks',
@@ -1714,7 +1713,6 @@ export const MESSAGES = {
     'composer.sessionRequests': 'Requêtes',
     'composer.sessionTokens': 'Jetons générés',
     'nav.chat': 'Discussion',
-    'nav.vie': 'Diapason',
     'nav.viePlanner': 'Planificateur',
     'nav.vieDashboard': 'Tableau de bord',
     'nav.vieTasks': 'Tâches',
