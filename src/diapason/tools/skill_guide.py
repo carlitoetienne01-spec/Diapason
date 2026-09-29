@@ -64,6 +64,15 @@ DESCRIPTION_MAX = 240
 # Le sommaire de deep-research, avec ses six étapes, fait ~500 caractères ;
 # au-delà, il mange la section qu'il annonce.
 SOMMAIRE_MAX = 900
+# 29/09/2026 : l'en-tête n'avait aucune borne. 120 fichiers amont listés en
+# ressources absentes le portaient à 5 000 caractères ; le budget du texte
+# devenait négatif, `_borner(texte, -n)` rendait `texte[:-n]`, et la coupe
+# générique d'agentic_stream tombait AVANT la ligne DÉBUT : plus de cadre,
+# et un en-tête rempli de noms choisis en amont. Les huit tiennent en 430 à
+# 790 caractères ; à 1 000, les lignes les moins utiles tombent d'abord.
+ENTETE_MAX = 1000
+# Par liste de l'en-tête : les huit en citent au plus 7 (deep-research).
+LISTE_MAX = 8
 
 # 29/09/2026 : le cadre était une chaîne fixe, et seule une ligne qui
 # COMMENÇAIT par « === » était citée. Passaient intactes, dans le cadre :
@@ -337,8 +346,36 @@ def _annexes(methode: _Methode) -> list[tuple[str, Path]]:
 # ---------------------------------------------------------------------------
 
 
+_HORS_IDENTIFIANT = re.compile(r"[^A-Za-z0-9_./-]")
+
+
+def _identifiant(valeur: Any, limite: int = 40) -> str:
+    """Un nom d'outil, de compétence ou de fichier venu de l'amont, réduit à
+    ce qu'un identifiant contient : il ne peut plus faire une phrase."""
+    return _HORS_IDENTIFIANT.sub("_", _une_ligne(str(valeur), limite))
+
+
+def _liste(elements: list[str]) -> list[str]:
+    """Au plus LISTE_MAX éléments, et le compte de ce qui manque."""
+    if len(elements) <= LISTE_MAX:
+        return elements
+    return [*elements[:LISTE_MAX], f"… et {len(elements) - LISTE_MAX} autre(s)"]
+
+
+def _borner_l_entete(lignes: list[str]) -> str:
+    """Les deux premières lignes (provenance, avertissement) restent ; les
+    suivantes tombent par la fin, en le disant, au-delà d'ENTETE_MAX."""
+    garde = list(lignes)
+    while len("\n".join(garde)) > ENTETE_MAX and len(garde) > 2:
+        garde.pop()
+        garde_note = "[…en-tête abrégé]"
+        if len("\n".join([*garde, garde_note])) <= ENTETE_MAX:
+            return "\n".join([*garde, garde_note])
+    return "\n".join(garde)[:ENTETE_MAX]
+
+
 def entete(methode: _Methode, servies: dict[str, Path]) -> str:
-    """Provenance et avertissement : la tête de CHAQUE lecture."""
+    """Provenance et avertissement : la tête de CHAQUE lecture, bornée."""
     prov = methode.provenance
     commit = _une_ligne(str(prov.get("commit") or "?"), 40)[:7]
     version = _une_ligne(str(prov.get("version_ecc") or "?"), 20)
@@ -360,8 +397,8 @@ def entete(methode: _Methode, servies: dict[str, Path]) -> str:
         lignes.append("Copie prise d'un clone modifié localement.")
 
     groupes: dict[str | None, list[str]] = {}
-    for outil in prov.get("outils_cites") or []:
-        outil = _une_ligne(str(outil), 60)
+    for outil in (prov.get("outils_cites") or [])[: LISTE_MAX * 4]:
+        outil = _identifiant(outil)
         if not outil or (outil != NOM and ToolRegistry.contains(outil)):
             continue
         groupes.setdefault(_EQUIVALENTS.get(outil), []).append(outil)
@@ -373,6 +410,7 @@ def entete(methode: _Methode, servies: dict[str, Path]) -> str:
     for outil in groupes.get(None, []):
         raison = _SANS_EQUIVALENT.get(outil, "absent ici")
         morceaux.append(f"{outil} → aucun ({raison})")
+    morceaux = _liste(morceaux)
     if morceaux:
         lignes.append(
             "Outils qu'il cite et que tu n'as pas : "
@@ -380,7 +418,18 @@ def entete(methode: _Methode, servies: dict[str, Path]) -> str:
             + ". Ne prétends jamais les avoir utilisés."
         )
 
-    citees = [_une_ligne(str(c), 60) for c in prov.get("competences_citees") or []]
+    renvois = [_RENVOIS[r] for r in _renvois_du_corps(methode.corps) if r in _RENVOIS]
+    ressources = [_identifiant(r) for r in prov.get("ressources_absentes") or []]
+    if ressources:
+        renvois.append(
+            "ses fichiers " + ", ".join(_liste(ressources)) + " (non importés)"
+        )
+    if renvois:
+        lignes.append(
+            "Il renvoie aussi à " + ", ".join(renvois) + " : absents ici, "
+            "n'essaie pas de t'en servir."
+        )
+    citees = [_identifiant(c) for c in (prov.get("competences_citees") or [])]
     lisibles = [c for c in citees if c in servies and c != methode.nom]
     absentes = [c for c in citees if c not in servies]
     if absentes:
@@ -392,25 +441,16 @@ def entete(methode: _Methode, servies: dict[str, Path]) -> str:
         ]
         lignes.append(
             "Compétences ECC qu'il cite, absentes ici : "
-            + ", ".join(details)
+            + ", ".join(_liste(details))
             + " — ignore celles sans équivalent."
         )
     if lisibles:
         lignes.append(
             "Compétences qu'il cite et que tu peux lire avec cet outil : "
-            + ", ".join(lisibles)
+            + ", ".join(_liste(lisibles))
             + "."
         )
-    renvois = [_RENVOIS[r] for r in _renvois_du_corps(methode.corps) if r in _RENVOIS]
-    ressources = [_une_ligne(str(r), 40) for r in prov.get("ressources_absentes") or []]
-    if ressources:
-        renvois.append("ses fichiers " + ", ".join(ressources) + " (non importés)")
-    if renvois:
-        lignes.append(
-            "Il renvoie aussi à " + ", ".join(renvois) + " : absents ici, "
-            "n'essaie pas de t'en servir."
-        )
-    return "\n".join(lignes)
+    return _borner_l_entete(lignes)
 
 
 def _renvois_du_corps(corps: str) -> list[str]:
@@ -486,7 +526,10 @@ def sommaire(methode: _Methode) -> str:
 
 
 def _borner(texte: str, budget: int) -> tuple[str, bool]:
-    """Coupe entre deux lignes, sous *budget* ; dit si elle a coupé."""
+    """Coupe entre deux lignes, sous *budget* ; dit si elle a coupé.
+
+    Un budget négatif rendait ``texte[:-n]`` : presque tout le texte."""
+    budget = max(budget, 0)
     if len(texte) <= budget:
         return texte, False
     coupe = texte[:budget]
