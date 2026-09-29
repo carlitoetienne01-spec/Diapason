@@ -1,0 +1,13 @@
+---
+description: Avant une tâche non triviale, lire et suivre le skill ECC qui correspond
+alwaysApply: true
+---
+
+# Utiliser les skills ECC
+
+Carlito l'a demandé le 29/09/2026 : l'agent Cursor de ce dépôt suit les skills ECC, il ne se contente pas de les avoir dans le catalogue.
+
+1. Avant d'écrire du code, un plan, une revue ou une doc, choisir **un** skill dont la description colle à la tâche (`.cursor/skills/<nom>/SKILL.md`, ou le cache ECC s'il n'est pas dans le dépôt).
+2. Lire ce `SKILL.md` et en suivre les étapes. Le dire en une phrase au début du travail.
+3. S'il n'y en a pas, le dire en une ligne et continuer. Ne pas en ouvrir dix « au cas où ».
+4. Ce n'est pas `skill_guide` de Diapason : celui-là sert le modèle local du chat. Ici, c'est l'agent qui lit le fichier.
