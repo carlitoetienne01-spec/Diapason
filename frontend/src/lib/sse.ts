@@ -4,6 +4,7 @@ import { lireLeCorps } from './coupureDuFlux';
 
 export interface ChatRequest {
   model: string;
+  conversationId?: string;
   // 22/09/2026 : `images` porte du base64 avec son en-tête `data:` ; le
   // serveur la retire et vérifie le format dans les octets. JSON base64 et
   // jamais multipart : la fenêtre Tauri est une WKWebView, qui échoue sur

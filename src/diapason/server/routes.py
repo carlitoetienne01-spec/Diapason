@@ -10,7 +10,7 @@ import uuid
 from contextlib import aclosing
 from typing import Any, Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from diapason.core.origine_telephone import (
@@ -22,6 +22,7 @@ from diapason.core.types import Message, Role, ToolCall
 from diapason.engine.scheduling import interactive_turn
 from diapason.server.contexte_chat import inserer_au_tour_courant
 from diapason.server.documents_joints import composer as composer_documents
+from diapason.server.etudes_conversation import contexte_etudes_chat
 from diapason.server.models import (
     ChatCompletionChunk,
     ChatCompletionRequest,
@@ -66,6 +67,7 @@ router = APIRouter()
 # n'a pas à écrire sur le disque pour répondre à une question. ``[agent] tools``
 # dans la configuration la remplace entièrement quand elle est renseignée.
 _TROUSSE_ASSISTANT: tuple[str, ...] = (
+    "study",
     "current_time",
     "calendar_query",
     "vie_tasks",
@@ -567,7 +569,7 @@ def _ensure_identity_prompt(
     return [Message(role=Role.SYSTEM, content=prompt), *anchored]
 
 
-@router.post("/v1/chat/completions")
+@router.post("/v1/chat/completions", dependencies=[Depends(contexte_etudes_chat)])
 async def chat_completions(request_body: ChatCompletionRequest, request: Request):
     """Handle chat completion requests (streaming and non-streaming)."""
     # Une image refusée se dit tout de suite, et en français : l'usager doit

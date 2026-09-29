@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, ChevronDown, Cloud, Cpu, Loader2, Plus, Paperclip, Brain } from 'lucide-react';
+import { Check, ChevronDown, Cloud, Cpu, Loader2, Plus, Paperclip, Brain, BookOpen } from 'lucide-react';
+import { OUVRIR_ETUDES } from '../../features/etudes/etudes';
 import { useAppStore } from '../../lib/store';
 import { fetchServerConfig, preloadModel, setServerConfigKey } from '../../lib/api';
 import { isCloudModel } from '../../lib/cloud-models';
@@ -207,6 +208,8 @@ export function ComposerPlus({ disabled, onJoindre, recherche, onRecherche, onCo
       </button>
       {anchor && (
         <ChipMenu anchor={anchor} onClose={() => setAnchor(null)}>
+          <button type="button" role="menuitem" className="composer-glass-menu-item flex w-full items-center gap-3 px-3 py-2.5 text-sm text-left"
+            onClick={() => { setAnchor(null); window.dispatchEvent(new Event(OUVRIR_ETUDES)); }}><BookOpen size={17} />Étudier un cours · Tests et examens</button>
           <button type="button" role="menuitem" className="composer-glass-menu-item flex w-full items-center gap-3 px-3 py-2.5 text-sm text-left"
             onClick={() => { setAnchor(null); onJoindre(); }}><Paperclip size={17} />{t('composer.attach')}</button>
           <button type="button" role="menuitemcheckbox" aria-checked={recherche}

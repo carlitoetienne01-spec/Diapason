@@ -1,0 +1,36 @@
+.etude-carte { margin: 12px auto 24px; padding: clamp(14px, 3vw, 24px); max-width: 860px; min-width: 0; border: 1px solid var(--color-border); border-radius: 20px; background: var(--color-bg); color: var(--color-text); font-size: 15px; line-height: 1.6; overflow-wrap: anywhere; }
+.etude-carte h2, .etude-carte h3, .etude-carte h4 { font-family: inherit; text-transform: none; letter-spacing: normal; line-height: 1.4; margin: 14px 0 8px; }
+.etude-carte h2 { display: flex; align-items: center; gap: 10px; font-size: 21px; margin: 0; }
+.etude-carte h3 { font-size: 20px; }.etude-carte h4 { font-size: 17px; }
+.etude-carte p { margin: 8px 0; }.etude-carte ul { padding-left: 24px; list-style: disc; }
+.etude-entete, .etude-progression, .etude-source { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.etude-carte button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 42px; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: 10px; cursor: pointer; font: inherit; font-size: 14px; color: inherit; background: var(--color-bg-secondary); white-space: normal; }
+.etude-carte button:disabled { opacity: .5; cursor: default; }.etude-carte :focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
+.etude-carte .etude-primaire { background: var(--color-accent); color: var(--color-on-accent); }
+.etude-carte label { display: flex; flex-direction: column; gap: 5px; margin: 12px 0; min-width: 0; }
+.etude-carte input:not([type=radio]), .etude-carte textarea, .etude-carte select { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; border: 1px solid var(--color-border); background: var(--color-bg-secondary); color: var(--color-text); border-radius: 10px; padding: 10px; font: inherit; font-size: 16px; }
+.etude-carte textarea { resize: vertical; }.etude-carte fieldset { min-width: 0; border: 0; padding: 0; }
+.etude-carte .etude-choix { flex-direction: row; align-items: center; gap: 12px; padding: 10px; border: 1px solid var(--color-border); border-radius: 10px; min-height: 44px; cursor: pointer; }
+.etude-choix input { accent-color: var(--color-accent); flex-shrink: 0; width: 18px; height: 18px; }
+.etude-grille { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr)); gap: 12px; }
+.etude-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }.etude-navigation { justify-content: space-between; }
+.etude-secondaire { color: var(--color-text-secondary); font-size: 14px; }.etude-erreur { color: var(--color-error); padding: 12px; border: 1px solid currentColor; border-radius: 10px; }
+.etude-liste { display: grid; gap: 8px; margin: 10px 0; }.etude-liste button { flex-direction: column; align-items: start; text-align: left; }
+.etude-carte summary { cursor: pointer; padding: 12px 0; min-height: 40px; }.etude-carte progress { width: 100%; height: 6px; accent-color: var(--color-accent); }
+.etude-question, .etude-bilan { border-top: 1px solid var(--color-border); margin-top: 20px; padding-top: 16px; }
+.etude-indice, .etude-correction, .etude-confirmation { padding: 14px; border: 1px solid var(--color-border); border-radius: 12px; margin: 14px 0; background: var(--color-bg-secondary); }
+.etude-carte blockquote { border-left: 3px solid var(--color-accent); margin: 12px 0; padding-left: 12px; }.etude-carte cite { display: block; font-size: 14px; }
+.etude-cours pre { overflow-x: auto; }.etude-cours table { display: block; max-width: 100%; overflow-x: auto; }.etude-cours img { max-width: 100%; }
+
+.etude-intitule { font-size: 17px; font-weight: 600; line-height: 1.4; margin: 14px 0 8px; }
+.etude-carte .katex-display { max-width: 100%; overflow-x: auto; overflow-y: hidden; padding: 4px 0; }
+.etude-choix > span { min-width: 0; max-width: 100%; overflow-x: auto; padding: 4px 0; }
+
+.etude-carte .etude-plier { width: 100%; justify-content: space-between; text-align: left; background: transparent; border: 0; padding: 6px 0; font-size: 18px; font-weight: 600; }
+.etude-plier span { min-width: 0; }
+.etude-plier svg { flex-shrink: 0; transition: transform 150ms ease; }
+.etude-chevron-ouvert { transform: rotate(180deg); }
+.etude-carte.etude-repliee { padding: 10px 16px; }
+.etude-repliee .etude-plier { font-size: 15px; font-weight: 400; }
+.etude-carte [hidden] { display: none !important; }
+@media (prefers-reduced-motion: reduce) { .etude-plier svg { transition: none; } }

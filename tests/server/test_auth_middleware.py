@@ -89,6 +89,16 @@ def _make_app(
     async def conversations():
         return {"conversations": [], "deleted": []}
 
+    @app.get("/v1/study/sessions")
+    @app.get("/v1/study/materials")
+    @app.get("/v1/study/sessions/{identifiant}")
+    async def etudes(identifiant: str = ""):
+        return {"id": identifiant}
+
+    @app.post("/v1/study/sessions")
+    async def preparer_etude():
+        return {"ok": True}
+
     @app.get("/v1/approvals/pending")
     async def approvals_pending():
         return {"actions": [], "count": 0}
@@ -106,6 +116,22 @@ def client():
 
 
 class TestAuthMiddleware:
+    def test_la_reprise_detude_ne_partage_pas_le_seau_des_ecritures(self):
+        """§100 : le panneau ne doit pas échouer à l'ouverture pendant la voix."""
+        client = TestClient(_make_app("cle-etude", requests_per_minute=1, burst_size=1))
+        entetes = {"Authorization": "Bearer cle-etude"}
+        assert client.get("/v1/models", headers=entetes).status_code == 200
+        assert client.get("/v1/models", headers=entetes).status_code == 429
+        for route in ("sessions", "materials", "sessions/exemple"):
+            assert client.get(f"/v1/study/{route}", headers=entetes).status_code == 200
+            assert client.get(f"/v1/study/{route}").status_code == 401
+        assert client.post("/v1/study/sessions", headers=entetes).status_code == 429
+        codes = [
+            client.get("/v1/study/sessions", headers=entetes).status_code
+            for _ in range(30)
+        ]
+        assert 429 in codes, "les lectures ont leur propre plafond, pas une exemption"
+
     def test_rejects_missing_auth_header(self, client):
         resp = client.get("/v1/models")
         assert resp.status_code == 401

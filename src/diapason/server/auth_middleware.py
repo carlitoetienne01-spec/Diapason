@@ -262,6 +262,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 enabled=enabled,
             )
         )
+        # 29/09/2026 : le panneau Étudier relit la progression à la voix
+        # toutes les 2 s. Deux vues font 60 lectures/min ; 120/min et une
+        # rafale de 20 couvrent leurs ouvertures sans affamer les écritures.
+        # Ce seau distinct ne dispense jamais de l'authentification.
+        self._study_reads_limiter = RateLimiter(
+            RateLimitConfig(requests_per_minute=120, burst_size=20, enabled=enabled)
+        )
         # A separate bucket for the mesh routes that carry no API key.
         #
         # The main limiter only ever ran for paths that require the key, so
@@ -415,6 +422,15 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         client = request.client.host if request.client else "unknown"
+
+        if request.method == "GET" and (
+            path in {"/v1/study/sessions", "/v1/study/materials"}
+            or re.fullmatch(r"/v1/study/sessions/[^/]+", path)
+        ):
+            allowed, wait_seconds = self._study_reads_limiter.check(client)
+            if not allowed:
+                return _too_many(wait_seconds)
+            return await call_next(request)
 
         # The mesh's key-less routes. Throttled on their own bucket rather
         # than left unlimited: they are the only surface a stranger on the

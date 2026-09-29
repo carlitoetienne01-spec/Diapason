@@ -35,6 +35,7 @@ class ChatMessage(BaseModel):
 
 class ChatCompletionRequest(BaseModel):
     model: str
+    conversationId: str | None = Field(default=None, min_length=1, max_length=160)
     messages: List[ChatMessage]
     temperature: float = 0.7
     max_tokens: int = 1024

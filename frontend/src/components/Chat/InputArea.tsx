@@ -892,6 +892,7 @@ export function InputArea() {
       for await (const sseEvent of streamChat(
         {
           model: selectedModel,
+          conversationId: convId,
           messages: apiMessages,
           stream: true,
           temperature,

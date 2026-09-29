@@ -273,6 +273,13 @@ _PRODUIT = _lignes(
     GET /v1/skills
     POST /v1/speech/transcribe
     GET /v1/speech/health
+    GET /v1/study/sessions
+    POST /v1/study/sessions
+    GET /v1/study/sessions/{session_id}
+    GET /v1/study/materials
+    PUT /v1/study/materials
+    DELETE /v1/study/sessions/{session_id}
+    POST /v1/study/sessions/{session_id}/actions
     GET /v1/telemetry/energy
     GET /v1/telemetry/stats
     GET /v1/templates

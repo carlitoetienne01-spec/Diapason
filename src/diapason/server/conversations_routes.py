@@ -12,7 +12,7 @@ chat (piège documenté du dépôt). Starlette exécute les ``def`` dans un fil.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 from fastapi import APIRouter, Body, HTTPException
 
@@ -74,7 +74,11 @@ def _valider_conversation(conversation_id: str, body: Any) -> Dict[str, Any]:
     }
 
 
-def create_conversations_router(store: ConversationsStore) -> APIRouter:
+def create_conversations_router(
+    store: ConversationsStore,
+    *,
+    sur_suppression: Callable[[str], None] | None = None,
+) -> APIRouter:
     router = APIRouter(prefix="/v1/conversations", tags=["conversations"])
 
     @router.get("")
@@ -94,6 +98,8 @@ def create_conversations_router(store: ConversationsStore) -> APIRouter:
 
     @router.delete("/{conversation_id}")
     def delete_conversation(conversation_id: str) -> Dict[str, Any]:
+        if sur_suppression is not None:
+            sur_suppression(conversation_id)
         deleted_at = store.delete(conversation_id)
         return {"deleted": True, "deletedAt": deleted_at}
 

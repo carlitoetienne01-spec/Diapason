@@ -1,7 +1,10 @@
 import { useVoixPartagee } from '../../hooks/contexteVoix';
 import { BrouillonVocal } from './BarreVocale';
 import { useShallow } from 'zustand/react/shallow';
-import { useRef, useEffect, useLayoutEffect, useState, useCallback } from 'react';
+import { lazy, Suspense, useRef, useEffect, useLayoutEffect, useState, useCallback } from 'react';
+import { OUVRIR_ETUDES, type EmplacementEtude } from '../../features/etudes/etudes';
+import { intercalerEtudes } from '../../features/etudes/filEtudes';
+import { useEtudesFil } from '../../features/etudes/useEtudesFil';
 import { useNavigate } from 'react-router';
 import { MessageBubble } from './MessageBubble';
 import { InputArea } from './InputArea';
@@ -30,6 +33,7 @@ import { formatRelativeTime, sectionsOf } from '../Sidebar/ConversationList';
 // 800 ms de halo sur la bulle qu'un résultat de recherche vient d'ouvrir :
 // voir .bulle-cible dans index.css, qui porte le même nombre.
 const HALO_MS = 800;
+const Etudier = lazy(() => import('../../features/etudes/Etudier').then(m => ({ default: m.Etudier })));
 
 // ⌘⇧[ / ⌘⇧] : le fil glisse de 24 px dans le sens du geste — assez pour
 // se lire comme un mouvement, pas assez pour qu'un fil de 340 px semble
@@ -63,6 +67,28 @@ export function ChatArea() {
     attendTexte: s.streamState.content === '',
   })));
   const activeId = useAppStore((s) => s.activeId);
+  const modeleEtude = useAppStore((s) => s.selectedModel);
+  const etudesFil = useEtudesFil(activeId);
+  const [preparationEtude, setPreparationEtude] = useState<{ conversationId: string; emplacement: EmplacementEtude } | null>(null);
+  const [nouvelleEtude, setNouvelleEtude] = useState<string | null>(null);
+  const etudesOuvertes = activeId !== null && preparationEtude?.conversationId === activeId;
+  const ouvrirEtude = useCallback(() => {
+    if (!useAppStore.getState().activeId) useAppStore.getState().createConversation();
+    const { activeId: conversationId, messages: actuels } = useAppStore.getState();
+    if (!conversationId) return;
+    setPreparationEtude(p => p?.conversationId === conversationId ? p : {
+      conversationId, emplacement: { afterMessageId: actuels[actuels.length - 1]?.id ?? null, openedAt: Date.now() },
+    });
+  }, []);
+  useEffect(() => {
+    // 29/09/2026 : le booléen partagé rouvrait Étudier dans chaque nouveau
+    // fil. L'ouverture appartient au fil choisi et se ferme quand on le quitte.
+    setPreparationEtude(p => p?.conversationId === activeId ? p : null);
+  }, [activeId]);
+  useEffect(() => {
+    window.addEventListener(OUVRIR_ETUDES, ouvrirEtude);
+    return () => window.removeEventListener(OUVRIR_ETUDES, ouvrirEtude);
+  }, [ouvrirEtude]);
   const conversations = useAppStore((s) => s.conversations);
   const selectConversation = useAppStore((s) => s.selectConversation);
   const loadMessages = useAppStore((s) => s.loadMessages);
@@ -127,7 +153,7 @@ export function ChatArea() {
       .catch(() => setHasConnectedSources(null));
   }, []);
 
-  const isEmpty = messages.length === 0 && !streamState.isStreaming && !voix.isActive;
+  const isEmpty = messages.length === 0 && etudesFil.etudes.length === 0 && !streamState.isStreaming && !voix.isActive;
 
   useEffect(() => {
     // Sending a message always pins the view to the bottom, even if the
@@ -316,7 +342,7 @@ export function ChatArea() {
                 : undefined
             }
           >
-          {isEmpty ? (
+          {isEmpty && !etudesOuvertes ? (
             /* `min-h-full`, pas `h-full` : centré dans 122 px, un contenu de
                209 partait pour moitié en débordement négatif, non défilable —
                le salut était inatteignable à 340×380 (17 sept. 2026). Sous sm
@@ -448,9 +474,21 @@ export function ChatArea() {
             </div>
           ) : (
             <div className="max-w-[var(--chat-max-width)] mx-auto px-4 py-6">
-              {messages.map((msg, i) => {
+              {etudesFil.erreur && <p role="alert">Les études n’ont pas pu être actualisées : {etudesFil.erreur}</p>}
+              {intercalerEtudes(messages, etudesFil.etudes, etudesOuvertes ? preparationEtude?.emplacement : null).map(element => {
+                if (element.type !== 'message') {
+                  if (!activeId) return null;
+                  const etude = element.type === 'etude' ? element.etude : undefined;
+                  return <Suspense key={etude?.id ?? 'preparation-etude'} fallback={<p role="status">Ouverture de l’étude…</p>}>
+                    <Etudier conversationId={activeId} modele={modeleEtude} initiale={etude} nouvelle={etude?.id === nouvelleEtude}
+                      emplacement={element.type === 'preparation' ? element.emplacement : undefined}
+                      onFermer={() => setPreparationEtude(null)} onChanger={etudesFil.adopter} onSupprimer={etudesFil.retirer}
+                      onNouvelle={ouvrirEtude} onCreer={e => { etudesFil.adopter(e); setNouvelleEtude(e.id); setPreparationEtude(null); }} />
+                  </Suspense>;
+                }
+                const msg = element.message;
                 const isLastAssistant =
-                  i === messages.length - 1 && msg.role === 'assistant';
+                  msg.id === messages[messages.length - 1]?.id && msg.role === 'assistant';
                 return (
                   <MessageBubble
                     key={msg.id}

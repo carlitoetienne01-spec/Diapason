@@ -70,6 +70,7 @@ _DEPUIS_LE_TELEPHONE: ContextVar[bool] = ContextVar(
 # schéma vu du téléphone (BaseTool.schema_du_telephone) ne les offre pas.
 OUTILS_DU_TELEPHONE: frozenset[str] = frozenset(
     {
+        "study",
         "current_time",
         "calculator",
         "calendar_query",

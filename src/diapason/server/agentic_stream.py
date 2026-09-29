@@ -333,6 +333,8 @@ def observation(resultat: Any) -> str:
     seul endroit qui s'adresse au modèle, que les données sont jointes.
     """
     contenu = str(getattr(resultat, "content", "") or "")
+    if getattr(resultat, "tool_name", "") == "study":
+        return contenu
     meta = getattr(resultat, "metadata", None)
     if not isinstance(meta, dict):
         return contenu
@@ -425,6 +427,64 @@ async def stream_with_tools(
     """
     trousse = TrousseChat(tools, messages, adaptative=trousse_adaptative)
     travail: list[Message] = list(messages)
+    from diapason.etudes.conversation import (
+        ECHEC_PREUVE,
+        RELANCE_PREUVE,
+        etat_pour_modele,
+        noter_demande,
+        preuve_manquante,
+    )
+    from diapason.etudes.dialogue import (
+        arguments_etape,
+        plan_direct,
+        restitution_verifiee,
+    )
+
+    noter_demande(
+        next((m.content or "" for m in reversed(messages) if m.role == Role.USER), "")
+    )
+    etat_etude = await etat_pour_modele()
+    direct = await plan_direct() if "study" in trousse.noms else None
+    if direct is not None and len(direct[1]) > max_tool_turns:
+        direct = None
+    if direct is not None:
+        etude, etapes = direct
+        for etape in etapes:
+            arguments = json.dumps(arguments_etape(etude, etape))
+            yield ToolStreamEvent(
+                "tool_start", {"tool": "study", "arguments": arguments}
+            )
+            debut = time.time()
+            try:
+                resultat = await asyncio.to_thread(
+                    executor.execute,
+                    ToolCall(id="study_direct", name="study", arguments=arguments),
+                )
+                succes, contenu = resultat.success, resultat.content
+            except Exception as exc:
+                succes, contenu = False, str(exc)
+            yield ToolStreamEvent(
+                "tool_end",
+                {
+                    "tool": "study",
+                    "success": succes,
+                    "result": contenu[:1000],
+                    "latency": round(time.time() - debut, 3),
+                },
+            )
+            if not succes:
+                yield ToolStreamEvent(
+                    "token", "Cette étape n’a pas abouti : " + contenu
+                )
+                return
+            etude = json.loads(contenu)
+        yield ToolStreamEvent(
+            "token", restitution_verifiee(lecture_directe=True) or ECHEC_PREUVE
+        )
+        return
+    if etat_etude:
+        travail.append(Message(role=Role.SYSTEM, content=etat_etude))
+    reprise_etude = False
     if interactive_questions:
         travail = ajouter_consigne(travail)
         # 19/09/2026 : sur le 9b, le seul système initial donnait des listes
@@ -629,6 +689,7 @@ async def stream_with_tools(
                             and not controler_liens
                             and not retenir_note
                             and not retenir_mutation
+                            and not etat_etude
                             and premier_du_tour
                             and deja_ecrit
                             and morceau.content.strip()
@@ -643,6 +704,7 @@ async def stream_with_tools(
                             and not controler_liens
                             and not retenir_note
                             and not retenir_mutation
+                            and not etat_etude
                         ):
                             premier_du_tour = False
                             # Un tour composé d'espaces ne doit pas faire
@@ -682,6 +744,17 @@ async def stream_with_tools(
             continue
 
         appels = [fragments[i] for i in sorted(fragments)]
+        if etat_etude and not appels and (restitution := restitution_verifiee()):
+            morceaux = [restitution]
+        if etat_etude and not appels and preuve_manquante("".join(morceaux)):
+            if not reprise_etude and not dernier_tour:
+                reprise_etude = True
+                travail.append(Message(role=Role.SYSTEM, content=RELANCE_PREUVE))
+                continue
+            yield ToolStreamEvent("token", ECHEC_PREUVE)
+            return
+        if etat_etude and appels:
+            morceaux = []
         if retenir_mutation and not appels:
             if clarification_sans_confirmation("".join(morceaux)):
                 for contenu in morceaux:
@@ -879,6 +952,15 @@ async def stream_with_tools(
                     return
             # Une annonce antérieure aux outils n'est pas une source.
             morceaux = []
+        if (
+            etat_etude
+            and not appels
+            and not (
+                verifier_lecture or controler_liens or retenir_note or retenir_mutation
+            )
+        ):
+            for contenu in morceaux:
+                yield ToolStreamEvent("token", contenu)
         if not verifier_lecture:
             texte_affiche.extend(morceaux)
         texte_retenu = "".join(morceaux)

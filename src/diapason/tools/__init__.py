@@ -181,6 +181,11 @@ except ImportError:
     pass
 
 try:
+    import diapason.tools.etudier  # noqa: F401
+except ImportError:
+    pass
+
+try:
     import diapason.tools.vie_continuity  # noqa: F401
 except ImportError:
     pass

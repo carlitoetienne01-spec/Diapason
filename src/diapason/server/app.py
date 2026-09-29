@@ -596,7 +596,14 @@ def create_app(
     # montraient chacun le sien.
     conversations_store = ConversationsStore()
     app.state.conversations_store = conversations_store
-    app.include_router(create_conversations_router(conversations_store))
+    from diapason.server.etudes_routes import supprimer_etudes_conversation
+
+    app.include_router(
+        create_conversations_router(
+            conversations_store,
+            sur_suppression=lambda c: supprimer_etudes_conversation(app, c),
+        )
+    )
     # Le compte chiffré (compte-chiffre.md §3.8), à côté des conversations et
     # derrière la même clé locale ; jamais sur la sous-app lan. Le service
     # n'est construit qu'à la première requête : ce constructeur tourne dans
@@ -618,6 +625,9 @@ def create_app(
     from diapason.server.documents_routes import router as documents_router
 
     app.include_router(documents_router)
+    from diapason.server.etudes_routes import router as etudes_router
+
+    app.include_router(etudes_router)
     app.include_router(research_router)
     app.include_router(analytics_router)
     include_all_routes(app)
