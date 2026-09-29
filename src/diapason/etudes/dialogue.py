@@ -182,6 +182,75 @@ def actions_explicites(texte: str, etude: dict) -> list[dict]:
     return []
 
 
+_NOMBRES = {
+    "deux": 2,
+    "trois": 3,
+    "quatre": 4,
+    "cinq": 5,
+    "six": 6,
+    "sept": 7,
+    "huit": 8,
+    "neuf": 9,
+    "dix": 10,
+    "onze": 11,
+    "douze": 12,
+}
+
+
+def preparation_explicite(texte: str) -> dict | None:
+    """Un quiz nommé part à l'outil, sans classifieur (29/09/2026).
+
+    Appelant : plan_direct, avant interpreter_preparation. Pas de route,
+    pas de champ nouveau : l'action prepare existe déjà.
+    Carlito : « terminer les trois qui restent ».
+
+    « Fais-moi un quiz sur les fractions » attendait un modèle qui pouvait
+    répondre non, puis inventer les questions. Une négation, une question
+    ou une seconde action (« puis supprime ») reste au modèle.
+    """
+    brut = (texte or "").strip()
+    if not brut or "?" in brut:
+        return None
+    t = _normaliser(brut)
+    if (
+        t.startswith("ne ")
+        or " puis " in f" {t} "
+        or " et supprime" in t
+        or " et efface" in t
+    ):
+        return None
+    if not (
+        re.search(r"\b(?:cours|examen|test|quiz|entrainement|epreuve)\b", t)
+        and re.search(r"\b(?:prepar\w*|cre\w*|conco\w*|fais|faire)\b", t)
+    ):
+        return None
+    sujet = re.search(r"\bsur\s+(.+)$", brut, re.IGNORECASE)
+    if sujet is None:
+        return None
+    topic = sujet.group(1).strip(" .")
+    if len(topic) < 3:
+        return None
+    compte = 5
+    chiffre = re.search(r"\b(\d{1,2})\s+questions?\b", t)
+    mot = re.search(
+        r"\b(deux|trois|quatre|cinq|six|sept|huit|neuf|dix|onze|douze)"
+        r"\s+questions?\b",
+        t,
+    )
+    if chiffre:
+        compte = int(chiffre.group(1))
+    elif mot:
+        compte = _NOMBRES[mot.group(1)]
+    return {
+        "action": "prepare",
+        "topic": topic,
+        "level": "Débutant",
+        "mode": "exam" if re.search(r"\b(?:examen|epreuve)\b", t) else "practice",
+        "questionCount": min(12, max(2, compte)),
+        "useDocuments": True,
+    }
+
+
 async def plan_direct() -> tuple[dict, list[dict]] | None:
     contexte = contexte_actuel()
     if contexte is None:
@@ -193,6 +262,9 @@ async def plan_direct() -> tuple[dict, list[dict]] | None:
     actions = actions_explicites(contexte.demande, etude) if etude else []
     if actions:
         return etude, actions
+    explicite = preparation_explicite(contexte.demande)
+    if explicite:
+        return {}, [explicite]
     preparation = await interpreter_preparation(contexte)
     if preparation:
         return ({}, [preparation])

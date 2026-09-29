@@ -13,6 +13,7 @@ from diapason.etudes.dialogue import (
     actions_explicites,
     interpreter_preparation,
     interpreter_reponse,
+    preparation_explicite,
 )
 from diapason.etudes.magasin import MagasinEtudes, vue_publique
 from diapason.etudes.service import ServiceEtudes
@@ -31,6 +32,32 @@ class Executeur:
 @pytest.fixture
 def service(tmp_path):
     return ServiceEtudes(MagasinEtudes(tmp_path / "etudes.db"), Moteur())
+
+
+class TestLaPreparationExplicite:
+    """29/09/2026 : « fais-moi un quiz sur… » attendait un classifieur
+    qui pouvait répondre non, et le modèle inventait les questions."""
+
+    def test_un_quiz_nomme_part_a_l_outil(self):
+        obtenu = preparation_explicite("Fais-moi un quiz sur les fractions")
+        assert obtenu is not None
+        assert obtenu["action"] == "prepare"
+        assert obtenu["topic"] == "les fractions"
+        assert obtenu["mode"] == "practice"
+        assert obtenu["questionCount"] == 5
+
+    def test_un_examen_compte_ses_questions(self):
+        obtenu = preparation_explicite("Crée un examen de trois questions sur Rome")
+        assert obtenu is not None
+        assert obtenu["mode"] == "exam"
+        assert obtenu["questionCount"] == 3
+        assert obtenu["topic"] == "Rome"
+
+    def test_une_negation_ou_une_autre_action_reste_au_modele(self):
+        assert preparation_explicite("Ne prépare pas de cours") is None
+        assert preparation_explicite("Prépare un cours puis supprime mes notes") is None
+        assert preparation_explicite("Peux-tu créer des examens ?") is None
+        assert preparation_explicite("Commence le test") is None
 
 
 class TestDialogue:
