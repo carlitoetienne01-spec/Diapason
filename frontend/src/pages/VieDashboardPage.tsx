@@ -388,13 +388,13 @@ function KpiCard({
           {value}
         </p>
       </div>
-      <p className="text-xs sm:text-sm mt-1 truncate" style={{ color: 'var(--color-text-secondary)' }}>
+      <p className="text-xs sm:text-sm mt-1 truncate mobile:whitespace-normal mobile:overflow-visible" style={{ color: 'var(--color-text-secondary)' }}>
         {label}
       </p>
       {/* Le complément reste visible sous sm : pour « Tâches complétées » il
           porte le dénominateur (« /12 cette semaine ») — sans lui, « 3 » ne
           dit rien. Une ligne de 10 px, tronquée, pas cachée. */}
-      <p className="text-[10px] sm:text-[11px] mt-0.5 truncate" style={{ color: 'var(--color-text-tertiary)' }}>
+      <p className="text-[10px] sm:text-[11px] mt-0.5 truncate mobile:whitespace-normal mobile:overflow-visible" style={{ color: 'var(--color-text-tertiary)' }}>
         {hint}
       </p>
     </CadreVitre>

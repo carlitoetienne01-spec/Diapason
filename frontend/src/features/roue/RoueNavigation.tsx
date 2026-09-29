@@ -1,4 +1,5 @@
 import {
+  startTransition,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -41,19 +42,16 @@ import { useAppStore } from '../../lib/store';
 import { openTalkToDiapason } from '../../components/TalkToDiapasonHost';
 import {
   chargeBordRoue,
-  cibleAimantation,
   commenceDansLaBande,
   decisionDuBord,
   dureeAimantation,
   geometrieRoue,
   indexAllume,
-  issueDuRelache,
   largeurDuNom,
   placerElement,
   rotationAuTemps,
   rotationDuGlisse,
   TOUCHER_PX,
-  vitesseDuGlisse,
   type Cote,
   type Geometrie,
 } from './geometrieRoue';
@@ -62,6 +60,7 @@ import { opaciteMinimale } from './contraste';
 import { cibleEstUnBouton, freresARendreInertes, rendreInertes, reponseAuRetour, toucherDuVoile } from './fermetureRoue';
 import { annoncerLeMenuDeLApp, OUVRIR_MENU_APP } from './menuDeLApp';
 import { PAGES_ROUE, indexDeLaPage } from './pagesRoue';
+import { prechargerRoutes } from '../../lib/prechargerRoutes';
 import './roue.css';
 
 /** L'icône de chaque page — celles de la barre latérale du bureau. */
@@ -138,7 +137,7 @@ type Geste = {
 export function RoueNavigation() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { pathname } = useLocation();
+  const { pathname, state: etatRoute } = useLocation();
   const cote: Cote = useAppStore((s) => (s.settings.roueAGauche ? 'gauche' : 'droite'));
 
   const [ouverte, setOuverte] = useState(false);
@@ -183,6 +182,24 @@ export function RoueNavigation() {
   ouverteRef.current = ouverte;
   const n = PAGES_ROUE.length;
 
+  const cheminRef = useRef(pathname);
+  const sessionRef = useRef('');
+  const historiqueRef = useRef(false);
+  const mouvementRef = useRef<number | null>(null);
+  const afficherPage = useCallback((index: number) => {
+    const chemin = PAGES_ROUE[index]?.chemin;
+    if (!chemin) return;
+    prechargerRoutes([chemin, PAGES_ROUE[index - 1]?.chemin, PAGES_ROUE[index + 1]?.chemin].filter((c): c is string => Boolean(c)));
+    if (chemin === cheminRef.current) return;
+    const direction = index >= indexDeLaPage(cheminRef.current) ? 1 : -1;
+    cheminRef.current = chemin;
+    const replace = historiqueRef.current;
+    historiqueRef.current = true;
+    // Une entrée par ouverture, pas une entrée par cran. React garde la
+    // page visible pendant le chargement et abandonne une destination dépassée.
+    startTransition(() => navigate(chemin, { replace, state: { diapasonRoue: sessionRef.current, directionRoue: direction } }));
+  }, [navigate]);
+
   /** Écrire la rotation dans le document : transform et opacity seulement. */
   const appliquer = useCallback(() => {
     const g = geoRef.current;
@@ -215,8 +232,9 @@ export function RoueNavigation() {
     if (index !== allumeRef.current) {
       allumeRef.current = index;
       setAllume(index);
+      if (ouverteRef.current) afficherPage(index);
     }
-  }, [n]);
+  }, [n, afficherPage]);
 
   const arreterAnimation = () => {
     if (animationRef.current !== null) cancelAnimationFrame(animationRef.current);
@@ -254,6 +272,10 @@ export function RoueNavigation() {
   const ouvrir = useCallback(() => {
     arreterAnimation();
     const index = indexDeLaPage(pathname);
+    sessionRef.current = `roue-${performance.now()}`;
+    historiqueRef.current = false;
+    ouverteRef.current = true;
+    prechargerRoutes([pathname, PAGES_ROUE[index - 1]?.chemin, PAGES_ROUE[index + 1]?.chemin].filter((c): c is string => Boolean(c)));
     rotationRef.current = index;
     allumeRef.current = index;
     setAllume(index);
@@ -263,6 +285,9 @@ export function RoueNavigation() {
   const fermer = useCallback(() => {
     arreterAnimation();
     gesteRef.current = null;
+    ouverteRef.current = false;
+    if (mouvementRef.current !== null) cancelAnimationFrame(mouvementRef.current);
+    mouvementRef.current = null;
     setOuverte(false);
   }, []);
 
@@ -274,14 +299,13 @@ export function RoueNavigation() {
 
   const ouvrirPage = useCallback(
     (index: number) => {
-      const chemin = PAGES_ROUE[index]?.chemin;
+      afficherPage(index);
       fermer();
-      if (chemin && chemin !== pathname) navigate(chemin);
       // Le focus revient au bouton : la page suivante le trouve là où il
       // était, pas sur un élément devenu invisible.
       boutonRef.current?.focus({ preventScroll: true });
     },
-    [fermer, navigate, pathname],
+    [fermer, afficherPage],
   );
 
   // La géométrie suit la taille de la zone ; mesurée avant la peinture pour
@@ -425,11 +449,17 @@ export function RoueNavigation() {
   // Une navigation venue d'ailleurs (le maillage, la voix) ferme la roue.
   const cheminOuvert = useRef(pathname);
   useEffect(() => {
-    if (cheminOuvert.current !== pathname && ouverteRef.current) fermer();
+    if (cheminOuvert.current !== pathname && etatRoute?.diapasonRoue !== sessionRef.current) {
+      if (ouverteRef.current) fermer();
+    }
+    cheminRef.current = pathname;
     cheminOuvert.current = pathname;
-  }, [pathname, fermer]);
+  }, [pathname, etatRoute, fermer]);
 
-  useEffect(() => () => arreterAnimation(), []);
+  useEffect(() => () => {
+    arreterAnimation();
+    if (mouvementRef.current !== null) cancelAnimationFrame(mouvementRef.current);
+  }, []);
 
   // ── Le pouce ───────────────────────────────────────────────────────
   const commencer = (e: { pointerId: number; clientX: number; clientY: number }, continu: boolean) => {
@@ -456,7 +486,10 @@ export function RoueNavigation() {
     geste.echantillons.push({ t: performance.now(), y: e.clientY });
     if (geste.echantillons.length > 12) geste.echantillons.shift();
     rotationRef.current = rotationDuGlisse(geste.depart, dy, n);
-    appliquer();
+    if (mouvementRef.current === null) mouvementRef.current = requestAnimationFrame(() => {
+      mouvementRef.current = null;
+      appliquer();
+    });
   };
 
   const relacher = (e: { pointerId: number }) => {
@@ -465,9 +498,11 @@ export function RoueNavigation() {
     gesteRef.current = null;
     if (!geste.tourne) return;
     ignorerLeProchainClic();
-    const cible = cibleAimantation(rotationRef.current, vitesseDuGlisse(geste.echantillons), n, mouvementReduit());
-    const issue = issueDuRelache({ continu: geste.continu, deplacementPx: geste.deplacement });
-    animerVers(cible, issue === 'ouvrir' ? () => ouvrirPage(cible) : undefined);
+    if (mouvementRef.current !== null) cancelAnimationFrame(mouvementRef.current);
+    mouvementRef.current = null;
+    appliquer();
+    const cible = indexAllume(rotationRef.current, n);
+    animerVers(cible, () => ouvrirPage(cible));
   };
 
   // Dans la roue ouverte : tourner ; le toucher d'un élément est un clic.
@@ -491,8 +526,7 @@ export function RoueNavigation() {
 
   const toucherElement = (index: number) => {
     if (clicAIgnorer()) return;
-    if (index === allumeRef.current) ouvrirPage(index);
-    else animerVers(index);
+    ouvrirPage(index);
   };
 
   // Le bouton : un toucher ouvre ; posé puis glissé, c'est le geste continu.

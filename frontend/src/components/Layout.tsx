@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { MesureDeRoute } from '../lib/MesureDeRoute';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router';
 import { ApprovalBell } from './ApprovalBell';
 import { Sidebar } from './Sidebar/Sidebar';
@@ -52,12 +53,12 @@ export function Layout() {
   // et la fenêtre principale garde son titre — Tauri n'y suit pas le document.
   // Le sélecteur rend une chaîne : Layout ne se re-rend que quand le titre
   // change, pas à chaque message ajouté.
-  const { pathname } = useLocation();
+  const { pathname, state } = useLocation();
   // Au téléphone, la page qui arrive glisse et se révèle, et celle qu'on
   // retrouve reprend sa position (lib/useTransitionDesPages.ts, 27/09/2026).
   // Ailleurs, le crochet ne fait rien.
   const colonneRef = useRef<HTMLDivElement>(null);
-  useTransitionDesPages(colonneRef, pathname);
+  useTransitionDesPages(colonneRef, pathname, state?.diapasonRoue ? state.directionRoue : undefined);
   const titreFil = useAppStore((s) => titreDiscussion(s.conversations, s.activeId, t));
   useEffect(() => {
     if (!estCompact) return;
@@ -96,7 +97,7 @@ export function Layout() {
               compte et permet de le déverrouiller — seul bandeau admis ici,
               et seulement quand il a quelque chose à dire. */}
           <BandeauCompte compact />
-          <Outlet />
+          <Suspense fallback={<div role="status" className="p-6" data-chargement="">Chargement…</div>}><MesureDeRoute><Outlet /></MesureDeRoute></Suspense>
         </main>
       </div>
     );
@@ -184,7 +185,7 @@ export function Layout() {
               paddingBottom: estMobile && pathname === '/' ? 'var(--reserve-roue, 0px)' : undefined,
             }}
           >
-            <Outlet />
+            <Suspense fallback={<div role="status" className="p-6" data-chargement="">Chargement…</div>}><MesureDeRoute><Outlet /></MesureDeRoute></Suspense>
           </div>
         </main>
       </div>

@@ -116,7 +116,7 @@ export function VieYearReviewPage() {
           </div>
 
           {loading ? <div data-chargement="" className="h-40 flex items-center justify-center"><Loader2 className="animate-spin" style={{ color: 'var(--color-accent)' }} /></div> : (
-            <div className="grid grid-cols-6 md:grid-cols-12 gap-1.5 sm:gap-2" aria-label="Activité par mois">
+            <div className="activite-mois grid grid-cols-6 md:grid-cols-12 gap-1.5 sm:gap-2" aria-label="Activité par mois">
               {(review?.activityByMonth ?? Array(12).fill(0)).map((value, index) => {
                 const selected = month === index + 1;
                 const ratio = value / maxActivity;

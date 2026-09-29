@@ -37,7 +37,7 @@ function mouvementReduit(): boolean {
  *
  * Au bureau et au mini-panneau, rien : aucun écouteur, aucune animation.
  */
-export function useTransitionDesPages(colonneRef: RefObject<HTMLElement | null>, chemin: string) {
+export function useTransitionDesPages(colonneRef: RefObject<HTMLElement | null>, chemin: string, directionRoue?: number) {
   const suivi = useRef<SuiviDesPages | null>(null);
   suivi.current ??= creerSuiviDesPages({ mobile: estMobile, mouvementReduit });
 
@@ -56,6 +56,6 @@ export function useTransitionDesPages(colonneRef: RefObject<HTMLElement | null>,
   // s'appliquent une image trop tard.
   useLayoutEffect(() => {
     if (!estMobile) return undefined;
-    return suivi.current?.naviguer(colonneRef.current, chemin);
-  }, [chemin, colonneRef]);
+    return suivi.current?.naviguer(colonneRef.current, chemin, directionRoue);
+  }, [chemin, colonneRef, directionRoue]);
 }

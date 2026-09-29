@@ -1,3 +1,4 @@
+import { useBrouillonMobile } from '../lib/useBrouillonMobile';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import {
   Bell,
@@ -105,9 +106,9 @@ export function VieHabitsPage() {
   /** Les clés sous lesquelles `habits` et `logs` ont été chargés — celles du miroir, plus bas. */
   const clesChargees = useRef<{ habitudes: string; journal: string } | null>(null);
   const [saving, setSaving] = useState(false);
-  const [showForm, setShowForm] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [draft, setDraft] = useState(emptyHabit());
+  const [showForm, setShowForm] = useBrouillonMobile('VieHabitsPage:showForm', false);
+  const [editingId, setEditingId] = useBrouillonMobile<string | null>('VieHabitsPage:editingId', null);
+  const [draft, setDraft] = useBrouillonMobile('VieHabitsPage:draft', emptyHabit());
   const [viewYear, setViewYear] = useState(now.getFullYear());
   const [viewMonth, setViewMonth] = useState(now.getMonth());
   const formRef = useRef<HTMLDivElement>(null);
@@ -791,15 +792,15 @@ function HabitMonthCard({
 }) {
   return (
     <CarteVitree as="article" contenuClassName="p-4">
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex items-center gap-2 mb-3 mobile:grid mobile:grid-cols-[36px_minmax(0,1fr)_44px_44px]">
         <span
           className="size-9 rounded-xl flex items-center justify-center text-base shrink-0"
           style={{ background: `${habit.color}22`, border: `1px solid ${habit.color}55` }}
         >
           {habit.icon || '✨'}
         </span>
-        <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-medium truncate" style={{ color: 'var(--color-text)' }}>
+        <div className="min-w-0 flex-1 mobile:col-span-3">
+          <h3 className="text-sm font-medium truncate mobile:whitespace-normal mobile:overflow-visible" style={{ color: 'var(--color-text)' }}>
             {habit.name}
           </h3>
           <p className="text-[11px] flex items-center gap-1.5 mt-0.5 flex-wrap" style={{ color: 'var(--color-text-tertiary)' }}>
@@ -819,7 +820,7 @@ function HabitMonthCard({
           type="button"
           onClick={onEdit}
           aria-label="Modifier"
-          className="p-1.5 cursor-pointer"
+          className="p-1.5 cursor-pointer mobile:col-start-3"
           style={{ color: 'var(--color-text-tertiary)' }}
         >
           <Pencil size={14} />
@@ -834,7 +835,7 @@ function HabitMonthCard({
           <Trash2 size={14} />
         </button>
       </div>
-      <div className="grid grid-cols-7 gap-1">
+      <div className="jours-habitude grid grid-cols-7 gap-1">
         {Array.from({ length: dayCount }, (_, index) => {
           const day = index + 1;
           const iso = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;

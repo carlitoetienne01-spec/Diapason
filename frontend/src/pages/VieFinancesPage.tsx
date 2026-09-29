@@ -1,3 +1,4 @@
+import { useBrouillonMobile } from '../lib/useBrouillonMobile';
 import { CadreVitre } from '../components/Glass/CadreVitre';
 import { usePublierNavigation } from '../components/Sidebar/contexteNavigation';
 import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
@@ -170,7 +171,7 @@ export function VieFinancesPage() {
   const confirm = useConfirm();
   const today = localIsoDate();
   const [period, setPeriod] = useState<FinancePeriod>('month');
-  const [section, setSection] = useState<SectionTab>('transactions');
+  const [section, setSection] = useBrouillonMobile<SectionTab>('VieFinancesPage:section', 'transactions');
   // L'état initial vient du cache — la dernière réponse du serveur pour la
   // période d'ouverture (le mois). Chaque montage repartait de panneaux
   // vides qui disaient « Aucune transaction » avant la première réponse
@@ -196,7 +197,7 @@ export function VieFinancesPage() {
   const [saving, setSaving] = useState(false);
   // Trois états de MODE, pas de largeur : le CSS décide seul ce qui se voit à
   // quelle taille (règle 2 de docs/development/mini-panneau-responsive.md).
-  const [formOpen, setFormOpen] = useState(false);
+  const [formOpen, setFormOpen] = useBrouillonMobile('VieFinancesPage:formOpen', false);
   usePublierNavigation({
     chemin: '/vie/finances',
     groupes: [
@@ -213,9 +214,9 @@ export function VieFinancesPage() {
   const [moreCharts, setMoreCharts] = useState(false);
   // « Ajuster » passait par window.prompt, qui rend `null` sans dialogue dans
   // la WKWebView du panneau : le bouton semblait mort. Saisie en place.
-  const [goalEdit, setGoalEdit] = useState<{ id: string; value: string } | null>(null);
+  const [goalEdit, setGoalEdit] = useBrouillonMobile<{ id: string; value: string } | null>('VieFinancesPage:goalEdit', null);
 
-  const [txnDraft, setTxnDraft] = useState({
+  const [txnDraft, setTxnDraft] = useBrouillonMobile('VieFinancesPage:txnDraft', {
     type: 'expense' as FinanceTxnType,
     amount: '',
     accountId: '',
@@ -225,7 +226,7 @@ export function VieFinancesPage() {
     payee: '',
     notes: '',
   });
-  const [subDraft, setSubDraft] = useState({
+  const [subDraft, setSubDraft] = useBrouillonMobile('VieFinancesPage:subDraft', {
     name: '',
     amount: '',
     cadence: 'monthly' as FinanceSubCadence,
@@ -235,20 +236,20 @@ export function VieFinancesPage() {
     reminderDays: '3',
     notes: '',
   });
-  const [budgetDraft, setBudgetDraft] = useState({
+  const [budgetDraft, setBudgetDraft] = useBrouillonMobile('VieFinancesPage:budgetDraft', {
     scope: 'global' as FinanceBudgetScope,
     categoryId: '',
     yearMonth: currentYearMonth(),
     limit: '',
   });
-  const [accountDraft, setAccountDraft] = useState({
+  const [accountDraft, setAccountDraft] = useBrouillonMobile('VieFinancesPage:accountDraft', {
     name: '',
     type: 'checking' as FinanceAccountType,
     openingBalance: '0',
     color: '#6366f1',
     icon: '🏦',
   });
-  const [goalDraft, setGoalDraft] = useState({
+  const [goalDraft, setGoalDraft] = useBrouillonMobile('VieFinancesPage:goalDraft', {
     name: '',
     target: '',
     current: '0',

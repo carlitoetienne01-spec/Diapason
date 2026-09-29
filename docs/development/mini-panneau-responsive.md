@@ -80,8 +80,11 @@ Les cinq règles valent telles quelles ; le téléphone en ajoute cinq (6 à 9, 
    de la fluidité, `features/roue/`). Un bouton rond « Aller à… » en bas à
    droite (à gauche avec Réglages → « Roue à gauche ») et un glissé depuis
    ce bord ouvrent l'écran « Aller à » : toutes les pages sur un arc, la
-   courante allumée ; le pouce tourne, le toucher (ou le relâché d'un geste
-   continu) ouvre. Toute la géométrie est dans `geometrieRoue.ts`,
+   courante allumée. Depuis le 28/09/2026, chaque cran affiche réellement
+   sa page derrière la roue, et relâcher un glissé ferme sur la dernière
+   page centrée. Une ouverture ne crée qu'une entrée d'historique, les
+   destinations intermédiaires la remplacent. Le toucher ouvre directement.
+   Toute la géométrie est dans `geometrieRoue.ts`,
    fonctions pures testées ; la liste des pages dans `pagesRoue.ts`, qu'un
    test confronte aux routes — **une page ajoutée à la barre l'est aussi à
    `PAGES_ROUE`**. §82 : une vue « Liste » (un toucher, une page), les
@@ -146,6 +149,44 @@ vraie WKWebView non activante du mini-panneau, qui reste due pour les neuf.
 Le même jour, les mêmes pages ont été vues à 375 px avec le pont simulé
 (`diapason-mobile.md`, étape 5).
 Un module nouveau se conforme aux onze règles dès sa naissance.
+
+### Lisibilité et rangement au doigt — 28 septembre 2026
+
+`telephoneLisible.css` conserve les polices rétro et ajuste uniquement le
+mode téléphone : légendes agrandies, titres pixel réduits, cibles usuelles
+de 44 px (les contrôles `data-cible-libre` gardent leur surface étendue),
+cartes sur une colonne sous 360 px. Les titres d'habitudes ne sont plus
+comprimés entre les boutons. Les grilles de dates sans colonnes de jours
+s'adaptent au nombre de cibles qui tient dans leur carte.
+
+Dans Projets, un toucher ouvre ; un appui de 400 ms révèle modifier et
+supprimer pour le dossier choisi, puis permet de le déplacer. Un mouvement
+de plus de 8 px avant ce délai laisse défiler la page normalement. Une
+annulation système ne sauvegarde aucun déplacement ; une recherche interdit
+de publier un ordre partiel. La position reste aussi modifiable dans le
+détail, et Maj+F10 révèle les actions au clavier (§82).
+
+Notes partage désormais ce contrôleur (`installerGesteCartables`) : appui
+long pour révéler les actions, déplacement dans la catégorie ou vers une
+autre, aucune flèche de rangement sur les cartes du téléphone. Une
+destination vide accepte le dépôt. Pour ne pas perdre les événements
+tactiles d'Android, la carte touchée reste dans sa section jusqu'au
+relâchement ; la destination est indiquée pendant le geste. La note ouverte
+garde un sélecteur de position pour le clic et le clavier. Les boutons du
+bureau et du mini-panneau conservent leur fonctionnement.
+
+Le chargement différé vit dans la colonne de contenu, pour conserver la
+roue pendant le geste. Les pages voisines sont préchargées sans les monter.
+Les formulaires des notes, projets, tâches, habitudes et finances retiennent
+leurs saisies en mémoire de cette WebView pendant les changements de page
+(`useBrouillonMobile`), sans stockage supplémentaire sur disque. Le contrôle
+de version des notes accompagne leur brouillon pour éviter un écrasement.
+
+Le banc navigateur à données fictives a vérifié les tailles de 320 à 430 px
+et le paysage à 780 × 390 px, le changement de page derrière la roue, le relâchement, le retour en un
+seul pas et la conservation d'un brouillon. Les événements tactiles du
+rangement sont exercés par le contrôleur DOM sous jsdom. Cela ne remplace
+pas la validation du doigt et du clavier virtuel sur le téléphone réel.
 
 ## Le mini-panneau doit charger la version installée (28 septembre 2026)
 

@@ -128,7 +128,7 @@ export function creerSuiviDesPages(o: { mobile: boolean; mouvementReduit: () => 
       retenirSiDefileurDePage(colonne, e.target, cheminCourant, memoire);
     },
     /** Rend de quoi abandonner la reprise en cours, s'il y en a une. */
-    naviguer(colonne: HTMLElement | null, chemin: string): (() => void) | undefined {
+    naviguer(colonne: HTMLElement | null, chemin: string, directionRoue?: number): (() => void) | undefined {
       const precedent = cheminCourant;
       cheminCourant = chemin;
       if (!colonne || precedent === null || precedent === chemin) return undefined;
@@ -141,7 +141,10 @@ export function creerSuiviDesPages(o: { mobile: boolean; mouvementReduit: () => 
         typeof colonne.animate === 'function' &&
         doitAnimerLEntree({ mobile: o.mobile, mouvementReduit: o.mouvementReduit(), cheminPrecedent: precedent, chemin })
       ) {
-        entree = colonne.animate(IMAGES_ENTREE, OPTIONS_ENTREE);
+        entree = colonne.animate(directionRoue ? [
+          { opacity: 0.92, transform: `translateY(${directionRoue > 0 ? 12 : -12}px)` },
+          { opacity: 1, transform: 'translateY(0)' },
+        ] : IMAGES_ENTREE, directionRoue ? { ...OPTIONS_ENTREE, duration: 160 } : OPTIONS_ENTREE);
       }
 
       const cible = pageRetientSaPosition(chemin) ? memoire.lire(chemin) : undefined;

@@ -1,3 +1,4 @@
+import { useBrouillonMobile } from '../lib/useBrouillonMobile';
 import { useDerniereLecture } from '../features/vie/useDerniereLecture';
 import { CadreVitre } from '../components/Glass/CadreVitre';
 import {
@@ -88,6 +89,9 @@ import { listVieNoteResumes } from '../features/vie/api';
 import type { VieNoteResume } from '../features/vie/types';
 import { deplacerVers } from '../features/vie/photos';
 import { useAppStore } from '../lib/store';
+import { GrilleProjetsMobile } from '../features/vie/GrilleProjetsMobile';
+import { rangerProjet } from '../features/vie/gesteProjet';
+import { estMobile } from '../lib/natif';
 import { useContexteVue } from '../features/mesh/useContexteVue';
 
 const FALLBACK_COLOR = '#6366f1';
@@ -743,7 +747,7 @@ export function VieProjectsPage() {
     () => lireCache<VieProject[]>(clesVie.projets()) ?? [],
   );
   const [tasks, setTasks] = useState<VieTask[]>(() => lireCache<VieTask[]>(clesVie.taches()) ?? []);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useBrouillonMobile('VieProjectsPage:search', '');
   // Le spinner n'existe qu'au premier chargement sans cache : ensuite la
   // liste reste montée pendant qu'on relit derrière (retour de focus,
   // recherche, réordonnancement) — `saving` tient le voyant discret.
@@ -763,13 +767,13 @@ export function VieProjectsPage() {
    */
   const [chargeReussi, setChargeReussi] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [showForm, setShowForm] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [draft, setDraft] = useState(emptyDraft);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [showForm, setShowForm] = useBrouillonMobile('VieProjectsPage:showForm', false);
+  const [editingId, setEditingId] = useBrouillonMobile<string | null>('VieProjectsPage:editingId', null);
+  const [draft, setDraft] = useBrouillonMobile('VieProjectsPage:draft', emptyDraft);
+  const [selectedId, setSelectedId] = useBrouillonMobile<string | null>('VieProjectsPage:selectedId', null);
   /** Le projet survolé pendant un glisser de réordonnancement. */
   const [cibleProjet, setCibleProjet] = useState<string | null>(null);
-  const [quickTitle, setQuickTitle] = useState('');
+  const [quickTitle, setQuickTitle] = useBrouillonMobile('VieProjectsPage:quickTitle', '');
   const [kits, setKits] = useState<VieProjectKit[]>(
     () => lireCache<VieProjectKit[]>(clesVie.kitsProjets()) ?? [],
   );
@@ -1052,10 +1056,10 @@ export function VieProjectsPage() {
    * cas d'échec on recharge, l'ordre affiché venant toujours de la base
    * (§100). Désactivé pendant une recherche : la liste y est partielle.
    */
-  const placerProjetAvant = async (projetId: string, cibleId: string) => {
-    if (search.trim() || projetId === cibleId) return;
-    const ordonnes = deplacerVers(projects.map((p) => p.id), projetId, cibleId);
+  const enregistrerOrdreProjets = async (ordonnes: string[]) => {
+    if (search.trim() || saving) return;
     if (ordonnes.join('\u0000') === projects.map((p) => p.id).join('\u0000')) return;
+    const avant = projects;
     const rang = new Map(ordonnes.map((id, i) => [id, i]));
     setProjects((prev) => [...prev].sort((a, b) => (rang.get(a.id) ?? 0) - (rang.get(b.id) ?? 0)));
     lecture.invalider();
@@ -1064,38 +1068,27 @@ export function VieProjectsPage() {
       await reorderProjects(ordonnes);
       await load();
     } catch (error) {
+      setProjects(avant);
       toast.error("L'ordre n'a pas été enregistré.", {
         description: error instanceof Error ? error.message : String(error),
       });
-      await load();
     } finally {
       setSaving(false);
     }
   };
 
-  /** Déplacer un projet d'un cran (clavier/clic — §82). */
+  const placerProjetAvant = async (projetId: string, cibleId: string) => {
+    await enregistrerOrdreProjets(deplacerVers(projects.map((p) => p.id), projetId, cibleId));
+  };
+
+  /** Déplacer un projet d'un cran (clavier/clic — §82, bureau). */
   const decalerProjet = async (project: VieProject, sens: 'avant' | 'apres') => {
-    if (search.trim()) return;
     const ids = projects.map((p) => p.id);
     const i = ids.indexOf(project.id);
     const j = sens === 'avant' ? i - 1 : i + 1;
     if (i < 0 || j < 0 || j >= ids.length) return;
     [ids[i], ids[j]] = [ids[j], ids[i]];
-    const rang = new Map(ids.map((id, k) => [id, k]));
-    setProjects((prev) => [...prev].sort((a, b) => (rang.get(a.id) ?? 0) - (rang.get(b.id) ?? 0)));
-    lecture.invalider();
-    setSaving(true);
-    try {
-      await reorderProjects(ids);
-      await load();
-    } catch (error) {
-      toast.error("L'ordre n'a pas été enregistré.", {
-        description: error instanceof Error ? error.message : String(error),
-      });
-      await load();
-    } finally {
-      setSaving(false);
-    }
+    await enregistrerOrdreProjets(ids);
   };
 
   const remove = async (project: VieProject) => {
@@ -1297,6 +1290,15 @@ export function VieProjectsPage() {
                   </button>
                 </div>
               </div>
+              {estMobile && !search.trim() && <label className="flex items-center gap-3 mt-3">
+                Position
+                <select aria-label="Position du projet" disabled={saving}
+                  value={selected.id}
+                  onChange={e => void enregistrerOrdreProjets(rangerProjet(projects.map(p => p.id), selected.id, e.target.value))}
+                  className="rounded-lg px-3 bg-transparent border border-[var(--color-border)]">
+                  {projects.map((p, i) => <option key={p.id} value={p.id}>{i + 1}</option>)}
+                </select>
+              </label>}
               {selected.description && (
                 <p className="text-sm mt-2 max-w-2xl" style={{ color: 'var(--color-text-secondary)' }}>{selected.description}</p>
               )}
@@ -1998,6 +2000,11 @@ export function VieProjectsPage() {
           <div data-chargement="" className="flex justify-center gap-2 py-20 text-sm" style={{ color: 'var(--color-text-tertiary)' }}><Loader2 size={17} className="animate-spin" /> Chargement des projets…</div>
         ) : projects.length === 0 ? (
           <CadreVitre className="rounded-2xl py-16 text-center" style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)' }}><BriefcaseBusiness size={28} className="mx-auto mb-3" style={{ color: 'var(--color-accent)' }} /><p className="font-medium" style={{ color: 'var(--color-text)' }}>Aucun projet</p><p className="text-sm mt-1" style={{ color: 'var(--color-text-tertiary)' }}>Créez votre premier projet ou demandez-le à DIA.</p></CadreVitre>
+        ) : estMobile ? (
+          <GrilleProjetsMobile projets={projects} occupe={saving} filtre={Boolean(search.trim())}
+            ouvrir={p => setSelectedId(p.id)} modifier={edit} supprimer={p => void remove(p)}
+            ranger={enregistrerOrdreProjets}
+            dossier={p => <ProjectFolderVisual color={p.color || FALLBACK_COLOR} height="h-[130px]" structure={p.structure || 'flat'} />} />
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-2">
             {projects.map((project) => (

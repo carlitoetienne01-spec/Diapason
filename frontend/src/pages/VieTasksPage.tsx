@@ -1,3 +1,4 @@
+import { useBrouillonMobile } from '../lib/useBrouillonMobile';
 import { useDerniereLecture } from '../features/vie/useDerniereLecture';
 import { CadreVitre } from '../components/Glass/CadreVitre';
 import { usePublierNavigation } from '../components/Sidebar/contexteNavigation';
@@ -175,25 +176,25 @@ export function VieTasksPage() {
     changerPage('done', 1);
   }, [search, projectFilter, changerPage]);
   const [boardAnchor, setBoardAnchor] = useState(localIsoDate);
-  const [showCreate, setShowCreate] = useState(false);
+  const [showCreate, setShowCreate] = useBrouillonMobile('VieTasksPage:showCreate', false);
   // Les récurrences vivent dans leur propre section, jamais en même temps
   // que le formulaire de création : un gestionnaire de 798 lignes incrusté
   // sous « Enregistrer » doublait la hauteur du formulaire (17 sept. 2026).
-  const [recurrencesOuvertes, setRecurrencesOuvertes] = useState(false);
-  const [amorceRecurrence, setAmorceRecurrence] = useState<AmorceRecurrence | null>(null);
+  const [recurrencesOuvertes, setRecurrencesOuvertes] = useBrouillonMobile('VieTasksPage:recurrencesOuvertes', false);
+  const [amorceRecurrence, setAmorceRecurrence] = useBrouillonMobile<AmorceRecurrence | null>('VieTasksPage:amorceRecurrence', null);
   /** Pour fermer la section par la confirmation du panneau, jamais en la démontant sec (défaut 21). */
   const panneauRecurrences = useRef<RecurrencesPanelHandle>(null);
   const [nbRecurrences, setNbRecurrences] = useState<number | null>(
     () => lireCache<VieTemplate[]>(clesVie.gabarits())?.filter((item) => item.templateKind === 'task').length ?? null,
   );
-  const [title, setTitle] = useState('');
-  const [date, setDate] = useState('');
-  const [time, setTime] = useState('');
-  const [priority, setPriority] = useState<ViePriority>('medium');
-  const [notes, setNotes] = useState('');
-  const [projectId, setProjectId] = useState('');
-  const [category, setCategory] = useState('');
-  const [emoji, setEmoji] = useState('');
+  const [title, setTitle] = useBrouillonMobile('VieTasksPage:title', '');
+  const [date, setDate] = useBrouillonMobile('VieTasksPage:date', '');
+  const [time, setTime] = useBrouillonMobile('VieTasksPage:time', '');
+  const [priority, setPriority] = useBrouillonMobile<ViePriority>('VieTasksPage:priority', 'medium');
+  const [notes, setNotes] = useBrouillonMobile('VieTasksPage:notes', '');
+  const [projectId, setProjectId] = useBrouillonMobile('VieTasksPage:projectId', '');
+  const [category, setCategory] = useBrouillonMobile('VieTasksPage:category', '');
+  const [emoji, setEmoji] = useBrouillonMobile('VieTasksPage:emoji', '');
   const [syncStatus, setSyncStatus] = useState<VieSyncStatus | null>(null);
 
   useEffect(() => {

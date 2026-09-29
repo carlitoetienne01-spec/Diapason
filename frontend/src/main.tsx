@@ -59,6 +59,7 @@ import './index.css';
 // Au téléphone seulement : l'aspect plat (26/09/2026, lot 3). Après
 // index.css, qu'il ne fait que retirer.
 import './telephonePlat.css';
+import './telephoneLisible.css';
 
 function applyTheme() {
   try {

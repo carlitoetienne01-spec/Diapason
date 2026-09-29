@@ -166,7 +166,7 @@ describe('useTransitionDesPages.ts', () => {
     // des crochets), mais chacun de ses deux effets sort d'abord hors du
     // téléphone — le bureau et le mini-panneau n'ont ni écouteur, ni
     // animation, ni position reprise.
-    expect(layout, 'Layout branche le crochet sur la colonne').toContain('useTransitionDesPages(colonneRef, pathname);');
+    expect(layout, 'Layout branche le crochet sur la colonne').toContain("useTransitionDesPages(colonneRef, pathname, state?.diapasonRoue ? state.directionRoue : undefined);");
     expect(layout.match(/ref=\{colonneRef\}/g)?.length, 'une seule colonne visée, celle du téléphone et du bureau').toBe(1);
     const compact = layout.slice(layout.indexOf('if (estCompact) {\n    return ('), layout.indexOf(RETOUR_TELEPHONE_ET_BUREAU));
     expect(compact, 'le mini-panneau n’a pas de colonne visée').not.toContain('colonneRef');
@@ -181,11 +181,11 @@ describe('useTransitionDesPages.ts', () => {
     // fait repeindre tout son contenu, 39 → 97 ms de peinture médiane ; la
     // colonne, stable, la laisse à 46.
     const suivi = sansCommentaires(lire('lib/suiviDesPages.ts'));
-    expect(suivi).toContain('entree = colonne.animate(IMAGES_ENTREE, OPTIONS_ENTREE);');
+    expect(suivi).toContain('entree = colonne.animate(directionRoue ? [');
     expect(suivi.match(/\.animate\(/g)?.length, 'une seule animation, sur la colonne').toBe(1);
     expect(crochet, 'le crochet n’anime rien lui-même').not.toContain('.animate(');
     expect(crochet, 'il branche le suivi sur la colonne, avant la peinture').toContain(
-      'return suivi.current?.naviguer(colonneRef.current, chemin);',
+      'return suivi.current?.naviguer(colonneRef.current, chemin, directionRoue);',
     );
   });
 
@@ -421,6 +421,12 @@ describe('src/ — le chemin du doigt (contre-épreuve « soyeux », 27/09/2026)
   const NON_PASSIFS_ADMIS = [
     "features/vie/PhotoPleinCadre.tsx: el.addEventListener('wheel', surMolette, { passive: false });",
     "features/vie/MindMapView.tsx: svg.addEventListener('wheel', onWheel, { passive: false });",
+    // 28/09/2026 : seulement la grille de projets, après 400 ms de prise.
+    // Le test DOM installerGesteProjets garantit que les glissés ordinaires
+    // restent natifs ; annuler le déplacement ne doit jamais l'enregistrer.
+    "features/vie/installerGesteCartables.ts: grille.addEventListener('touchmove', mouvement, { passive: false });",
+    "features/vie/installerGesteCartables.ts: grille.addEventListener('touchend', fin, { passive: false });",
+    "features/vie/installerGesteCartables.ts: grille.addEventListener('touchcancel', fin, { passive: false });",
   ];
 
   it('tout écouteur touch… ou wheel est passif, ou figure dans la liste commentée', () => {

@@ -1,0 +1,33 @@
+.cartables-mobile {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 155px), 1fr));
+  gap: 16px 12px;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+.cartables-mobile article { position: relative; min-width: 0; border-radius: 12px; }
+.cartables-mobile [data-selectionne] { outline: 2px solid var(--color-accent); outline-offset: 3px; }
+.cartables-mobile [data-pris] { opacity: 0.25; }
+.cartable-mobile-ouvrir { display: block; width: 100%; border: 0; padding: 0 4px 12px; color: var(--color-text); background: transparent; }
+html[data-diapason-mobile='1'] [data-colonne-page] .cartables-mobile h2,
+html[data-diapason-mobile='1'].terminal [data-colonne-page] .cartables-mobile h2 {
+  font-size: 0.7rem;
+  line-height: 1.65;
+  height: 3.3em;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.cartables-mobile p { margin-top: 8px; font-size: var(--mobile-secondaire); color: var(--color-text-secondary); }
+.cartable-mobile-actions { display: flex; justify-content: center; gap: 12px; padding-bottom: 8px; }
+.cartable-mobile-actions button { background: var(--color-bg-secondary); color: var(--color-text); border-radius: 8px; display: grid; place-items: center; }
+.cartable-mobile-fantome { position: fixed; z-index: 100; pointer-events: none; opacity: 0.9; text-align: center; background: var(--color-bg); border: 2px solid var(--color-accent); border-radius: 12px; color: var(--color-text); }
+
+.notes-mobile { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.notes-mobile > section { min-width: 0; }
+.notes-mobile [data-cible-categorie] { outline: 1px dashed var(--color-accent); outline-offset: 4px; border-radius: 12px; }
+.note-mobile-projet { overflow-wrap: anywhere; }
+.note-mobile-depot { padding: 16px; min-height: 64px; border: 1px dashed var(--color-border); border-radius: 12px; color: var(--color-text-secondary); }

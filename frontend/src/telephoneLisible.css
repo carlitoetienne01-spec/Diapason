@@ -1,0 +1,69 @@
+/* 28/09/2026 : les légendes de 11 px et les titres pixel occupaient le même
+ * écran sans la même échelle. La largeur seule ne distingue pas un Mac
+ * étroit du téléphone : ces règles sont réservées au pont mobile. */
+html[data-diapason-mobile='1'] {
+  --mobile-corps: 1rem;
+  --mobile-secondaire: 0.875rem;
+}
+html[data-diapason-mobile='1'].terminal {
+  --mobile-corps: 1.125rem;
+  --mobile-secondaire: 1rem;
+}
+html[data-diapason-mobile='1'] [data-colonne-page] {
+  font-size: var(--mobile-corps);
+  line-height: 1.4;
+}
+html[data-diapason-mobile='1'] [data-colonne-page] :is(.text-sm, .text-base) {
+  font-size: var(--mobile-corps);
+}
+html[data-diapason-mobile='1'] [data-colonne-page] :is(.text-xs, [class~='text-[8px]'], [class~='text-[9px]'], [class~='text-[10px]'], [class~='text-[11px]'], [class~='text-[12px]']) {
+  font-size: var(--mobile-secondaire);
+  line-height: 1.35;
+}
+html[data-diapason-mobile='1'].terminal [data-colonne-page] h1 {
+  font-size: clamp(0.875rem, 4.4vw, 1.05rem);
+  line-height: 1.45;
+  letter-spacing: 0;
+  overflow-wrap: break-word;
+}
+html[data-diapason-mobile='1'].terminal [data-colonne-page] h2 {
+  font-size: 0.8rem;
+  line-height: 1.5;
+  letter-spacing: 0;
+  overflow-wrap: break-word;
+}
+html[data-diapason-mobile='1'].terminal [data-colonne-page] h3:not(.titre-tache) {
+  font-size: 0.75rem;
+  line-height: 1.5;
+  overflow-wrap: break-word;
+}
+html[data-diapason-mobile='1'] :is(button, select, input:not([type='checkbox']):not([type='radio']), [role='button']):not([data-cible-libre]) {
+  min-height: 44px;
+}
+html[data-diapason-mobile='1'] :is(button, [role='button']):not([data-cible-libre]) {
+  min-width: 44px;
+}
+html[data-diapason-mobile='1'] [data-colonne-page] header {
+  min-width: 0;
+}
+html[data-diapason-mobile='1'] [data-colonne-page] :is(input, textarea, select) {
+  max-width: 100%;
+}
+/* Une carte contenant 3 compteurs ne peut plus comprimer leur texte. */
+@media (max-width: 359px) {
+  html[data-diapason-mobile='1'] [data-colonne-page] .grid-cols-2,
+  html[data-diapason-mobile='1'] [data-colonne-page] .grid-cols-3 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+/* Les libellés longs sont des mots : jamais une colonne lettre par lettre. */
+html[data-diapason-mobile='1'] [data-colonne-page] :is(h1,h2,h3) {
+  word-break: normal;
+}
+
+/* Ce sont des dates successives, sans colonnes de jours de semaine. À 320 px,
+ * sept cibles de 44 px débordaient : autant de dates que la carte en contient. */
+html[data-diapason-mobile='1'] .jours-habitude,
+html[data-diapason-mobile='1'] .activite-mois {
+  grid-template-columns: repeat(auto-fit, minmax(44px, 1fr));
+}

@@ -1,3 +1,8 @@
+import { estMobile } from '../lib/natif';
+import { ListeNotesMobile } from '../features/vie/ListeNotesMobile';
+import { appliquerClassementNotes, type PlacementNote } from '../features/vie/classementNotesMobile';
+import { rangerProjet } from '../features/vie/gesteProjet';
+import { useBrouillonMobile } from '../lib/useBrouillonMobile';
 import { CadreVitre } from '../components/Glass/CadreVitre';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -44,7 +49,7 @@ import { RichNoteEditor } from '../features/vie/RichNoteEditor';
 import { deplacerVers } from '../features/vie/photos';
 import { triInitialDesNotes, type TriNotes } from '../features/vie/triNotes';
 import { loadNotesSort, saveNotesSort } from '../features/vie/uiPrefs';
-import { deplacerCategorie, grouperEnSections } from '../features/vie/notesSections';
+import { deplacerCategorie, grouperEnSections, type SectionDeNotes } from '../features/vie/notesSections';
 import type {
   VieProject,
   VieNote,
@@ -132,8 +137,8 @@ export function VieNotesPage() {
     setSortState(mode);
     saveNotesSort(mode);
   }, []);
-  const [view, setView] = useState<'list' | 'editor'>('list');
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [view, setView] = useBrouillonMobile<'list' | 'editor'>('VieNotesPage:view', 'list');
+  const [activeId, setActiveId] = useBrouillonMobile<string | null>('VieNotesPage:activeId', null);
 
 
   // Le référent de « cette note » (handoff, 25/08/2026).
@@ -143,9 +148,9 @@ export function VieNotesPage() {
       ? { type: 'note', id: noteOuverte.id, title: noteOuverte.title }
       : null,
   );
-  const [draftTitle, setDraftTitle] = useState('Sans titre');
-  const [draftContent, setDraftContent] = useState('');
-  const [meta, setMeta] = useState(emptyMeta());
+  const [draftTitle, setDraftTitle] = useBrouillonMobile('VieNotesPage:draftTitle', 'Sans titre');
+  const [draftContent, setDraftContent] = useBrouillonMobile('VieNotesPage:draftContent', '');
+  const [meta, setMeta] = useBrouillonMobile('VieNotesPage:meta', emptyMeta());
   // Le spinner n'existe qu'au premier chargement sans cache ; `rafraichit`
   // tient le voyant discret de l'en-tête pendant les relectures.
   const [loading, setLoading] = useState(() => lireCache(clesVie.resumesNotes()) === null);
@@ -156,10 +161,10 @@ export function VieNotesPage() {
   const chargeReussi = useRef(false);
   const tentativeFaite = useRef(false);
   const [saving, setSaving] = useState(false);
-  const [dirty, setDirty] = useState(false);
-  const [formOpen, setFormOpen] = useState(false);
-  const [formNoteId, setFormNoteId] = useState<string | null>(null);
-  const [formDraft, setFormDraft] = useState({
+  const [dirty, setDirty] = useBrouillonMobile('VieNotesPage:dirty', false);
+  const [formOpen, setFormOpen] = useBrouillonMobile('VieNotesPage:formOpen', false);
+  const [formNoteId, setFormNoteId] = useBrouillonMobile<string | null>('VieNotesPage:formNoteId', null);
+  const [formDraft, setFormDraft] = useBrouillonMobile('VieNotesPage:formDraft', {
     title: '',
     color: FOLDER_COLORS[0],
     category: '',
@@ -173,14 +178,19 @@ export function VieNotesPage() {
     () => lireCache<VieProject[]>(clesVie.projets()) ?? [],
   );
   /** La catégorie en cours de renommage dans son en-tête, et son brouillon. */
-  const [renommage, setRenommage] = useState<{ nom: string; brouillon: string } | null>(null);
+  const [renommage, setRenommage] = useBrouillonMobile<{ nom: string; brouillon: string } | null>('VieNotesPage:renommage', null);
   const [cibleSection, setCibleSection] = useState<string | null>(null);
   /** La carte survolée pendant un glisser de repositionnement. */
   const [cibleNote, setCibleNote] = useState<string | null>(null);
   const fileEcritures = useRef(creerFileEcritures()).current;
   const autoSaveRef = useRef<number | null>(null);
   const draftRef = useRef({ title: 'Sans titre', content: '', meta: emptyMeta(), activeId: null as string | null });
-  const versionNoteRef = useRef<{ id: string; hash?: string } | null>(null);
+  const [versionBrouillon, poserVersionBrouillon] = useBrouillonMobile<{ id: string; hash?: string } | null>('VieNotesPage:version', null);
+  const versionNoteRef = useRef(versionBrouillon);
+  const retenirVersion = (version: { id: string; hash?: string }) => {
+    versionNoteRef.current = version;
+    poserVersionBrouillon(version);
+  };
 
   // Lu au moment de la réponse, pas capturé : `load` dépendait d'`activeId`
   // et chaque note ouverte relançait la liste entière (924 Ko) 180 ms plus
@@ -288,7 +298,7 @@ export function VieNotesPage() {
   }, [notes, sort]);
 
   const afficherNote = (note: VieNote) => {
-    versionNoteRef.current = { id: note.id, hash: note.contentHash };
+    retenirVersion({ id: note.id, hash: note.contentHash });
     setActiveId(note.id);
     setDraftTitle(note.title);
     setDraftContent(note.content);
@@ -543,6 +553,37 @@ export function VieNotesPage() {
     }
   };
 
+  const enregistrerClassementMobile = async (ids: string[], placement: PlacementNote) => {
+    if (saving || search.trim()) return;
+    const source = notes.find(n => n.id === placement.id);
+    if (!source) return;
+    const classees = appliquerClassementNotes(notes, ids, placement);
+    lecture.invalider();
+    ouverture.invalider();
+    setOuvertureId(null);
+    setRafraichit(false);
+    setSaving(true);
+    setSort('manuel');
+    setNotes(classees);
+    try {
+      if (placement.zone !== undefined && placement.zone !== (source.category || '')) {
+        await updateVieNote(source.id, { category: placement.zone });
+      }
+      await reorderNotes(ids);
+      await load();
+    } catch (error) {
+      // Une catégorie peut avoir été écrite avant un refus du réordonnancement.
+      // Relire le serveur est nécessaire ; prétendre tout annuler serait faux.
+      setNotes(notes);
+      toast.error("Le classement n'a pas été enregistré complètement.", {
+        description: error instanceof Error ? error.message : String(error),
+      });
+      await load();
+    } finally {
+      setSaving(false);
+    }
+  };
+
   /** Déplacer une note d'un cran dans sa section (clavier/clic — §82). */
   const decalerNote = async (note: CartableNote, sens: 'avant' | 'apres') => {
     const ids = sortedNotes
@@ -675,7 +716,7 @@ export function VieNotesPage() {
         ? await updateVieNote(snapshot.activeId, { ...payload,
           expectedContentHash: versionNoteRef.current?.id === snapshot.activeId ? versionNoteRef.current.hash : undefined })
         : await createVieNote(payload);
-      if (draftRef.current.activeId === snapshot.activeId) versionNoteRef.current = { id: saved.id, hash: saved.contentHash };
+      if (draftRef.current.activeId === snapshot.activeId) retenirVersion({ id: saved.id, hash: saved.contentHash });
       // Le retour d'une sauvegarde ne remplace jamais la frappe suivante.
       const courant = draftRef.current;
       const identique = courant.activeId === snapshot.activeId
@@ -859,6 +900,94 @@ export function VieNotesPage() {
   // valeur se corrige d'elle-même dans la même passe de rendu.
   const draftPages = feuillesMesurees ?? countNotePages(draftContent, meta.pageFormat);
 
+  const rendreEnteteSection = (section: SectionDeNotes<CartableNote>) => (
+    <div
+      className="group/section flex items-center gap-3 pt-4 pb-3"
+      draggable={!estMobile && section.nom !== ''}
+      onDragStart={(event) => {
+        if (!section.nom) return;
+        event.dataTransfer.setData('application/x-diapason-categorie', section.nom);
+        event.dataTransfer.effectAllowed = 'move';
+      }}
+      onDragOver={(event) => {
+        if (!event.dataTransfer.types.includes('application/x-diapason-categorie'))
+          return;
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+      onDrop={(event) => {
+        const nom = event.dataTransfer.getData('application/x-diapason-categorie');
+        if (!nom) return;
+        event.preventDefault();
+        event.stopPropagation();
+        void deposerCategorieAvant(nom, section.nom);
+      }}
+      style={{ cursor: !estMobile && section.nom ? 'grab' : undefined, WebkitUserDrag: !estMobile && section.nom ? 'element' : undefined } as React.CSSProperties}
+    >
+      {renommage && renommage.nom === section.nom ? (
+        <input
+          autoFocus
+          value={renommage.brouillon}
+          maxLength={60}
+          onChange={(event) =>
+            setRenommage({ nom: section.nom, brouillon: event.target.value })
+          }
+          onBlur={() => void validerRenommage()}
+          onKeyDown={(event) => {
+            event.stopPropagation();
+            if (event.key === 'Enter') void validerRenommage();
+            if (event.key === 'Escape') setRenommage(null);
+          }}
+          className="text-xs font-semibold tracking-[0.14em] uppercase bg-transparent outline-none rounded px-1"
+          style={{ color: 'var(--color-text)', border: '1px solid var(--color-accent)' }}
+          aria-label="Renommer la catégorie"
+        />
+      ) : (
+        // 26/09/2026 : `shrink-0` sur un nom qui en accepte 60 : à
+        // 375 px, « Journal intime et réflexions de la semaine »
+        // poussait Renommer et Dissoudre hors de l'écran, et la
+        // liste défilait de côté. Le nom se coupe ; le compte et
+        // les boutons restent.
+        <h2
+          className="text-xs font-semibold tracking-[0.14em] uppercase min-w-0 truncate"
+          title={section.nom || undefined}
+          style={{ color: section.nom ? 'var(--color-text-secondary)' : 'var(--color-text-tertiary)' }}
+        >
+          {section.nom || 'Sans catégorie'}
+        </h2>
+      )}
+      <span className="text-[11px] tabular-nums shrink-0" style={{ color: 'var(--color-text-tertiary)' }}>
+        {section.notes.length}
+      </span>
+      {/* Le trait horizontal demandé : il part du nom et sépare la section. */}
+      <span aria-hidden="true" className="flex-1 min-w-3 h-px" style={{ background: 'var(--color-border)' }} />
+      {section.nom && (
+        <span className="flex shrink-0 gap-0.5 max-sm:opacity-100 compact:opacity-100 mobile:opacity-100 opacity-0 transition-opacity group-hover/section:opacity-100 focus-within:opacity-100">
+          <button
+            type="button"
+            onClick={() => setRenommage({ nom: section.nom, brouillon: section.nom })}
+            className="rounded-md p-1 cursor-pointer"
+            style={{ color: 'var(--color-text-tertiary)' }}
+            title="Renommer la catégorie"
+            aria-label={`Renommer ${section.nom}`}
+          >
+            <Pencil size={12} />
+          </button>
+          <button
+            type="button"
+            onClick={() => void dissoudreCategorie(section.nom)}
+            className="rounded-md p-1 cursor-pointer"
+            style={{ color: 'var(--color-text-tertiary)' }}
+            title="Dissoudre la catégorie (les notes restent)"
+            aria-label={`Dissoudre ${section.nom}`}
+          >
+            <X size={12} />
+          </button>
+        </span>
+      )}
+    </div>
+  );
+
   if (view === 'editor') {
     return (
       <div className="flex-1 overflow-hidden px-3 py-3 sm:px-5 sm:py-6 md:px-8 md:py-8">
@@ -926,6 +1055,15 @@ export function VieNotesPage() {
               </button>
             </div>
           </header>
+
+          {estMobile && activeId && !search.trim() && <label className="flex items-center gap-3 mb-3 shrink-0 text-sm">
+            Position
+            <select aria-label="Position de la note" disabled={saving} value={activeId}
+              className="rounded-lg px-3 bg-transparent border border-[var(--color-border)]"
+              onChange={e => void enregistrerClassementMobile(rangerProjet(sortedNotes.map(n => n.id), activeId, e.target.value), { id: activeId })}>
+              {sortedNotes.filter(n => (n.category || '') === (notes.find(n => n.id === activeId)?.category || '')).map((n, i) => <option key={n.id} value={n.id}>{i + 1}</option>)}
+            </select>
+          </label>}
 
           <RichNoteEditor
             editorKey={activeId ?? 'new'}
@@ -1308,6 +1446,11 @@ export function VieNotesPage() {
               Cliquez sur Nouvelle note pour commencer.
             </p>
           </CadreVitre>
+        ) : estMobile ? (
+          <ListeNotesMobile notes={sortedNotes} categories={categories} projets={projects}
+            occupe={saving} filtre={Boolean(search.trim())} ouvertureId={ouvertureId}
+            entete={rendreEnteteSection} ouvrir={n => void openNote(n)} modifier={openEditForm}
+            supprimer={n => void removeNote(n)} ranger={enregistrerClassementMobile} />
         ) : (
           /* 26/09/2026 : colonne `auto` implicite — elle prenait la largeur
              « contenu » d'un nom de catégorie en `nowrap` (805 px pour
@@ -1341,93 +1484,7 @@ export function VieNotesPage() {
                 }}
                 aria-label={section.nom || 'Sans catégorie'}
               >
-                {(section.nom !== '' || categories.length > 0) && (
-                  <div
-                    className="group/section flex items-center gap-3 pt-4 pb-3"
-                    draggable={section.nom !== ''}
-                    onDragStart={(event) => {
-                      if (!section.nom) return;
-                      event.dataTransfer.setData('application/x-diapason-categorie', section.nom);
-                      event.dataTransfer.effectAllowed = 'move';
-                    }}
-                    onDragOver={(event) => {
-                      if (!event.dataTransfer.types.includes('application/x-diapason-categorie'))
-                        return;
-                      event.preventDefault();
-                      event.stopPropagation();
-                    }}
-                    onDrop={(event) => {
-                      const nom = event.dataTransfer.getData('application/x-diapason-categorie');
-                      if (!nom) return;
-                      event.preventDefault();
-                      event.stopPropagation();
-                      void deposerCategorieAvant(nom, section.nom);
-                    }}
-                    style={{ cursor: section.nom ? 'grab' : undefined, WebkitUserDrag: section.nom ? 'element' : undefined } as React.CSSProperties}
-                  >
-                    {renommage && renommage.nom === section.nom ? (
-                      <input
-                        autoFocus
-                        value={renommage.brouillon}
-                        maxLength={60}
-                        onChange={(event) =>
-                          setRenommage({ nom: section.nom, brouillon: event.target.value })
-                        }
-                        onBlur={() => void validerRenommage()}
-                        onKeyDown={(event) => {
-                          event.stopPropagation();
-                          if (event.key === 'Enter') void validerRenommage();
-                          if (event.key === 'Escape') setRenommage(null);
-                        }}
-                        className="text-xs font-semibold tracking-[0.14em] uppercase bg-transparent outline-none rounded px-1"
-                        style={{ color: 'var(--color-text)', border: '1px solid var(--color-accent)' }}
-                        aria-label="Renommer la catégorie"
-                      />
-                    ) : (
-                      // 26/09/2026 : `shrink-0` sur un nom qui en accepte 60 : à
-                      // 375 px, « Journal intime et réflexions de la semaine »
-                      // poussait Renommer et Dissoudre hors de l'écran, et la
-                      // liste défilait de côté. Le nom se coupe ; le compte et
-                      // les boutons restent.
-                      <h2
-                        className="text-xs font-semibold tracking-[0.14em] uppercase min-w-0 truncate"
-                        title={section.nom || undefined}
-                        style={{ color: section.nom ? 'var(--color-text-secondary)' : 'var(--color-text-tertiary)' }}
-                      >
-                        {section.nom || 'Sans catégorie'}
-                      </h2>
-                    )}
-                    <span className="text-[11px] tabular-nums shrink-0" style={{ color: 'var(--color-text-tertiary)' }}>
-                      {section.notes.length}
-                    </span>
-                    {/* Le trait horizontal demandé : il part du nom et sépare la section. */}
-                    <span aria-hidden="true" className="flex-1 min-w-3 h-px" style={{ background: 'var(--color-border)' }} />
-                    {section.nom && (
-                      <span className="flex shrink-0 gap-0.5 max-sm:opacity-100 compact:opacity-100 mobile:opacity-100 opacity-0 transition-opacity group-hover/section:opacity-100 focus-within:opacity-100">
-                        <button
-                          type="button"
-                          onClick={() => setRenommage({ nom: section.nom, brouillon: section.nom })}
-                          className="rounded-md p-1 cursor-pointer"
-                          style={{ color: 'var(--color-text-tertiary)' }}
-                          title="Renommer la catégorie"
-                          aria-label={`Renommer ${section.nom}`}
-                        >
-                          <Pencil size={12} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void dissoudreCategorie(section.nom)}
-                          className="rounded-md p-1 cursor-pointer"
-                          style={{ color: 'var(--color-text-tertiary)' }}
-                          title="Dissoudre la catégorie (les notes restent)"
-                          aria-label={`Dissoudre ${section.nom}`}
-                        >
-                          <X size={12} />
-                        </button>
-                      </span>
-                    )}
-                  </div>
-                )}
+                {(section.nom !== '' || categories.length > 0) && rendreEnteteSection(section)}
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-2">
             {section.notes.map((note) => {
               const pages = resumeDeNote(note).pageCountEstimate;

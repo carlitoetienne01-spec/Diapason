@@ -219,3 +219,22 @@ describe('l’entrée de la page qui arrive', () => {
     expect(crochet).toContain("window.matchMedia('(prefers-reduced-motion: reduce)').matches");
   });
 });
+
+describe('§5 — la page reste visible sous la roue', () => {
+  it('change de sens sans empiler les animations ni partir du noir', () => {
+    const suivi = creerSuiviDesPages({ mobile: true, mouvementReduit: () => false });
+    const colonne = colonneAvec(defileur(2000));
+    const cancel = vi.fn();
+    colonne.animate = vi.fn(() => ({ cancel } as unknown as Animation));
+    suivi.naviguer(colonne, '/vie/projects');
+    suivi.naviguer(colonne, '/vie/habits', 1);
+    expect(colonne.animate).toHaveBeenLastCalledWith([
+      { opacity: 0.92, transform: 'translateY(12px)' }, { opacity: 1, transform: 'translateY(0)' },
+    ], { ...OPTIONS_ENTREE, duration: 160 });
+    suivi.naviguer(colonne, '/vie/tasks', -1);
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(colonne.animate).toHaveBeenLastCalledWith([
+      { opacity: 0.92, transform: 'translateY(-12px)' }, { opacity: 1, transform: 'translateY(0)' },
+    ], { ...OPTIONS_ENTREE, duration: 160 });
+  });
+});

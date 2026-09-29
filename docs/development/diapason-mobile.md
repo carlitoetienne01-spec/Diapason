@@ -149,14 +149,16 @@ proprement arrêtait la séance. Fait le même jour, branche `chantier/phases45`
 six commits de `9a59c808` au commit qui barre ces lignes :*
 
 1. *La coupure vit côté SERVEUR (`speech/realtime/bridge.py`) : 120 s sans
-   parole, 600 s au plus. La parole = une phrase finale de l'utilisateur, la
+   parole. Le plafond de 600 s a été retiré le 28/09/2026 à la demande de
+   Carlito : une conversation active peut continuer sans durée maximale,
+   sur téléphone, Mac et PC. La parole = une phrase finale de l'utilisateur, la
    voix de l'assistant jusqu'à la fin de sa LECTURE, un outil, une
    interruption, un texte tapé ; jamais une trame de micro ni un partiel
    (la télévision). 120 laisse 30 s après le désengagement de 90 s pour
-   rappeler Diapason par son nom et couvre les 45 s de la cloche vocale ; 600
-   est le plafond du mode gestes. Un WebSocket perdu sans fermeture tombe
+   rappeler Diapason par son nom et couvre les 45 s de la cloche vocale.
+   Le plafond du mode gestes reste inchangé. Un WebSocket perdu sans fermeture tombe
    sous la même règle. Le serveur envoie `{"type": "closed", "reason":
-   "inactivity" | "maxDuration"}` puis ferme en 1000 ; le bundle coupe le
+   "inactivity"}` puis ferme en 1000 ; le bundle coupe le
    micro (le voyant d'Android s'éteint) et dit pourquoi, en fr et en en.
    **Elle s'applique aussi au bureau** : une orbe ouverte sur le Mac se tait
    après deux minutes de silence (§78 ne distingue pas les appareils).
@@ -165,8 +167,10 @@ six commits de `9a59c808` au commit qui barre ces lignes :*
    arrivent, et son TCP retransmet ~15 min. Le Mac bat donc (`{"type":
    "alive"}` toutes les 15 s une fois la séance prête) et le bundle coupe
    lui-même son micro après 45 s sans aucune trame d'un Mac qui a battu,
-   quand 1 Mo attend l'envoi, ou à 630 s ; il dit « Le Mac ne répond
-   plus ».*
+   ou quand 1 Mo attend l'envoi ; il dit « Le Mac ne répond plus ».
+   Le second plafond de 630 s du bundle a également été retiré le
+   28/09/2026 : conserver ce compteur aurait encore coupé les clients
+   malgré la correction du serveur.*
 2. *Le fil de ToolExecutor hérite du contexte (`contextvars.copy_context`) :
    l'outil permis au téléphone gardait le plafond pour lui, pas pour ce
    qu'il lançait.*
@@ -1600,3 +1604,60 @@ partent AVANT getUserMedia, si bien que chaque échec du micro coûte au Mac
 un préchauffage d'Orion et du LLM (Ollama sur un seul créneau). Obtenir le
 micro d'abord demanderait de revoir l'ordre `serveurPret` / `capturePrete`
 du 27/09.
+## La réponse écrite arrive, mais la voix reste muette (28/09/2026)
+
+Le lecteur Web Audio était créé à la première trame du WebSocket, après
+les attentes réseau, puis détruit à chaque interruption. Il pouvait donc
+perdre le démarrage autorisé par le toucher dans la WebView du téléphone.
+`LectureVocale.preparer()` crée et réveille maintenant la sortie directement
+dans l'appel de « Parler », avant le premier `await` réseau.
+`interrompre()` vide seulement les sons ; `arreter()` ferme la sortie à la
+fin de séance. Le micro garde son cycle de vie distinct.
+
+Un réveil bloqué plus de deux secondes ou un échec de lecture est signalé
+dans la barre vocale et dans l'orbe. Un contexte suspendu ne fait plus
+afficher « Parle » comme si le son était en cours. Aucun réglage Android de
+volume, de routage Bluetooth ou de permission n'est modifié.
+
+Les tests couvrent le geste avant le réseau, la conservation après
+interruption et au revoir, le refus, l'annulation et les trames illisibles.
+Le banc navigateur vérifie aussi un signal réel et le réemploi du même
+contexte. Cela ne valide pas encore le haut-parleur du téléphone : après
+rechargement du bundle, confirmer une première réponse, une interruption,
+la réponse suivante et la fermeture sur l'appareil. Cette correction est
+dans le bundle servi, elle ne demande pas de nouvel APK.
+
+## Les anciens écrans restaient dans le menu Android (28/09/2026)
+
+Les captures de Carlito montrent des écrans Flutter, pas le bundle React :
+« Recharger » ne pouvait pas retirer Life OS, l'administration de l'Entité
+ni l'import. L'APK 2003 construit sur le Mac proposait encore ces entrées.
+
+Dans `diapason_mobile`, le menu ne propose désormais que « Recharger » et
+« Connexion au Mac ». Les anciennes routes `/life-os`, `/admin`, `/import`
+et leurs sous-routes reviennent à la coquille ; le raccourci caché vers
+l'administration est débranché. Le travail périodique `entite-veille-unique`
+est annulé au lancement et son ancien traitement n'est plus exécuté. Le
+stockage local, les clés, le verrou, les rappels et les approbations restent
+en place. Les sources des anciens écrans sont conservées hors du routeur ;
+leurs ressources `assets/entite/` ne sont plus embarquées dans l'APK.
+
+La connexion au Mac reste nécessaire. Elle reprend le fond et l'encre de
+l'apparence mémorisée de Diapason, y compris dans ses confirmations. Les
+petits textes ne descendent plus sous 14 px. Elle utilise la police Android
+standard : le fichier historique `Inter.ttf` contient en réalité du HTML.
+
+Vérification : **462 tests Flutter réussis**, analyse statique des fichiers
+touchés sans diagnostic, compilation profile réussie. Le test à 340 px et
+texte agrandi vérifie les contrôles et l'annulation sans perte d'appairage ;
+un rendu Flutter à 390 × 844 px a aussi été inspecté. Pas de validation sur
+le téléphone physique, absent de la liste ADB.
+
+APK livré : `dist/android/Diapason-dev-2004.apk` dans le dépôt Diapason
+(copie du `build/app/outputs/flutter-apk/app-profile.apk` de
+`diapason_mobile`), **79 818 345 octets**, versionCode **2004**, paquet
+`com.diapason.mobile.dev`, nom « Diapason dev ». SHA-256 :
+`dc9d033aaa72c79f72e2e8bd42f14b23789dca42e86c0095af0e7e9082fd6c52`.
+La signature vérifiée est identique à celle de l'APK 2003 : mise à jour
+par-dessus, sans désinstallation. Le téléphone ne change qu'après cette
+installation ; aucun rechargement du serveur ou de l'app macOS n'est requis.
