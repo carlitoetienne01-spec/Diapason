@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { VoiceLiveState } from '../../hooks/useVoiceLive';
-import { approcher, DENSITES, energieVocale, pointsDesVoiles, PROFILS } from './mouvement';
+import { approcher, DENSITES, energieVocale, pointsDesVoiles, presenceVocale, PROFILS } from './mouvement';
 import type { AIQuality } from '../AIEntity/types';
 
 describe('Résonance — §5, le mouvement ne prétend pas entendre un son absent', () => {
@@ -22,6 +22,14 @@ describe('Résonance — §5, le mouvement ne prétend pas entendre un son absen
     expect(PROFILS.listening.taille).toBeLessThan(PROFILS.idle.taille);
     expect(PROFILS.speaking.taille).toBeGreaterThan(PROFILS.idle.taille);
     expect(PROFILS.error.vitesse).toBe(0);
+  });
+  it('une voix douce déplace le volume, un cri ne le dépasse pas', () => {
+    expect(PROFILS.listening.voix, 'l’écoute doit laisser passer la voix').toBeGreaterThan(0.7);
+    expect(PROFILS.speaking.voix).toBeGreaterThanOrEqual(PROFILS.listening.voix);
+    expect(presenceVocale(0)).toBe(0);
+    expect(presenceVocale(0.12), 'une phrase faible doit déjà compter').toBeGreaterThan(0.25);
+    expect(presenceVocale(1)).toBe(1);
+    expect(presenceVocale(0.12)).toBeLessThan(presenceVocale(0.5));
   });
   it('lisse de la même façon à 30 et 60 images par seconde', () => {
     let trente = 0, soixante = 0;

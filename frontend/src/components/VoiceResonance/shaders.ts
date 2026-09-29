@@ -2,53 +2,69 @@ export const SOMMET = /* glsl */ `
   uniform float uTemps;
   uniform float uTaille;
   uniform float uVoix;
+  uniform float uGrave;
   uniform float uAigus;
   uniform float uPixels;
   uniform float uDensite;
   varying vec3 vCouleur;
   varying float vOpacite;
 
-  mat3 rotationX(float a) {
-    float c = cos(a), s = sin(a);
-    return mat3(1.,0.,0., 0.,c,s, 0.,-s,c);
-  }
-  mat3 rotationY(float a) {
-    float c = cos(a), s = sin(a);
-    return mat3(c,0.,-s, 0.,1.,0., s,0.,c);
-  }
-  vec3 surface(float t, float p, float couche) {
-    float phase = couche * 0.72;
-    float pli = sin(3.0*t + uTemps*0.8 + phase) * pow(sin(p), 2.0);
-    float vague = cos(4.0*p - uTemps*0.65 + phase) * 0.08;
-    float rayon = (0.84 + couche*0.115) * (1.0 + 0.17*pli + vague);
-    rayon += uVoix * (0.38 + 0.16*sin(5.0*p + 2.0*t - uTemps));
-    rayon += uAigus * 0.018 * sin(15.0*p + 4.0*t);
-    vec3 point = vec3(sin(p)*cos(t), cos(p), sin(p)*sin(t)) * rayon;
-    point.x += 0.07*sin(p*2.0 + uTemps + phase);
-    return rotationY(uTemps*0.23 + phase*0.2) * rotationX(0.62 + phase*0.22) * point * uTaille;
-  }
   void main() {
     float t = position.x, p = position.y, couche = position.z;
-    vec3 point = surface(t, p, couche);
-    vec3 dt = surface(t+0.006, p, couche) - point;
-    vec3 dp = surface(t, p+0.006, couche) - point;
-    vec3 normale = normalize(cross(dt, dp));
-    vec3 regard = normalize(cameraPosition - point);
-    float face = abs(dot(normale, regard));
-    float bord = pow(1.0-face, 3.0);
-    float devant = smoothstep(-0.8, 0.8, point.z);
-    float teinte = sin(t + p*1.6 + uTemps*0.15 + couche*0.55);
-    vec3 iris = vec3(0.22, 0.025, 0.88);
-    vec3 rose = vec3(0.86, 0.06, 0.68);
-    vec3 glace = vec3(0.06, 0.72, 1.0);
-    vec3 couleur = mix(iris, rose, smoothstep(-0.7, 0.65, teinte));
-    couleur = mix(couleur, glace, smoothstep(0.30, 0.95, sin(t-p+1.8)) * (0.2 + bord*0.7));
-    vCouleur = mix(couleur, vec3(0.92, 0.86, 1.0), bord*0.28);
-    vCouleur *= 0.80 + bord*0.40;
-    vOpacite = (0.34 + bord*0.42) * (0.35 + devant*0.65) * uDensite;
+    // 29/09/2026 : la peau de points dessinait une texture et un rectangle
+    // rose. Au repos les points sont absents. La voix en fait sortir
+    // quelques-uns, dans toutes les directions, à des distances différentes.
+    float grain = fract(sin(t*127.1 + p*311.7 + couche*74.7) * 43758.5453);
+    if (uVoix < 0.045 || grain > 0.006) {
+      vOpacite = 0.0;
+      vCouleur = vec3(0.0);
+      gl_PointSize = 0.0;
+      gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+      return;
+    }
+    float portee = fract(sin(t*91.3 + p*47.1 + couche*19.2) * 23421.631);
+    float sortie = 0.38 + uVoix * (0.2 + 1.15*portee);
+    sortie += uGrave * 0.22 * (1.0 - portee);
+    sortie += uAigus * 0.34 * portee;
+    vec3 dir = vec3(sin(p)*cos(t), cos(p), sin(p)*sin(t));
+    vec3 point = dir * uTaille * (0.84 + sortie);
+    vec3 glace = vec3(0.62, 0.88, 1.0);
+    vCouleur = mix(vec3(1.0), glace, portee);
+    vOpacite = (0.45 + 0.55*portee) * uDensite;
     vec4 vue = modelViewMatrix * vec4(point, 1.0);
     gl_Position = projectionMatrix * vue;
-    gl_PointSize = clamp((1.35 + bord*0.9) * uPixels * (3.8/-vue.z), 1.0, 5.0);
+    gl_PointSize = clamp((2.2 + portee*2.4) * uPixels * (3.8/-vue.z), 1.2, 7.0);
+  }
+`;
+
+export const SOMMET_SPHERE = /* glsl */ `
+  uniform float uTaille;
+  varying vec3 vNormale;
+  varying vec3 vVue;
+  void main() {
+    vec3 point = position * 0.84 * uTaille;
+    vec4 monde = modelMatrix * vec4(point, 1.0);
+    vNormale = normalize(mat3(modelMatrix) * normal);
+    vVue = cameraPosition - monde.xyz;
+    gl_Position = projectionMatrix * viewMatrix * monde;
+  }
+`;
+
+export const FRAGMENT_SPHERE = /* glsl */ `
+  uniform float uTemps;
+  varying vec3 vNormale;
+  varying vec3 vVue;
+  void main() {
+    vec3 n = normalize(vNormale);
+    vec3 vue = normalize(vVue);
+    float face = abs(dot(n, vue));
+    float bord = pow(1.0 - face, 1.65);
+    float a = uTemps * 0.35;
+    vec3 lumiere = normalize(vec3(cos(a)*0.55, 0.72, sin(a)*0.45));
+    float spec = pow(max(0.0, dot(reflect(-lumiere, n), vue)), 64.0);
+    float volume = pow(face, 1.6) * 0.16;
+    vec3 couleur = vec3(0.78, 0.92, 1.0) * (bord + volume) + vec3(1.0) * spec;
+    gl_FragColor = vec4(couleur, bord * 0.9 + volume + spec);
   }
 `;
 
@@ -58,6 +74,7 @@ export const FRAGMENT = /* glsl */ `
   void main() {
     float d = length(gl_PointCoord - 0.5) * 2.0;
     if (d > 1.0) discard;
+    if (vOpacite < 0.01) discard;
     float point = exp(-3.8*d*d);
     gl_FragColor = vec4(vCouleur, vOpacite*point);
   }

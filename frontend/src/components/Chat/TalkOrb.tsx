@@ -1,6 +1,6 @@
 import { cleErreurVocale, tonDuCodeVocal } from '../../lib/erreursVocales';
 import { Suspense, lazy, useEffect, useId, useRef, useState } from 'react';
-import { AudioLines, Check, Copy, Info, Mic, Monitor, Square, X } from 'lucide-react';
+import { Check, Copy, Info, Mic, Monitor, Square, X } from 'lucide-react';
 import '@fontsource-variable/geist';
 import { useTranslation } from '../../i18n/useTranslation';
 import type { MicroEnEchec, VoiceLiveProvider, VoiceLiveState, TranscriptLine, ToolEventLine } from '../../hooks/useVoiceLive';
@@ -75,7 +75,6 @@ export function TalkOrb({
   conversationSeule = false, onStartConversation, micro = null, onOuvrirReglagesMicro,
 }: TalkOrbProps) {
   const { t } = useTranslation();
-  const titreId = useId();
   const detailsId = useId();
   const fenetre = useSurfaceVitree(true, open);
   const [details, setDetails] = useState(false);
@@ -132,15 +131,17 @@ export function TalkOrb({
     error: 'talk.resonance.error',
   } as const;
   const etatVocal = state === 'listening' ? cleEtatVocal(statusLabel) : undefined;
-  const attente = etatVocal && statusLabel !== 'listening';
+  // 29/09/2026 : plus de « Ton micro est fermé. Commence quand tu veux. »
+  // à l'idle — le démarrage se fait à l'ouverture (TalkToDiapasonHost) ou
+  // par le bouton micro sans phrase. Même jour : « Ton micro reste ouvert… »
+  // et « Ton micro est ouvert. Parle à ton rythme. » restaient sous le titre
+  // pendant l'écoute ; le titre porte déjà l'état.
   const aide = checkingService ? t('talk.checkingService')
     : !active && !serviceReady ? t('talk.serviceUnavailable')
     : statusLabel === 'ending' ? t('talk.stage.ending')
-    : attente ? t('talk.stage.micStillOn')
-    : state === 'listening' ? t('talk.resonance.listeningHint')
     : state === 'speaking' ? t(conversationSeule ? 'talk.conversation.speakingHint' : 'talk.resonance.speakingHint')
     : state === 'connecting' ? t('talk.resonance.connectingHint')
-    : t('talk.resonance.micOff');
+    : null;
   const agir = (action: () => void) => {
     // Reprendre la parole remplace son propre bouton. Sans ce déplacement,
     // le focus retombait sur le document derrière la fenêtre modale.
@@ -152,7 +153,7 @@ export function TalkOrb({
     if (event.target === event.currentTarget) onClose();
   }}>
     <div ref={fenetre} className="composer-glass carte-vitree resonance-dialogue" role="dialog" aria-modal="true"
-      aria-labelledby={titreId} tabIndex={-1} data-conversation={fil.length > 0} data-state={state}
+      aria-label={t('chat.talk.button')} tabIndex={-1} data-conversation={fil.length > 0} data-state={state}
       onKeyDown={(event) => {
         if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onClose(); }
         // Le raccourci global Espace du moteur vocal ne doit pas voler
@@ -168,9 +169,6 @@ export function TalkOrb({
         }
       }}>
       <header className="resonance-entete">
-        <div className="resonance-identite"><AudioLines size={22} strokeWidth={1.5} aria-hidden="true" />
-          <span id={titreId}>Diapason</span><span className="resonance-sous-titre">{t('talk.resonance.voice')}</span>
-        </div>
         <div className="resonance-actions-entete">
           {screenSharing && <span className="resonance-partage" title={t('chat.talk.screenShareTooltip')}>
             <Monitor size={14} />{t('chat.talk.sharingScreen')}
@@ -197,7 +195,7 @@ export function TalkOrb({
           </div>
           <div className="resonance-parole">
             <h2 className="resonance-titre" aria-live="polite">{t(etatVocal ?? titres[state])}</h2>
-            <p className="resonance-aide">{aide}</p>
+            {aide && <p className="resonance-aide">{aide}</p>}
             {active && conversationSeule && <p className="resonance-aide" role="status">{t('talk.conversation.active')}</p>}
             {caption && <p className="resonance-caption" aria-live="polite">{caption}</p>}
           </div>
@@ -210,8 +208,11 @@ export function TalkOrb({
                 <Square size={12} fill="currentColor" />{t('chat.talk.end')}
               </button>
             </> : <button type="button" className="resonance-principal" onClick={() => agir(onStart)}
-              disabled={!serviceReady || checkingService}>
-              <Mic size={18} />{t('chat.talk.startHint')}
+              disabled={!serviceReady || checkingService}
+              aria-label={t('chat.talk.startHint')} title={t('chat.talk.startHint')}>
+              {/* 29/09/2026 : plus de « Commencer à parler » — l'icône seule
+                  suffit ; la phrase reste en aria-label / title. */}
+              <Mic size={18} />
             </button>}
           </div>
           {!active && onStartConversation && <button type="button" className="resonance-terminer mt-3 max-w-full text-sm"
@@ -250,8 +251,10 @@ export function TalkOrb({
           </div>
         </section>}
       </div>
+      {/* 29/09/2026 : plus de « Moteur vocal local » en pied — le détail
+          Info le montre encore si on le demande. */}
       <footer className="resonance-pied">
-        <span className="resonance-source"><span className="resonance-temoin" />{fournisseur}</span>
+        <span className="resonance-source"><span className="resonance-temoin" aria-hidden="true" /></span>
         {active ? <span className="resonance-duree" aria-label={t('talk.resonance.duration')}>
           {String(Math.floor(elapsed / 60)).padStart(2, '0')}:{String(elapsed % 60).padStart(2, '0')}
         </span> : <span>{t('talk.resonance.escape')}</span>}

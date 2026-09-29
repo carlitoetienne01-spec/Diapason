@@ -24,7 +24,10 @@ export function TalkToDiapasonHost({ children }: { children: React.ReactNode }) 
       return;
     }
     setOpen(true);
-    void voice.refreshAvailability();
+    // 29/09/2026 : le panneau n'affiche plus « Commencer à parler » ni
+    // « Ton micro est fermé… » — sans démarrage à l'ouverture, la scène
+    // s'ouvrait muette. start() garde déjà le double-clic (demarrageRef).
+    void voice.start();
   }, [voice, pathname]);
 
   const closeTalk = useCallback(() => {
