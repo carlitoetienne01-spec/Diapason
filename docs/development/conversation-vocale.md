@@ -1153,3 +1153,25 @@ messages et ce qui reste à voir sur l'appareil :
 
 Rien de ce chantier ne touche la séance elle-même : ni l'ordre
 `start` → getUserMedia, ni la logique `serveurPret` / `capturePrete`.
+
+### 28 septembre — une conversation active était coupée à dix minutes
+
+Carlito demande de conserver les deux minutes sans parole, mais de supprimer
+le plafond de durée sur téléphone, Mac et PC. Les dix minutes venaient du
+plafond du mode gestes, recopié dans le pont vocal ; une conversation en
+cours était donc coupée même quand ses participants parlaient encore.
+
+Le pont ne compare plus la durée totale de la séance. Le bundle commun ne
+la compare plus non plus : son plafond de dix minutes et demie aurait
+encore fermé le micro malgré la correction du serveur. Les deux minutes
+d'inactivité, l'arrêt manuel, le départ à la voix, les battements réseau et
+la fermeture en cas de liaison perdue restent en place. Le motif
+`maxDuration` reste compris pour expliquer la fermeture d'un ancien serveur
+pendant une mise à jour, sans annoncer une limite qui n'existe plus ici.
+
+Validation : **319 tests Python** (pont, conversation locale, départ vocal,
+routes et passerelle du téléphone) et **1 943 tests frontend** passent.
+Les tests franchissent dix minutes, une heure et un jour avec une horloge
+simulée ; ce ne sont pas des conversations enregistrées de cette durée.
+La garde est exercée après chaque avancée, puis l'arrêt explicite ferme
+toujours la séance. Les tests d'inactivité et de perte réseau restent verts.

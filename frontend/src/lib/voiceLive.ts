@@ -34,11 +34,12 @@ export function canStartVoiceSession(
 /**
  * Pourquoi le SERVEUR a fermé la voix, dit à l'utilisateur (§78, 26/09/2026).
  *
- * Le Mac coupe seul une séance après deux minutes sans parole ou dix minutes
- * au total (`speech/realtime/bridge.py`). Sans ce motif, l'orbe revenait à
+ * Le Mac coupe seul une séance après deux minutes sans parole
+ * (`speech/realtime/bridge.py`). Sans ce motif, l'orbe revenait à
  * « inactif » sans un mot, et une coupure voulue se lisait comme une panne.
- * Un motif inconnu (un serveur plus récent) ne dit rien plutôt que de
- * deviner.
+ * maxDuration reste compris pour un ancien serveur pendant la mise à jour ;
+ * depuis le 28/09/2026, la durée totale ne ferme plus la conversation.
+ * Un motif inconnu ne dit rien plutôt que de deviner.
  */
 export type FermetureVocale = 'voice-closed-inactivity' | 'voice-closed-max-duration';
 
@@ -60,7 +61,7 @@ export function motifDeFermeture(message: { reason?: unknown }): FermetureVocale
  * ne remplace pas celle du serveur (un client ancien ou planté ne
  * l'appliquerait pas) : elle couvre le cas où le serveur ne peut plus parler.
  */
-export type CoupureCliente = 'voice-lost-server' | 'voice-closed-max-duration';
+export type CoupureCliente = 'voice-lost-server';
 
 /**
  * 45 s sans AUCUNE trame du Mac : trois battements manqués (`BATTEMENT_S` =
@@ -77,24 +78,16 @@ export const SERVEUR_MUET_MAX_MS = 45_000;
  */
 export const TAMPON_MAX_OCTETS = 1_000_000;
 
-/**
- * Dix minutes (`DUREE_MAX_S` du Mac) plus 30 s pour que sa trame « closed »
- * traverse un réseau lent : au-delà, elle ne viendra plus.
- */
-export const DUREE_LOCALE_MAX_MS = 630_000;
-
 export function coupureCliente(etat: {
   maintenantMs: number;
-  debutMs: number;
   derniereTrameMs: number;
   /** Le Mac a battu au moins une fois : un serveur plus ancien ne bat pas,
    * et son silence ne doit pas passer pour une mort. */
   battementVu: boolean;
   tamponOctets: number;
 }): CoupureCliente | null {
-  if (etat.maintenantMs - etat.debutMs >= DUREE_LOCALE_MAX_MS) {
-    return 'voice-closed-max-duration';
-  }
+  // 28/09/2026 : l'ancien plafond de 630 s aurait encore coupé le téléphone
+  // après le retrait des dix minutes du serveur. Seule la liaison compte.
   if (etat.tamponOctets >= TAMPON_MAX_OCTETS) return 'voice-lost-server';
   if (etat.battementVu && etat.maintenantMs - etat.derniereTrameMs >= SERVEUR_MUET_MAX_MS) {
     return 'voice-lost-server';

@@ -137,7 +137,7 @@ async def websocket_voice_live(websocket: WebSocket) -> None:
         {"type": "interrupted"}
         {"type": "error", "detail": "..."}
         {"type": "alive"}          # every BATTEMENT_S, once ready
-        {"type": "closed", "reason": "inactivity" | "maxDuration"}
+        {"type": "closed", "reason": "inactivity" | "farewell"}
     """
     from diapason.server.auth_middleware import (
         websocket_authorized,
@@ -292,7 +292,21 @@ async def websocket_voice_live(websocket: WebSocket) -> None:
             if provider in ("local", "local_voice")
             else nullcontext()
         ):
-            await bridge.run()
+            from diapason.etudes.conversation import utiliser_contexte
+            from diapason.server.etudes_conversation import contexte_application
+
+            contexte_etude = (
+                contexte_application(
+                    websocket.app,
+                    raw.get("conversationId"),
+                    model or "",
+                    sources=raw.get("studySources"),
+                )
+                if provider in ("local", "local_voice") and not conversation_seule
+                else None
+            )
+            with utiliser_contexte(contexte_etude):
+                await bridge.run()
     except WebSocketDisconnect:
         pass
     except Exception as exc:

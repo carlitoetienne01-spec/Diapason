@@ -57,6 +57,9 @@ DELAI_AU_REVOIR_S = 8.0
 # Les appels qui répondent en moins de 400 ms ne méritent pas une phrase
 # d'attente. Les autres s'exécutent pendant sa synthèse, jamais après elle.
 SEUIL_ANNONCE_S = 0.4
+# 29/09/2026 : un cours réel prend 120 s ; un signal toutes les 30 s
+# distingue ce travail borné du silence, sans repousser une écoute inactive.
+INTERVALLE_ETUDE_S = 30.0
 ANNONCES_RECHERCHE = ("Je vérifie en ligne.", "Je regarde ça.", "Je fais la recherche.")
 ANNONCES_LECTURE = ("Je consulte la source.", "Je regarde le document.")
 
@@ -2290,6 +2293,21 @@ class LocalVoiceSession(RealtimeVoiceSession):
         already_queued: bool = False,
         spec_llm: Optional[_SpecTurn] = None,
     ) -> None:
+        from diapason.etudes.conversation import (
+            ECHEC_PREUVE,
+            RELANCE_PREUVE,
+            etat_pour_modele,
+            noter_demande,
+            preuve_manquante,
+        )
+
+        noter_demande(text)
+        from diapason.etudes.dialogue import (
+            arguments_etape,
+            plan_direct,
+            restitution_verifiee,
+        )
+
         response_started = time.monotonic()
         self._response_started = response_started
         self._first_audio_logged = False
@@ -2324,8 +2342,17 @@ class LocalVoiceSession(RealtimeVoiceSession):
             # lieu de laisser passer « Justin Trudeau ».
             tour_actualite = self._tour_actualite(text)
             messages = self._turn_messages(text)
+            etat_etude = await etat_pour_modele()
+            if etat_etude:
+                if spec_llm is not None:
+                    # La question peut avoir changé dans le panneau pendant
+                    # la parole : ne pas adopter une réponse à l'ancien état.
+                    spec_llm.abort()
+                    spec_llm = None
+                messages.append({"role": "system", "content": etat_etude})
             controler_liens = demande_de_liens(text)
             reprise_liens = False
+            reprise_etude = False
             if controler_liens:
                 messages.append({"role": "system", "content": CONSIGNE_LIENS})
             index_note: Optional[int] = None
@@ -2336,9 +2363,47 @@ class LocalVoiceSession(RealtimeVoiceSession):
             tool_notes: List[str] = []
             relance_promesse = False
             self._budget.reset()
+            from diapason.speech.realtime.tools import list_voice_tool_ids
+
+            direct = (
+                await plan_direct()
+                if self._enable_tools
+                and "study" in list_voice_tool_ids(self._allowed_tools)
+                else None
+            )
+            if direct is not None:
+                etude, etapes = direct
+                erreur_etude = ""
+                for etape in etapes:
+                    appel = {
+                        "function": {
+                            "name": "study",
+                            "arguments": arguments_etape(etude, etape),
+                        }
+                    }
+                    retour = await self._run_tool(appel, spoken=spoken)
+                    resultat = json.loads(retour["content"])
+                    if not resultat.get("ok"):
+                        erreur_etude = "Cette étape n’a pas abouti : " + str(
+                            resultat.get("content")
+                            or resultat.get("error")
+                            or "outil indisponible"
+                        )
+                        break
+                    etude = json.loads(resultat["content"])
+                restitution = (
+                    erreur_etude
+                    or restitution_verifiee(lecture_directe=True)
+                    or ECHEC_PREUVE
+                )
+                reste = await self._speak_complete_sentences(restitution, spoken)
+                if reste.strip():
+                    await self._speak_sentence(reste.strip(), spoken)
             # Bounded by the budget plus the final text-only round, so a model
             # that asks for tools forever cannot loop us forever.
-            for _round in range(self._budget.max_steps + 1):
+            for _round in range(
+                0 if direct is not None else self._budget.max_steps + 1
+            ):
                 if _round == 0 and spec_llm is not None and spec_llm.text == text:
                     # La génération a démarré pendant le silence de fin de
                     # tour ; ses premiers jetons sont déjà dans la file. Le
@@ -2367,7 +2432,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
                         raise RuntimeError(item.split("\x00", 2)[2])
                     pending += item
                     avant_lecture = pending
-                    if not controler_liens:
+                    if not controler_liens and not etat_etude:
                         pending = await self._speak_complete_sentences(pending, spoken)
                     else:
                         # Le producteur peut céder le GPU avant le contrôle.
@@ -2378,6 +2443,24 @@ class LocalVoiceSession(RealtimeVoiceSession):
                         reprendre = getattr(tokens, "reprendre", None)
                         if reprendre is not None:
                             reprendre()
+                if (
+                    etat_etude
+                    and not tool_calls
+                    and (restitution := restitution_verifiee())
+                ):
+                    pending = restitution
+                if etat_etude and not tool_calls and preuve_manquante(pending):
+                    if (
+                        not reprise_etude
+                        and self._enable_tools
+                        and self._budget.allow()
+                    ):
+                        reprise_etude = True
+                        messages.append({"role": "system", "content": RELANCE_PREUVE})
+                        continue
+                    pending = ECHEC_PREUVE
+                if etat_etude and tool_calls:
+                    pending = ""
                 if controler_liens and not tool_calls:
                     connus = getattr(self, "_liens_recus", [])
                     if liens_sans_preuve(pending, connus):
@@ -2776,6 +2859,10 @@ class LocalVoiceSession(RealtimeVoiceSession):
                 )
                 lectures.append({"ok": False, "error": str(exc)})
             await self._annoncer_lectures(lectures)
+        if name == "study":
+            # 29/09/2026 : le contrat public complet sert à la vue, mais
+            # le recopier doublait le cours dans chaque passage du modèle.
+            result = {k: v for k, v in result.items() if k != "metadata"}
         return {
             "role": "tool",
             "tool_name": name,
@@ -2840,15 +2927,43 @@ class LocalVoiceSession(RealtimeVoiceSession):
         phrases = {"web_search": ANNONCES_RECHERCHE, "web_read": ANNONCES_LECTURE}.get(
             nom
         )
+        etude_longue = nom == "study" and arguments.get("action") in {
+            "prepare",
+            "check",
+            "finish",
+        }
+        if etude_longue:
+            phrases = (
+                ("Je prépare ton parcours.",)
+                if arguments.get("action") == "prepare"
+                else ("Je prépare la correction.",)
+            )
+
+        async def executer():
+            if not etude_longue:
+                return await asyncio.to_thread(self._tool_executor, nom, arguments)
+            tache = asyncio.create_task(
+                asyncio.to_thread(self._tool_executor, nom, arguments)
+            )
+            try:
+                while not tache.done():
+                    await self._queue.put(
+                        SessionEvent(kind="status", detail="study_processing")
+                    )
+                    await asyncio.wait({tache}, timeout=INTERVALLE_ETUDE_S)
+                return tache.result()
+            finally:
+                if not tache.done():
+                    tache.cancel()
+                await asyncio.gather(tache, return_exceptions=True)
+
         if not phrases or spoken is None or spoken:
-            return await asyncio.to_thread(self._tool_executor, nom, arguments)
+            return await executer()
 
         # 27/09/2026 : l'ancien accusé parlait AVANT la recherche, même si
         # l'outil était indisponible ou son budget épuisé. Ici les gardes
         # ont déjà accepté l'appel, qui s'exécute pendant la préparation.
-        operation = asyncio.create_task(
-            asyncio.to_thread(self._tool_executor, nom, arguments)
-        )
+        operation = asyncio.create_task(executer())
         try:
             faites, _ = await asyncio.wait({operation}, timeout=SEUIL_ANNONCE_S)
             if not faites:

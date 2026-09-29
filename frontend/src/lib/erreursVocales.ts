@@ -30,6 +30,7 @@ export const ERREURS_VOCALES = {
   'microphone-phone-failed': 'talk.micro.telephone.echec',
   'microphone-phone-now-allowed': 'talk.micro.telephone.maintenantAutorise',
   'voice-session-failed': 'talk.sessionFailed',
+  'voice-playback-failed': 'talk.playbackFailed',
   'voice-closed-inactivity': 'talk.closedInactivity',
   'voice-closed-max-duration': 'talk.closedMaxDuration',
   'voice-lost-server': 'talk.lostServer',

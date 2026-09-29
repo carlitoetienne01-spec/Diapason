@@ -13,7 +13,7 @@ class Contexte {
   state = 'running';
   destination = {};
   sortie = { connect: vi.fn(), disconnect: vi.fn() };
-  resume = vi.fn(async () => {});
+  resume = vi.fn(async () => { this.state = 'running'; });
   close = vi.fn(async () => { this.state = 'closed'; });
   constructor() { Contexte.tous.push(this); }
   createGain() { return this.sortie; }
@@ -24,9 +24,85 @@ class Contexte {
 }
 const trame = btoa('\x00\x00'.repeat(240));
 beforeEach(() => { Contexte.tous = []; vi.stubGlobal('AudioContext', Contexte); });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe('§100 — l’état suit la lecture réellement en file', () => {
+  it('réveille la sortie dans le geste, puis la conserve après interruption (§78)', async () => {
+    let toucher = true;
+    vi.stubGlobal('AudioContext', class extends Contexte {
+      state = 'suspended';
+      resume = vi.fn(() => {
+        if (toucher) { this.state = 'running'; return Promise.resolve(); }
+        return new Promise<void>(() => {});
+      });
+    });
+    const publier = vi.fn();
+    const lecture = new LectureVocale(publier);
+    const preparation = lecture.preparer();
+    toucher = false;
+    await preparation;
+    const contexte = Contexte.tous[0];
+    expect(contexte.resume, 'le toucher autorise le lecteur avant le réseau').toHaveBeenCalledOnce();
+    expect(publier, 'préparer le son ne prétend pas encore parler ni écouter').not.toHaveBeenCalled();
+    lecture.ajouter(trame, 24000);
+    const ancienCallback = contexte.sources[0].onended;
+    lecture.interrompre();
+    expect(contexte.close, 'une interruption garde le lecteur autorisé').not.toHaveBeenCalled();
+    contexte.currentTime = 1;
+    lecture.ajouter(trame, 24000);
+    expect(Contexte.tous).toHaveLength(1);
+    expect(contexte.sources[1].start).toHaveBeenCalledWith(1.06);
+    publier.mockClear(); ancienCallback?.();
+    expect(publier).not.toHaveBeenCalled();
+    lecture.arreter();
+    expect(contexte.close, 'terminer ferme réellement la sortie').toHaveBeenCalledOnce();
+  });
+
+  it('borne un réveil refusé silencieusement par le navigateur', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('AudioContext', class extends Contexte {
+      state = 'suspended';
+      resume = vi.fn(() => new Promise<void>(() => {}));
+    });
+    const publier = vi.fn(), echec = vi.fn();
+    const lecture = new LectureVocale(publier, echec);
+    lecture.ajouter(trame, 24000);
+    lecture.ajouter(trame, 24000);
+    expect(publier.mock.calls.every(([, parle]) => !parle), 'aucun faux état « parle »').toBe(true);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(Contexte.tous[0].resume, 'un seul réveil pour les morceaux en attente').toHaveBeenCalledOnce();
+    expect(echec).toHaveBeenCalledOnce();
+    expect(Contexte.tous[0].sources.every(s => s.stop.mock.calls.length === 1)).toBe(true);
+    lecture.arreter();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('un réveil tardif après fermeture ne rejoue rien dans la séance suivante', async () => {
+    let finir!: () => void;
+    vi.stubGlobal('AudioContext', class extends Contexte {
+      state = 'suspended';
+      resume = vi.fn(() => new Promise<void>(resolve => { finir = resolve; }));
+    });
+    const publier = vi.fn(), echec = vi.fn();
+    const lecture = new LectureVocale(publier, echec);
+    lecture.ajouter(trame, 24000);
+    lecture.arreter();
+    publier.mockClear(); finir();
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+    expect(publier).not.toHaveBeenCalled();
+    expect(echec).not.toHaveBeenCalled();
+  });
+
+  it('remonte un rejet de resume au lieu de prétendre jouer', async () => {
+    vi.stubGlobal('AudioContext', class extends Contexte {
+      state = 'suspended';
+      resume = vi.fn(async () => { throw new DOMException('gesture', 'NotAllowedError'); });
+    });
+    const lecture = new LectureVocale(vi.fn());
+    await expect(lecture.preparer()).rejects.toThrow('gesture');
+    lecture.arreter();
+  });
+
   it('revient à l’écoute après le dernier morceau, pas après le premier', () => {
     const publier = vi.fn();
     const lecture = new LectureVocale(publier);

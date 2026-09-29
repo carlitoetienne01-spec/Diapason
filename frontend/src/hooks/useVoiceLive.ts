@@ -162,6 +162,9 @@ export function useVoiceLive() {
       if (!wsRef.current) return;
       setState((precedent) => precedent === 'error' ? precedent : parle ? 'speaking' : 'listening');
       setStatusLabel(parle ? 'Speaking' : etapeRef.current);
+    }, (cause) => {
+      console.error('[voice-live] audio playback failed', cause);
+      setError('voice-playback-failed');
     });
   }
 
@@ -215,6 +218,11 @@ export function useVoiceLive() {
     lectureRef.current?.arreter();
   }, []);
 
+  const interrompreLecture = useCallback(() => {
+    // L'autorisation audio acquise au toucher reste valable toute la séance.
+    lectureRef.current?.interrompre();
+  }, []);
+
   const retirerRetourDesReglages = useCallback(() => {
     if (!retourDesReglagesRef.current) return;
     document.removeEventListener('visibilitychange', retourDesReglagesRef.current);
@@ -241,7 +249,13 @@ export function useVoiceLive() {
   }, [retirerRetourDesReglages]);
 
   const enqueuePcm = useCallback((b64: string, sampleRate: number) => {
-    lectureRef.current?.ajouter(b64, sampleRate);
+    try {
+      lectureRef.current?.ajouter(b64, sampleRate);
+    } catch (cause) {
+      lectureRef.current?.interrompre();
+      console.error('[voice-live] audio frame playback failed', cause);
+      setError('voice-playback-failed');
+    }
   }, []);
 
   const cleanupCapture = useCallback(() => {
@@ -296,17 +310,18 @@ export function useVoiceLive() {
     if (fermetureRef.current) { fermetureRef.current.finir(); return; }
     if (!wsRef.current) return;
     etapeRef.current = 'Listening · speak';
-    stopPlayback();
+    interrompreLecture();
     setTranscripts(prev => prev.map(l => l.role === 'assistant' && !l.final ? { ...l, final: true, interrupted: true } : l));
     try {
       wsRef.current?.send(JSON.stringify({ type: 'interrupt' }));
     } catch {}
     setState('listening');
     setStatusLabel('Listening · speak');
-  }, [stopPlayback]);
+  }, [interrompreLecture]);
 
   const start = useCallback(
     async (opts?: { provider?: VoiceLiveProvider; voice?: string; conversationOnly?: boolean;
+      conversationId?: string; studySources?: Array<{ name: string; text: string; truncated: boolean }>;
       model?: string; history?: Array<{ role: 'user' | 'assistant'; content: string }> }) => {
       if (wsRef.current || demarrageRef.current) return;
       const generation = ++generationRef.current;
@@ -328,6 +343,13 @@ export function useVoiceLive() {
 
       const chosen = conversationOnly ? 'local' : opts?.provider || provider;
 
+      // Créer et réveiller la sortie DANS le toucher, avant checkService.
+      // Le rejet est capturé immédiatement, même si le réseau tarde ensuite.
+      const preparationAudio = lectureRef.current!.preparer().then(
+        () => ({ ok: true as const }),
+        (cause: unknown) => ({ ok: false as const, cause }),
+      );
+
       // Revalidate immediately before the handshake. Besides preventing a
       // startup race, apiFetch refreshes the desktop key after a 401 so the
       // synchronous URL builder below sees the current credential.
@@ -336,6 +358,7 @@ export function useVoiceLive() {
       const voixChoisie = opts?.voice || (chosen === 'local' ? current?.defaultVoice : '') || '';
       setVoixSession(voixChoisie);
       if (!canStartVoiceSession(current, chosen)) {
+        stopPlayback();
         demarrageRef.current = false;
         setState('idle');
         setStatusLabel('Idle');
@@ -351,6 +374,18 @@ export function useVoiceLive() {
         return;
       }
 
+      const audio = await preparationAudio;
+      if (generation !== generationRef.current) return;
+      if (!audio.ok) {
+        demarrageRef.current = false;
+        stopPlayback();
+        console.error('[voice-live] audio initialization failed', audio.cause);
+        setError('voice-playback-failed');
+        setState('error');
+        setStatusLabel('Error');
+        return;
+      }
+
       setState('connecting');
       setStatusLabel('Connecting…');
       let ws: WebSocket;
@@ -363,6 +398,7 @@ export function useVoiceLive() {
       } catch (err) {
         if (generation !== generationRef.current) return;
         demarrageRef.current = false;
+        stopPlayback();
         console.error('[voice-live] initialization failed', err);
         setError('voice-connection-failed');
         setState('error');
@@ -391,8 +427,7 @@ export function useVoiceLive() {
       // n'atteint pas un téléphone hors réseau. Toutes les 5 s, on regarde
       // si le Mac parle encore et si l'envoi avance ; sinon, le micro se
       // ferme ici, et on dit pourquoi.
-      const debutMs = Date.now();
-      let derniereTrameMs = debutMs;
+      let derniereTrameMs = Date.now();
       let battementVu = false;
       const garde = window.setInterval(() => {
         if (!actuelle()) {
@@ -401,7 +436,6 @@ export function useVoiceLive() {
         }
         const coupure = coupureCliente({
           maintenantMs: Date.now(),
-          debutMs,
           derniereTrameMs,
           battementVu,
           tamponOctets: ws.bufferedAmount,
@@ -423,6 +457,7 @@ export function useVoiceLive() {
             ...(opts?.model ? { model: opts.model } : {}),
             // 28/09/2026 : la voix invitée n'entend pas le fil du propriétaire.
             ...(opts?.history && !conversationOnly ? { history: opts.history } : {}),
+            ...(opts?.conversationId && !conversationOnly ? { conversationId: opts.conversationId, studySources: opts.studySources ?? [] } : {}),
             include_memory: !conversationOnly,
             ...(conversationOnly ? { conversationOnly: true, enable_tools: false } : {}),
           }),
@@ -525,7 +560,7 @@ export function useVoiceLive() {
             case 'closing': {
               if (msg.reason !== 'farewell') break;
               cleanupCapture();
-              stopPlayback();
+              interrompreLecture();
               setEnFermeture(true);
               setState('listening');
               setStatusLabel('ending');
@@ -604,7 +639,7 @@ export function useVoiceLive() {
             case 'interrupted':
               setTranscripts(prev => prev.map(l => l.role === 'assistant' && !l.final ? { ...l, final: true, interrupted: true } : l));
               etapeRef.current = 'Listening · speak';
-              stopPlayback();
+              interrompreLecture();
               setState('listening');
               setStatusLabel('Listening · speak');
               break;
@@ -712,7 +747,7 @@ export function useVoiceLive() {
         }
       };
     },
-    [afficherEchecMicro, checkService, cleanupCapture, enqueuePcm, oublierEchecMicro, provider, stop, stopPlayback],
+    [afficherEchecMicro, checkService, cleanupCapture, enqueuePcm, interrompreLecture, oublierEchecMicro, provider, stop, stopPlayback],
   );
 
   const chooseProvider = useCallback((next: VoiceLiveProvider) => {

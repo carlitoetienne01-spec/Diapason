@@ -14,6 +14,11 @@ export function historiqueVocal(messages: ChatMessage[]) {
   }));
 }
 
+export function documentsEtudeVocaux(messages: ChatMessage[]) {
+  const dernier = [...messages].reverse().find(m => m.role === 'user' && m.documents?.length);
+  return dernier?.documents?.map(d => ({ name: d.nom, text: d.texte, truncated: !!d.tronque }));
+}
+
 export function messagesVocaux(session: SessionDuChat, lignes: TranscriptLine[], outils: ToolEventLine[]): ChatMessage[] {
   return lignes.filter(l => l.at >= session.depuis && l.text.trim() && (l.role === 'assistant' || l.final)).map(l => {
     const precedentes = lignes.filter(x => x.role === 'user' && x.at < l.at);

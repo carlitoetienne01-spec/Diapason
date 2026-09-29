@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useVoixPartagee } from './contexteVoix';
 import { generateId, useAppStore, viderSauvegardeConversations } from '../lib/store';
-import { historiqueVocal, messagesVocaux, marquerFilVocal, type SessionDuChat } from '../lib/conversationVocale';
+import { historiqueVocal, documentsEtudeVocaux, messagesVocaux, marquerFilVocal, type SessionDuChat } from '../lib/conversationVocale';
 import { isCloudModel } from '../lib/cloud-models';
 
 export function useConversationVocale() {
@@ -43,6 +43,8 @@ export function useConversationVocale() {
     marquerFilVocal(id);
     setVisible(true);
     await courant.current.start({ provider: 'local', model: etat.selectedModel,
+      conversationId: id,
+      studySources: documentsEtudeVocaux(useAppStore.getState().messages),
       history: historiqueVocal(useAppStore.getState().messages), conversationOnly });
   }, []);
 

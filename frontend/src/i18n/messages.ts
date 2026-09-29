@@ -183,10 +183,12 @@ export const MESSAGES = {
     'talk.micro.reponseDeLApp': 'The phone app replied: “{phrase}”',
     'talk.sessionFailed':
       'The voice session could not start. Try again; technical details are available in the logs.',
+    'talk.playbackFailed':
+      'Audio playback could not start. End voice mode, then tap the voice button to enable sound again. Your messages are kept.',
     'talk.closedInactivity':
       'Voice switched itself off after a long silence: the microphone is closed. Start again to keep talking.',
     'talk.closedMaxDuration':
-      'Voice switched itself off: a session lasts ten minutes at most. Start again to keep talking.',
+      'The server ended the voice session. Start again to keep talking.',
     'talk.lostServer':
       'The Mac stopped answering: voice switched itself off and the microphone is closed. Check the connection, then start again.',
     'talk.localNotReady':
@@ -1896,10 +1898,12 @@ export const MESSAGES = {
     'talk.micro.reponseDeLApp': 'L’app du téléphone a répondu : « {phrase} »',
     'talk.sessionFailed':
       'La séance vocale n’a pas pu démarrer. Réessayez ; les détails techniques restent disponibles dans les journaux.',
+    'talk.playbackFailed':
+      'La lecture audio n’a pas pu démarrer. Fermez le mode vocal, puis touchez le bouton vocal pour réactiver le son. Vos messages sont conservés.',
     'talk.closedInactivity':
       'La voix s’est coupée seule après un long silence : le micro est fermé. Relancez-la pour reprendre.',
     'talk.closedMaxDuration':
-      'La voix s’est coupée seule : une séance dure dix minutes au plus. Relancez-la pour reprendre.',
+      'Le serveur a terminé la séance vocale. Relancez-la pour reprendre.',
     'talk.lostServer':
       'Le Mac ne répond plus : la voix s’est coupée et le micro est fermé. Vérifiez la connexion, puis relancez-la.',
     'talk.localNotReady':

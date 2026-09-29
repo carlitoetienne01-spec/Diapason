@@ -6,8 +6,9 @@ l'écoute jusqu'à ce que quelqu'un ferme la page. La coupure vit dans le pont
 (``speech/realtime/bridge.py``), côté serveur : un client ancien, planté ou
 hostile ne peut pas l'ignorer.
 
-Les limites sont abaissées à quelques dixièmes de seconde par test ; les
-vraies valeurs sont figées à part, avec leur raison.
+La limite d'inactivité est abaissée à quelques dixièmes de seconde par test.
+Depuis le 28/09/2026, à la demande de Carlito, une conversation active n'a
+plus de plafond de durée ; une horloge simulée exerce les longues séances.
 """
 
 from __future__ import annotations
@@ -21,15 +22,12 @@ import pytest
 from diapason.speech.realtime.base import SessionEvent
 from diapason.speech.realtime.bridge import (
     BATTEMENT_S,
-    DUREE_MAX_S,
-    MOTIF_DUREE,
     MOTIF_SILENCE,
     SILENCE_MAX_S,
     VoiceLiveBridge,
 )
 
 _SILENCE = 0.3
-_DUREE = 5.0
 # Au-delà, le test échoue au lieu de pendre : une coupure qui ne vient
 # jamais ne doit pas bloquer la suite.
 _DELAI_DU_TEST_S = 4.0
@@ -129,7 +127,6 @@ async def _mener(pont: VoiceLiveBridge, *pendant) -> float:
 
 def _pont(client, session, **limites) -> VoiceLiveBridge:
     limites.setdefault("silence_max_s", _SILENCE)
-    limites.setdefault("duree_max_s", _DUREE)
     return VoiceLiveBridge(client, session, **limites)
 
 
@@ -268,24 +265,48 @@ class TestLeSilenceCoupe:
         )
 
 
-class TestLaDureeCoupe:
+class TestLaConversationSansPlafond:
     @pytest.mark.asyncio
-    async def test_une_conversation_sans_fin_est_coupee_a_la_duree_maximale(self):
-        """Une parole toutes les 100 ms ne laisse jamais le silence expirer :
-        seule la durée maximale arrête la session."""
+    @pytest.mark.parametrize("source", ["texte", "transcription"])
+    async def test_la_parole_reste_possible_apres_dix_minutes_et_un_jour(self, source):
+        """§78 — demande du 28/09/2026 : garder la coupure au silence,
+        sans interrompre une conversation active à dix minutes."""
         client, session = _Client(), _Session()
+        maintenant = [0.0]
+        pont = _pont(client, session, silence_max_s=0.02, horloge=lambda: maintenant[0])
+        tache = asyncio.create_task(pont.run())
 
-        async def bavarder(arret: asyncio.Event) -> None:
-            while not arret.is_set():
-                client.entrantes.put_nowait({"type": "text", "text": "encore"})
-                await asyncio.sleep(0.1)
+        async def attendre(predicate):
+            async with asyncio.timeout(1):
+                while not predicate():
+                    await asyncio.sleep(0)
 
-        duree = await _mener(
-            _pont(client, session, silence_max_s=0.5, duree_max_s=0.8), bavarder
-        )
-        assert client.envoyes[-1] == {"type": "closed", "reason": MOTIF_DUREE}
-        assert client.fermeture == (1000, MOTIF_DUREE)
-        assert 0.8 <= duree < 1.8, f"coupée en {duree:.2f} s"
+        try:
+            await attendre(lambda: bool(client.envoyes))
+            for secondes in (599, 601, 3600, 86400):
+                maintenant[0] = float(secondes)
+                texte = f"encore à {secondes}"
+                # L'horloge et la parole avancent ensemble : laisser la
+                # boucle tourner entre les deux simulerait un long silence.
+                if source == "texte":
+                    await pont._handle_client_message({"type": "text", "text": texte})
+                else:
+                    pont._noter(
+                        SessionEvent(
+                            kind="transcript", role="user", text=texte, final=True
+                        )
+                    )
+                # Laisser la garde se réveiller : un test qui n'exerce que
+                # l'entrée du texte manquerait l'ancien plafond de 600 s.
+                await asyncio.sleep(0.04)
+                assert not tache.done(), f"la conversation a été coupée à {secondes} s"
+                assert client.fermeture is None, "la parole doit maintenir la séance"
+            client.entrantes.put_nowait({"type": "stop"})
+            await asyncio.wait_for(tache, 1)
+            assert session.fermee, "l'arrêt explicite ferme toujours le moteur"
+        finally:
+            tache.cancel()
+            await asyncio.gather(tache, return_exceptions=True)
 
     @pytest.mark.asyncio
     async def test_un_chauffage_qui_ne_rend_jamais_la_main_est_coupe(self):
@@ -364,10 +385,6 @@ class TestLesVraiesLimites:
             "une approbation lente couperait la voix avant la réponse"
         )
 
-    def test_la_duree_maximale_est_celle_du_mode_gestes(self):
-        """§78 et §83 : ni la caméra ni le micro ne tiennent une heure par
-        accident."""
-        from diapason.server.gestes_routes import _DUREE_MAX_S
-
-        assert DUREE_MAX_S == _DUREE_MAX_S == 600.0
-        assert SILENCE_MAX_S < DUREE_MAX_S
+    def test_le_silence_reste_limite_a_deux_minutes(self):
+        """§78 — le retrait du plafond ne retire pas la garde au silence."""
+        assert SILENCE_MAX_S == 120.0, "deux minutes sans parole ferment le micro"

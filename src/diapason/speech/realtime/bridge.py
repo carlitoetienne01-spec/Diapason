@@ -49,18 +49,14 @@ SILENCE_MAX_S = 120.0
 # qu'une fois la séance montée, et n'arme sa garde qu'à ce moment-là — un
 # serveur plus ancien, qui ne bat pas, n'est jamais pris pour un mort.
 BATTEMENT_S = 15.0
-# Dix minutes au plus, quoi qu'il se dise : le même plafond que le mode
-# gestes (_DUREE_MAX_S, gestes_routes.py). Une réponse orale tient en une à
-# trois phrases, ~15 s avec la question : dix minutes, c'est une quarantaine
-# d'échanges. Réarmer coûte un toucher, et Whisper et Kokoro restent chargés
-# (_SHARED, local_voice.py) : la reprise est immédiate.
-DUREE_MAX_S = 600.0
+# 28/09/2026 : le plafond de dix minutes interrompait Carlito alors qu'il
+# parlait encore. À sa demande, seule l'inactivité ferme automatiquement
+# une conversation ; aucune durée totale ne s'applique, sur aucun client.
 
 # Les motifs de fermeture, sur le fil (anglais camelCase, CLAUDE.md §3) :
 # le client les lit pour dire POURQUOI la voix s'est tue, au lieu d'un
 # retour muet à l'état « inactif » qu'on prendrait pour une panne.
 MOTIF_SILENCE = "inactivity"
-MOTIF_DUREE = "maxDuration"
 
 
 def event_to_client_json(event: SessionEvent) -> dict[str, Any]:
@@ -124,7 +120,6 @@ class VoiceLiveBridge:
         *,
         client_input_rate: int = 16000,
         silence_max_s: Optional[float] = None,
-        duree_max_s: Optional[float] = None,
         horloge: Callable[[], float] = time.monotonic,
         battement_s: Optional[float] = None,
     ) -> None:
@@ -137,13 +132,11 @@ class VoiceLiveBridge:
         self._silence_max_s = (
             SILENCE_MAX_S if silence_max_s is None else float(silence_max_s)
         )
-        self._duree_max_s = DUREE_MAX_S if duree_max_s is None else float(duree_max_s)
         self._battement_s = BATTEMENT_S if battement_s is None else float(battement_s)
         self._horloge = horloge
-        self._debut = horloge()
         # L'instant jusqu'où quelqu'un parle — dans le FUTUR tant que la
         # voix de l'assistant se lit encore chez le client.
-        self._parole_jusqua = self._debut
+        self._parole_jusqua = horloge()
         self.motif_de_fermeture: Optional[str] = None
 
     # -- la coupure (§78) ------------------------------------------------
@@ -169,18 +162,19 @@ class VoiceLiveBridge:
                 self._entendu()
         elif event.kind in ("ready", "tool", "interrupted", "verification"):
             self._entendu()
+        elif event.kind == "status" and event.detail == "study_processing":
+            # Le serveur ne l'émet que tant que l'outil pédagogique borné
+            # calcule réellement ; aucun battement du client ne suffit.
+            self._entendu()
 
     async def _garder(self) -> str:
-        """Rend le motif de la coupure quand une limite est franchie."""
+        """Ferme une séance inactive, quelle que soit sa durée totale."""
         while True:
             maintenant = self._horloge()
-            fin_duree = self._debut + self._duree_max_s
             fin_silence = self._parole_jusqua + self._silence_max_s
-            if maintenant >= fin_duree:
-                return MOTIF_DUREE
             if maintenant >= fin_silence:
                 return MOTIF_SILENCE
-            await asyncio.sleep(max(0.01, min(fin_duree, fin_silence) - maintenant))
+            await asyncio.sleep(max(0.01, fin_silence - maintenant))
 
     async def _battre(self) -> None:
         """Dit au client, à intervalle fixe, que le Mac est encore là."""
@@ -297,8 +291,6 @@ class VoiceLiveBridge:
 
 __all__ = [
     "BATTEMENT_S",
-    "DUREE_MAX_S",
-    "MOTIF_DUREE",
     "MOTIF_SILENCE",
     "SILENCE_MAX_S",
     "VoiceLiveBridge",

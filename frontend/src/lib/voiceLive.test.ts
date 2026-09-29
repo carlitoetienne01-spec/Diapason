@@ -130,14 +130,14 @@ describe('voice health preflight', () => {
 });
 
 describe('la coupure dite par le serveur (§78, 26/09/2026)', () => {
-  it('traduit les deux motifs de fermeture du Mac en message pour l’orbe', async () => {
+  it('traduit l’inactivité et le plafond d’un ancien serveur pour l’orbe', async () => {
     const { motifDeFermeture } = await freshVoiceLive();
     // Sans ce motif, l'orbe revenait à « inactif » sans un mot : une coupure
     // voulue se lisait comme une panne.
     expect(motifDeFermeture({ reason: 'inactivity' }), 'deux minutes sans parole').toBe(
       'voice-closed-inactivity',
     );
-    expect(motifDeFermeture({ reason: 'maxDuration' }), 'dix minutes au plus').toBe(
+    expect(motifDeFermeture({ reason: 'maxDuration' }), 'compatibilité avec un ancien serveur').toBe(
       'voice-closed-max-duration',
     );
   });
@@ -156,7 +156,6 @@ describe('la garde du client quand le Mac ne répond plus (§78, 26/09/2026)', (
   const T0 = 1_790_400_000_000;
   const vivant = {
     maintenantMs: T0 + 60_000,
-    debutMs: T0,
     derniereTrameMs: T0 + 50_000,
     battementVu: true,
     tamponOctets: 0,
@@ -197,28 +196,22 @@ describe('la garde du client quand le Mac ne répond plus (§78, 26/09/2026)', (
     ).toBe('voice-lost-server');
   });
 
-  it('coupe au plafond local, dix minutes et demie après le début', async () => {
-    const { coupureCliente, DUREE_LOCALE_MAX_MS } = await freshVoiceLive();
+  it.each([600_000, 630_000, 3_600_000, 86_400_000])('ne coupe pas une connexion vivante après %i ms', async (duree) => {
+    const { coupureCliente } = await freshVoiceLive();
     expect(
-      coupureCliente({ ...vivant, maintenantMs: T0 + DUREE_LOCALE_MAX_MS - 1, derniereTrameMs: T0 + DUREE_LOCALE_MAX_MS - 1 }),
+      coupureCliente({ ...vivant, maintenantMs: T0 + duree, derniereTrameMs: T0 + duree }),
+      'la durée seule ne ferme jamais la conversation',
     ).toBeNull();
-    expect(
-      coupureCliente({ ...vivant, maintenantMs: T0 + DUREE_LOCALE_MAX_MS, derniereTrameMs: T0 + DUREE_LOCALE_MAX_MS }),
-      'la trame « closed » du Mac ne viendra plus',
-    ).toBe('voice-closed-max-duration');
   });
 
-  it('tient ses seuils contre le battement et la durée maximale du Mac', async () => {
-    const { SERVEUR_MUET_MAX_MS, DUREE_LOCALE_MAX_MS } = await freshVoiceLive();
+  it('tient son seuil de perte réseau contre le battement du Mac', async () => {
+    const { SERVEUR_MUET_MAX_MS } = await freshVoiceLive();
     const pont = readFileSync(
       join(process.cwd(), '..', 'src', 'diapason', 'speech', 'realtime', 'bridge.py'),
       'utf-8',
     );
     const battement = Number(/^BATTEMENT_S = ([\d.]+)$/m.exec(pont)?.[1]);
-    const dureeMax = Number(/^DUREE_MAX_S = ([\d.]+)$/m.exec(pont)?.[1]);
     expect(battement, 'BATTEMENT_S introuvable dans bridge.py').toBeGreaterThan(0);
     expect(SERVEUR_MUET_MAX_MS, 'trois battements manqués au moins').toBeGreaterThanOrEqual(3 * battement * 1000);
-    expect(dureeMax, 'DUREE_MAX_S introuvable dans bridge.py').toBeGreaterThan(0);
-    expect(DUREE_LOCALE_MAX_MS, 'le plafond local vient APRÈS celui du Mac').toBeGreaterThan(dureeMax * 1000);
   });
 });

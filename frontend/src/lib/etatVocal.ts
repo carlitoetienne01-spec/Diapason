@@ -11,6 +11,7 @@ const ETATS = {
   voiceNotRecognized: 'talk.stage.voiceNotRecognized',
   noSpeech: 'talk.stage.noSpeech',
   responding: 'talk.stage.responding',
+  study_processing: 'talk.stage.responding',
   ending: 'talk.stage.ending',
   listening: 'talk.resonance.listening',
 } as const;

@@ -56,12 +56,14 @@ class Noeud {
 }
 class Contexte {
   static tous: Contexte[] = [];
+  static get sorties() { return this.tous.filter(c => c.options?.sampleRate === 24000); }
+  static get captures() { return this.tous.filter(c => c.options?.sampleRate === 16000); }
   state = 'running'; currentTime = 0; sampleRate = 48000;
   destination = new Noeud(this);
   sources: Noeud[] = [];
   close = vi.fn(async () => { this.state = 'closed'; });
   resume = vi.fn(async () => {});
-  constructor() { Contexte.tous.push(this); }
+  constructor(public options?: AudioContextOptions) { Contexte.tous.push(this); }
   createMediaStreamSource() { return new Noeud(this); }
   createGain() { return new Noeud(this); }
   createBuffer(_c: number, n: number, hz: number) { return { duration: n / hz, copyToChannel: vi.fn() }; }
@@ -90,6 +92,79 @@ beforeEach(() => {
 });
 afterEach(() => { rendu().stop(); vi.unstubAllGlobals(); });
 
+describe('§100 — la réponse écrite ne masque pas une sortie audio muette', () => {
+  it('active le son pendant le toucher avant le contrôle réseau, sans ouvrir le micro', async () => {
+    let toucher = true;
+    let repondre!: (value: object) => void;
+    banc.health.mockReturnValue(new Promise(resolve => { repondre = resolve; }));
+    vi.stubGlobal('AudioContext', class extends Contexte {
+      state = 'suspended';
+      resume = vi.fn(async () => {
+        if (!toucher) throw new DOMException('gesture', 'NotAllowedError');
+        this.state = 'running';
+      });
+    });
+    const demarrage = rendu().start();
+    toucher = false;
+    expect(Contexte.sorties[0].resume).toHaveBeenCalledOnce();
+    expect(banc.micro).not.toHaveBeenCalled();
+    expect(Socket.tous).toHaveLength(0);
+    repondre({ available: true }); await demarrage;
+    expect(Socket.tous).toHaveLength(1);
+    rendu().stop();
+    expect(Contexte.sorties[0].close).toHaveBeenCalledOnce();
+  });
+
+  it('annonce un refus de sortie sans accuser ni ouvrir le micro', async () => {
+    const journal = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.stubGlobal('AudioContext', class extends Contexte {
+      state = 'suspended';
+      resume = vi.fn(async () => { throw new DOMException('gesture', 'NotAllowedError'); });
+    });
+    try {
+      await rendu().start();
+      expect(rendu().error).toBe('voice-playback-failed');
+      expect(rendu().state).toBe('error');
+      expect(rendu().micro).toBeNull();
+      expect(Socket.tous).toHaveLength(0);
+      expect(banc.micro).not.toHaveBeenCalled();
+      expect(Contexte.sorties[0].close).toHaveBeenCalledOnce();
+    } finally { journal.mockRestore(); }
+  });
+
+  it('garde le lecteur autorisé après une interruption et pour l’au revoir', async () => {
+    const socket = await connecter();
+    socket.message({ type: 'audio', data: btoa('\0\0') });
+    socket.message({ type: 'interrupted' });
+    socket.message({ type: 'audio', data: btoa('\0\0') });
+    socket.message({ type: 'closing', reason: 'farewell' });
+    socket.message({ type: 'audio', data: btoa('\0\0') });
+    expect(Contexte.sorties).toHaveLength(1);
+    expect(Contexte.sorties[0].close).not.toHaveBeenCalled();
+    expect(Contexte.sorties[0].sources).toHaveLength(3);
+    expect(Contexte.captures[0].close).toHaveBeenCalledOnce();
+  });
+
+  it('une trame audio illisible laisse le texte et affiche l’échec de lecture', async () => {
+    const journal = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const socket = await connecter();
+      socket.message({ type: 'transcript', role: 'assistant', text: 'Bonjour.', final: true });
+      socket.message({ type: 'audio', data: btoa('x') });
+      expect(rendu().error).toBe('voice-playback-failed');
+      expect(rendu().state).not.toBe('speaking');
+      expect(rendu().transcripts[0].text).toBe('Bonjour.');
+    } finally { journal.mockRestore(); }
+  });
+
+  it('rend la sortie préparée si le service est indisponible', async () => {
+    banc.health.mockResolvedValue(null);
+    await rendu().start();
+    expect(Contexte.sorties[0].close).toHaveBeenCalledOnce();
+    expect(banc.micro).not.toHaveBeenCalled();
+  });
+});
+
 describe('§78 — le départ parlé laisse finir Orion avec le micro fermé', () => {
   it('ferme la capture avant le dernier son et conserve les transcriptions', async () => {
     const stream = flux(); banc.micro.mockResolvedValue(stream);
@@ -113,8 +188,8 @@ describe('§78 — le départ parlé laisse finir Orion avec le micro fermé', (
     socket.message({ type: 'closed', reason: 'farewell' });
     socket.onclose({ code: 1000 });
     expect(rendu().state).toBe('speaking');
-    expect(Contexte.tous[1].sources[0].stop).not.toHaveBeenCalled();
-    Contexte.tous[1].sources[0].onended?.();
+    expect(Contexte.sorties[0].sources[0].stop).not.toHaveBeenCalled();
+    Contexte.sorties[0].sources[0].onended?.();
     expect(rendu().state).toBe('idle');
     expect(rendu().finVocale).toBe(true);
     expect(rendu().transcripts.map(l => l.text)).toEqual(['Diapason, au revoir.', 'À bientôt.']);
@@ -124,7 +199,7 @@ describe('§78 — le départ parlé laisse finir Orion avec le micro fermé', (
     const socket = await connecter();
     socket.message({ type: 'closing', reason: 'farewell' });
     socket.message({ type: 'audio', data: btoa('\0\0') });
-    Contexte.tous[1].sources[0].onended?.();
+    Contexte.sorties[0].sources[0].onended?.();
     expect(rendu().enFermeture).toBe(true);
     expect(rendu().statusLabel).toBe('ending');
     socket.message({ type: 'closed', reason: 'farewell' });
@@ -136,7 +211,7 @@ describe('§78 — le départ parlé laisse finir Orion avec le micro fermé', (
     socket.message({ type: 'closed', reason: 'farewell' });
     socket.message({ type: 'audio', data: btoa('\0\0') });
     expect(rendu().state).toBe('idle');
-    expect(Contexte.tous).toHaveLength(1);
+    expect(Contexte.tous).toHaveLength(2);
     await connecter();
     expect(rendu().finVocale).toBe(false);
     expect(rendu().enFermeture).toBe(false);
@@ -148,7 +223,7 @@ describe('§78 — le départ parlé laisse finir Orion avec le micro fermé', (
     rendu().stop();
     socket.message({ type: 'audio', data: btoa('\0\0') });
     expect(rendu().state).toBe('idle');
-    expect(Contexte.tous).toHaveLength(1);
+    expect(Contexte.tous).toHaveLength(2);
   });
   it('libère la séance même si le serveur ou le lecteur ne termine pas', async () => {
     vi.useFakeTimers();
@@ -158,7 +233,7 @@ describe('§78 — le départ parlé laisse finir Orion avec le micro fermé', (
       socket.message({ type: 'audio', data: btoa('\0\0') });
       await vi.advanceTimersByTimeAsync(12000);
       expect(rendu().state).toBe('idle');
-      expect(Contexte.tous[1].sources[0].stop).toHaveBeenCalledOnce();
+      expect(Contexte.sorties[0].sources[0].stop).toHaveBeenCalledOnce();
     } finally { vi.useRealTimers(); }
   });
   it('une permission tardive ne rallume pas le micro pendant le départ', async () => {
@@ -230,19 +305,19 @@ describe('§78 / §100 — la capture appartient à la session, pas à sa lectur
     socket.message({ type: 'interrupted' });
     expect(rendu().micNode, 'interrompre la réponse ne débranche pas la forme du micro').toBe(micro);
     expect(rendu().state).toBe('listening');
-    expect(Contexte.tous[0].close).not.toHaveBeenCalled();
+    expect(Contexte.captures[0].close).not.toHaveBeenCalled();
     const envoyer = banc.capture.mock.calls[0][2];
     envoyer(new ArrayBuffer(640));
     expect(JSON.parse(socket.send.mock.calls[socket.send.mock.calls.length - 1][0])).toMatchObject({ type: 'audio', sample_rate: 48000 });
     rendu().stop();
     expect(rendu().micNode).toBeNull();
-    expect(Contexte.tous[0].close).toHaveBeenCalledOnce();
+    expect(Contexte.captures[0].close).toHaveBeenCalledOnce();
   });
   it('retrouve l’écoute et le micro après la fin naturelle de la réponse', async () => {
     const socket = await connecter();
     const micro = rendu().micNode;
     socket.message({ type: 'audio', data: btoa('\0\0'.repeat(240)) });
-    Contexte.tous[1].sources[0].onended?.();
+    Contexte.sorties[0].sources[0].onended?.();
     expect(rendu().state).toBe('listening');
     expect(rendu().micNode).toBe(micro);
   });
@@ -263,7 +338,7 @@ describe('§78 / §100 — la capture appartient à la session, pas à sa lectur
     ancien.onclose({}); ancien.message({ type: 'audio', data: btoa('\0\0') });
     expect(rendu().micNode).toBe(micro);
     expect(rendu().state).toBe('listening');
-    expect(Contexte.tous).toHaveLength(2);
+    expect(Contexte.tous).toHaveLength(4);
   });
   it('ne rallume rien si Terminer arrive pendant le contrôle du service', async () => {
     let repondre!: (value: object) => void;
@@ -417,7 +492,7 @@ describe('§78 / §100 — une conversation entre IA reste limitée à sa sessio
       const avant = socket.send.mock.calls.length;
       envoyer(new ArrayBuffer(640));
       expect(socket.send).toHaveBeenCalledTimes(avant);
-      Contexte.tous[1].sources[0].onended?.();
+      Contexte.sorties[0].sources[0].onended?.();
       maintenant = 1299;
       envoyer(new ArrayBuffer(640));
       expect(socket.send).toHaveBeenCalledTimes(avant);
@@ -437,7 +512,7 @@ describe('§78 / §100 — une conversation entre IA reste limitée à sa sessio
     const socket = await connecter();
     socket.message({ type: 'status', stage: 'responding' });
     socket.message({ type: 'audio', data: btoa('\0\0'.repeat(240)) });
-    Contexte.tous[1].sources[0].onended?.();
+    Contexte.sorties[0].sources[0].onended?.();
     expect(rendu().statusLabel).toBe('responding');
     socket.message({ type: 'status', stage: 'listening' });
     expect(rendu().statusLabel).toBe('listening');
@@ -522,7 +597,12 @@ describe('§5 — un micro qui ne s’ouvre pas dit pourquoi', () => {
   it('un AudioContext qui lève après le flux n’est pas un refus, et le flux est rendu', async () => {
     const journal = muet();
     const stream = flux(); banc.micro.mockResolvedValue(stream);
-    vi.stubGlobal('AudioContext', class { constructor() { throw new DOMException('rate', 'NotSupportedError'); } });
+    vi.stubGlobal('AudioContext', class extends Contexte {
+      constructor(options?: AudioContextOptions) {
+        if (options?.sampleRate === 16000) throw new DOMException('rate', 'NotSupportedError');
+        super(options);
+      }
+    });
     try {
       await rendu().start();
       await Socket.tous[0].onopen();

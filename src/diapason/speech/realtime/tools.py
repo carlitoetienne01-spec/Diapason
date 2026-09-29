@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 # Diapason-parity allow-list for live voice.
 DEFAULT_VOICE_TOOL_IDS: tuple[str, ...] = (
+    "study",
     # current_time, memory_manage et user_profile_manage manquaient. Le modèle
     # RÉCLAMAIT current_time à « quelle heure est-il ? » et se voyait répondre
     # « Tool not allowed in voice mode » — il s'en tirait grâce à l'horloge
@@ -113,6 +114,7 @@ FAST_ACK_TOOL_IDS = frozenset(
 )
 
 _TOOL_MODULES: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
+    ("diapason.tools.etudier", (("study", "EtudierTool"),)),
     ("diapason.tools.calculator", (("calculator", "CalculatorTool"),)),
     (
         "diapason.tools.gestes_spatiaux",

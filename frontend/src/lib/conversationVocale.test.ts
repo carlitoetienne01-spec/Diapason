@@ -1,11 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { actionDuCompositeur, historiqueVocal, messagesVocaux, fusionnerMessagesVocaux } from './conversationVocale';
+import { actionDuCompositeur, historiqueVocal, documentsEtudeVocaux, messagesVocaux, fusionnerMessagesVocaux } from './conversationVocale';
 import type { ChatMessage } from '../types';
 import type { TranscriptLine } from '../hooks/useVoiceLive';
 const session = { id: 'voix', conversationId: 'anglais', depuis: 3, timestamp: 1000 };
 const ligne = (at: number, role: 'user' | 'assistant', text: string, final: boolean): TranscriptLine => ({ at, role, text, final });
 
 describe('le chat écrit et parlé partage ses messages', () => {
+  it('transmet les documents originaux à Étudier même au-delà des seize messages vocaux', () => {
+    const messages: ChatMessage[] = Array.from({ length: 20 }, (_, i) => ({ id: String(i), role: 'user', content: `texte ${i}`, timestamp: i }));
+    messages[0].documents = [{ nom: 'cours.pdf', texte: 'Original', tronque: true }];
+    messages[19].role = 'assistant';
+    messages[19].documents = [{ nom: 'imaginé', texte: 'Ne pas prendre' }];
+    expect(documentsEtudeVocaux(messages)).toEqual([{ name: 'cours.pdf', text: 'Original', truncated: true }]);
+    expect(documentsEtudeVocaux([])).toBeUndefined();
+  });
   it('ignore les brouillons révisables et les transcriptions de la séance précédente', () => {
     const lignes = [ligne(1, 'user', 'ancien', true), ligne(3, 'user', 'dix mois', false)];
     expect(messagesVocaux(session, lignes, [])).toEqual([]);
