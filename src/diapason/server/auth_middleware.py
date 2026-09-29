@@ -210,24 +210,32 @@ _OPEN_MESH_ROUTES = frozenset(
 )
 
 
-def _too_many(wait_seconds: float, request: Request | None = None) -> JSONResponse:
-    """Un refus qui reste LISIBLE, y compris depuis la fenêtre.
+def _too_many(wait_seconds: float) -> JSONResponse:
+    """Un refus qui reste LISIBLE, y compris depuis la fenêtre — et par elle.
 
     Constaté le 25 août 2026 : une réponse d'erreur émise par ce middleware
-    court-circuite CORSMiddleware, qui n'a donc jamais l'occasion d'y poser
-    ses en-têtes. Vu du navigateur, la réponse devient inaccessible et
-    l'échec s'affiche « Load failed » — un message qui ne dit ni le code,
-    ni la raison, ni où chercher. Le mode gestes en a fait les frais : le
-    serveur criait « trop de requêtes », la fenêtre entendait un silence.
+    court-circuitait CORSMiddleware, alors placé SOUS lui. Vu du navigateur,
+    la réponse devenait inaccessible et l'échec s'affichait « Load failed ».
+    Le mode gestes en a fait les frais : le serveur criait « trop de
+    requêtes », la fenêtre entendait un silence. Ce refus reflétait donc
+    lui-même l'Origin reçue.
 
-    Un refus doit pouvoir être lu par celui qu'il refuse.
+    28/09/2026 : CORSMiddleware est devenu le plus extérieur (server/app.py)
+    et pose ses en-têtes sur ce refus comme sur tout autre, pour les seules
+    origines de sa liste. La réflexion d'ici ne servait plus qu'aux
+    étrangères. Sur 8000, une page https://evil.example lisait le 429 et
+    son Retry-After, avec Access-Control-Allow-Credentials : c'était la
+    seule réponse que cette liste ne gouvernait pas, et le 429 de la fenêtre
+    y gagnait un « Vary: Origin, Origin ». Sur 8001 (le socket du réseau
+    local, sans CORS), toute page ouverte sur le Wi-Fi lisait l'état du seau
+    des portes sans clé. Aucun client légitime n'en dépendait. La fenêtre
+    (tauri://localhost) tient son en-tête de CORSMiddleware. Le mini-panneau
+    (127.0.0.1:8000) et le téléphone (8002, même origine que sa page) sont
+    chez eux. Les clients de 8001 sont natifs. Retry-After, lui, n'a jamais
+    été lisible par la fenêtre : aucun Access-Control-Expose-Headers ne
+    l'exposait, ni avant ni après.
     """
     entetes = {"Retry-After": str(max(1, int(wait_seconds + 0.999)))}
-    origine = request.headers.get("origin") if request is not None else None
-    if origine:
-        entetes["Access-Control-Allow-Origin"] = origine
-        entetes["Access-Control-Allow-Credentials"] = "true"
-        entetes["Vary"] = "Origin"
     return JSONResponse(
         {"detail": "Trop de requêtes. Réessayez dans un instant."},
         status_code=429,
@@ -387,7 +395,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             client = request.client.host if request.client else "unknown"
             allowed, wait_seconds = self._account_limiter.check(f"{client}:account")
             if not allowed:
-                return _too_many(wait_seconds, request)
+                return _too_many(wait_seconds)
             return await call_next(request)
         # Same shape, same reason, for the two mesh surfaces the local UI
         # polls: the inbox (another device asked us to open a screen) and the
@@ -414,7 +422,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if path in _OPEN_MESH_ROUTES:
             allowed, wait_seconds = self._open_limiter.check(f"{client}:mesh")
             if not allowed:
-                return _too_many(wait_seconds, request)
+                return _too_many(wait_seconds)
             return await call_next(request)
 
         # Constaté le 25/09/2026 en paramétrant les tests sur /v1/vie : le
@@ -427,7 +435,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if path in _SYNC_SANS_CLE:
             allowed, wait_seconds = self._open_limiter.check(f"{client}:vie-sync")
             if not allowed:
-                return _too_many(wait_seconds, request)
+                return _too_many(wait_seconds)
             return await call_next(request)
 
         # Le transfert a SON seau. Partager celui du maillage était le piège
@@ -438,13 +446,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if est_route_de_gestes(path):
             allowed, wait_seconds = self._gesture_limiter.check(f"{client}:gestures")
             if not allowed:
-                return _too_many(wait_seconds, request)
+                return _too_many(wait_seconds)
             return await call_next(request)
 
         if est_route_de_transfert(path):
             allowed, wait_seconds = self._transfer_limiter.check(f"{client}:transfer")
             if not allowed:
-                return _too_many(wait_seconds, request)
+                return _too_many(wait_seconds)
             return await call_next(request)
 
         # This small, read-only readiness response is polled while the voice
@@ -460,7 +468,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 credential = hashlib.sha256(auth.encode()).hexdigest()[:16]
             allowed, wait_seconds = self._limiter.check(f"{client}:{credential}")
             if not allowed:
-                return _too_many(wait_seconds, request)
+                return _too_many(wait_seconds)
         return await call_next(request)
 
 
