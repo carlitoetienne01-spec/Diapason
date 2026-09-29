@@ -29,6 +29,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import stat
 import subprocess
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
@@ -82,6 +83,25 @@ _MCP = re.compile(r"\bMCPs?\b")
 _NPX = re.compile(r"\bnpx\b")
 _CLAUDE_HOME = re.compile(r"~/\.claude|\bCLAUDE\.md\b")
 _CURL_SH = re.compile(r"curl[^\n|]*\|\s*(?:ba|z)?sh\b")
+
+# What the provenance line may say, and nothing else: these values come from
+# files and frontmatter somebody else wrote (29/09/2026, see _first_line).
+_VERSION = re.compile(r"^\d{1,4}(?:\.\d{1,4}){0,3}(?:-[0-9A-Za-z.]{1,20})?$")
+_SPDX = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+-]{0,39}$")
+_KNOWN_LICENSES = (
+    (re.compile(r"^MIT\b", re.IGNORECASE), "MIT"),
+    (re.compile(r"^Apache License", re.IGNORECASE), "Apache-2.0"),
+    (re.compile(r"^GNU LESSER GENERAL PUBLIC", re.IGNORECASE), "LGPL"),
+    (re.compile(r"^GNU AFFERO GENERAL PUBLIC", re.IGNORECASE), "AGPL"),
+    (re.compile(r"^GNU GENERAL PUBLIC", re.IGNORECASE), "GPL"),
+    (re.compile(r"^Mozilla Public License", re.IGNORECASE), "MPL-2.0"),
+    (re.compile(r"^BSD\b", re.IGNORECASE), "BSD"),
+    (re.compile(r"^ISC\b", re.IGNORECASE), "ISC"),
+    (re.compile(r"^This is free and unencumbered", re.IGNORECASE), "Unlicense"),
+)
+# An origin is an attribution (« community », « Ronald Skelton - Founder,
+# RapportScore.ai »): letters, digits and light punctuation, one short line.
+_ORIGIN_CHARS = re.compile(r"[^\w .,'&()/-]")
 
 
 class AllowListError(ValueError):
@@ -255,7 +275,7 @@ class EccResolver(SourceResolver):
 
     def _read_state(self) -> RepoState:
         state = RepoState(
-            version=_first_line(self._repo / "VERSION"),
+            version=_version_of(self._repo),
             license=_license_of(self._repo),
         )
         try:
@@ -327,10 +347,15 @@ def estimated_tokens(text: str) -> int:
 
 
 def declared_origin(frontmatter: dict[str, Any]) -> str:
+    """What the frontmatter DECLARES as origin — an attribution, not a proof.
+
+    Light punctuation only, one short line: the value is shown in the
+    provenance line of every reading.
+    """
     meta = frontmatter.get("metadata")
     origin = meta.get("origin") if isinstance(meta, dict) else None
     origin = origin or frontmatter.get("origin") or ""
-    return _one_line(str(origin), 60)
+    return _one_line(_ORIGIN_CHARS.sub(" ", _one_line(str(origin), 200)), 60)
 
 
 def origin_category(origin: str) -> str:
@@ -351,7 +376,9 @@ def declared_license(frontmatter: dict[str, Any], repo_license: str) -> str:
     """
     own = frontmatter.get("license")
     if isinstance(own, str) and own.strip():
-        return _one_line(own, 60)
+        own = own.strip()
+        # An SPDX-like identifier (MIT, Apache-2.0), never a sentence.
+        return own if _SPDX.match(own) else "déclarée, non reconnue"
     repo = repo_license or "inconnue"
     if origin_category(declared_origin(frontmatter)) == "community":
         return f"aucune licence propre (dépôt ECC : {repo})"
@@ -566,18 +593,46 @@ def _one_line(text: str, limit: int) -> str:
 
 
 def _first_line(path: Path) -> str:
+    """The first line of a REGULAR file of the clone, never through a link.
+
+    29/09/2026: VERSION and LICENSE were opened with ``path.open()``, which
+    follows a symlink. A commit replacing LICENSE by a link to
+    ``../../.netrc`` sent that file's first line — a token — into .source,
+    then into the head of every skill_guide reading, phone included.
+    lstat, then O_NOFOLLOW: a FIFO would also have blocked the read forever.
+    """
     try:
-        with path.open(encoding="utf-8") as fh:
-            return _one_line(fh.readline(), 40)
+        if not stat.S_ISREG(os.lstat(path).st_mode):
+            return ""
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    except OSError:
+        return ""
+    try:
+        with os.fdopen(fd, encoding="utf-8") as fh:
+            return _one_line(fh.readline(), 80)
     except (OSError, UnicodeDecodeError):
         return ""
 
 
+def _version_of(repo: Path) -> str:
+    """VERSION if it reads like a version number, else nothing."""
+    first = _first_line(repo / "VERSION")
+    return first if _VERSION.match(first) else ""
+
+
 def _license_of(repo: Path) -> str:
+    """A known license's short name, "non reconnue", or "" when absent.
+
+    Never the file's own words: whatever LICENSE says is upstream text, and
+    it lands in the provenance line the model reads as Diapason's.
+    """
     first = _first_line(repo / "LICENSE")
     if not first:
         return ""
-    return "MIT" if first.upper().startswith("MIT") else first
+    for pattern, label in _KNOWN_LICENSES:
+        if pattern.search(first):
+            return label
+    return "non reconnue"
 
 
 def _parse_porcelain_z(out: str) -> list[str]:
