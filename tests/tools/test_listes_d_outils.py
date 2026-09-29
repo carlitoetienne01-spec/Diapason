@@ -143,6 +143,31 @@ def rapport(tmp_path_factory) -> dict:
     return json.loads(ligne.removeprefix("RAPPORT="))
 
 
+class TestUneSeuleTrousse:
+    """29/09/2026 : le chat et la voix lisaient deux listes.
+
+    Appelants : _chat_tooling et list_voice_tool_ids. Pas de route nouvelle.
+    Carlito : terminer les trois qui restent, dont une seule trousse.
+    """
+
+    def test_la_voix_a_la_trousse_du_chat_sauf_l_envoi_ouvert(self):
+        from diapason.core.trousse_assistante import EXCLUS_DE_LA_VOIX
+        from diapason.server.routes import _TROUSSE_ASSISTANT
+        from diapason.speech.realtime.tools import DEFAULT_VOICE_TOOL_IDS
+
+        assert set(_TROUSSE_ASSISTANT) - set(DEFAULT_VOICE_TOOL_IDS) == set(
+            EXCLUS_DE_LA_VOIX
+        ), "la voix perd un outil qui n'est pas un envoi à cible ouverte"
+        assert set(DEFAULT_VOICE_TOOL_IDS) <= set(_TROUSSE_ASSISTANT)
+        assert "mesh_send" in EXCLUS_DE_LA_VOIX
+        assert "handoff_continue" in EXCLUS_DE_LA_VOIX
+        assert "mesh_devices" in DEFAULT_VOICE_TOOL_IDS
+        assert "focus_app" in _TROUSSE_ASSISTANT
+        assert "screen_share_start" in _TROUSSE_ASSISTANT
+        for dangereux in ("shell_exec", "file_write", "apply_patch"):
+            assert dangereux not in _TROUSSE_ASSISTANT
+
+
 class TestChaqueNomCiteExiste:
     """Un outil retiré d'une liste disparaissait sans un mot."""
 

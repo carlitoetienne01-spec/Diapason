@@ -6,94 +6,13 @@ import json
 import logging
 from typing import Any, Optional, Sequence
 
+from diapason.core.trousse_assistante import trousse_de_la_voix
+
 logger = logging.getLogger(__name__)
 
-# Diapason-parity allow-list for live voice.
-DEFAULT_VOICE_TOOL_IDS: tuple[str, ...] = (
-    "study",
-    # current_time, memory_manage et user_profile_manage manquaient. Le modèle
-    # RÉCLAMAIT current_time à « quelle heure est-il ? » et se voyait répondre
-    # « Tool not allowed in voice mode » — il s'en tirait grâce à l'horloge
-    # collée dans le prompt, mais tout ce qui dépend de « maintenant » sans y
-    # figurer (« dans combien de jours », « c'était quand ») restait hors
-    # d'atteinte. Et surtout : à la voix, « retiens que… » n'écrivait nulle
-    # part, exactement le défaut corrigé pour le chat le même jour.
-    "calculator",
-    "current_time",
-    "memory_manage",
-    "user_profile_manage",
-    # « Qu'est-ce que j'ai noté sur… » les mains prises : le savoir
-    # personnel (Obsidian, Apple Notes) répond aussi à la voix (23/08/2026).
-    "knowledge_search",
-    "knowledge_get_document",
-    # « Qu'est-ce que j'ai manqué ? » les mains prises (Atlas, 24/08/2026).
-    "digest_collect",
-    "open_anything",
-    "open_uri",
-    "focus_app",
-    "open_browser_on_monitor",
-    "run_voice_command",
-    "calendar_query",
-    "spotify_play",
-    "web_search",
-    # 21/09/2026 : la voix lit la page d'un poste après une recherche, comme
-    # le chat (actualite_vocale) — sans elle, « Justin Trudeau » à la voix.
-    "web_read",
-    "find_files",
-    "mail_compose",
-    "messages_compose",
-    "mail_send",
-    "messages_send",
-    "messages_status",
-    "browser_tabs",
-    "file_trash",
-    "gmail_search",
-    "mail_archive",
-    "mail_trash",
-    "imessage_conversation",
-    "screen_describe",
-    "screen_read_text",
-    "screen_share_start",
-    "screen_share_stop",
-    "screen_share_status",
-    "vie_tasks",
-    "vie_workspace",
-    "vie_continuity",
-    "vie_finances",
-    "diapason_app",
-    "diapason_app_delete",
-    # La suppression, demandée le 23 août 2026 — dans Diapason SEULEMENT.
-    # Les trois outils déclarent requires_confirmation : l'ordre part à la
-    # cloche d'approbation et attend le clic de l'utilisateur (45 s à la
-    # voix). Supprimer un fichier du disque, envoyer, exécuter du code
-    # restent hors de portée de la voix, quoi qu'on lui dise.
-    # Agir DANS une application — chercher, écrire — demandé le 23 août 2026 :
-    # « des fois mes mains ne sont pas libres ». Ouvrir ne suffit pas.
-    "app_search",
-    "app_install",
-    "notes_write",
-    "reminders_write",
-    "calendar_add",
-    "vie_delete_task",
-    "vie_delete_item",
-    "vie_delete_continuity",
-    # Les gestes d'une seconde (Atlas, 24 août 2026) : « monte le son »,
-    # « mets pause », « qu'est-ce que j'ai copié ? » — des réflexes, pas des
-    # projets. Tous visibles, réversibles et 100 % locaux.
-    "volume_control",
-    "media_control",
-    "clipboard_read",
-    "screen_snap",
-    "system_vitals",
-    # Le geste, terminé à la voix (25 août 2026) : « envoie ça sur mon
-    # téléphone », ou la réponse à la question « vers lequel ? » que le
-    # serveur a posée. Contrairement à `mesh_send` — délibérément absent
-    # d'ici — il ne choisit ni ce qu'il envoie (c'est la main) ni l'action
-    # (elle découle du type de l'objet), et quand une question est en
-    # attente il tranche dans une liste FERMÉE que le serveur a mesurée.
-    # Une transcription approximative ne peut donc pas inventer une cible.
-    "geste_deposer",
-)
+# 29/09/2026 : même trousse que le chat, moins l'envoi à cible ouverte.
+# Appelant : list_voice_tool_ids. Pas de route nouvelle.
+DEFAULT_VOICE_TOOL_IDS: tuple[str, ...] = trousse_de_la_voix()
 
 # (module, [(registry_key, attribute_name), ...])
 # Les gestes qui méritent un accusé OPTIMISTE (Atlas, 24 août 2026) : tous
@@ -221,6 +140,13 @@ _TOOL_MODULES: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
             ("screen_snap", "ScreenSnapTool"),
             ("system_vitals", "SystemVitalsTool"),
         ),
+    ),
+    # 29/09/2026 : lecture seule, même question au clavier et à la voix.
+    # mesh_send n'est pas chargé ici : une transcription ne choisit pas
+    # une cible ouverte.
+    (
+        "diapason.tools.mesh_tools",
+        (("mesh_devices", "MeshDevicesTool"),),
     ),
 )
 

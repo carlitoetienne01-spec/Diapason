@@ -41,10 +41,14 @@ def test_mesh_send_is_not_reachable_from_the_voice_path():
     )
 
 
-def test_the_read_only_mesh_tool_is_also_absent_while_send_is():
-    """No point exposing the lookup alone: it exists to feed mesh_send."""
-    if "mesh_send" not in DEFAULT_VOICE_TOOL_IDS:
-        assert "mesh_devices" not in DEFAULT_VOICE_TOOL_IDS
+def test_lister_les_appareils_reste_a_la_voix():
+    """29/09/2026 : mesh_devices est en lecture seule. L'envoi, non.
+
+    Appelant : DEFAULT_VOICE_TOOL_IDS. Pas de route. Carlito : une seule
+    trousse, sans mesh_send à la voix.
+    """
+    assert "mesh_devices" in DEFAULT_VOICE_TOOL_IDS
+    assert "handoff_continue" not in DEFAULT_VOICE_TOOL_IDS
 
 
 class TestTheAllowListIsACeilingNotADefault:
@@ -77,5 +81,8 @@ class TestTheAllowListIsACeilingNotADefault:
         Refusing every tool to whoever asked badly would be a punishment, not
         a guard — and the default list is the safe one by construction.
         """
-        assert outils_demandes_par_le_client("mesh_send,mesh_devices") is None
+        assert outils_demandes_par_le_client("mesh_send,handoff_continue") is None
+        assert outils_demandes_par_le_client("mesh_send,mesh_devices") == [
+            "mesh_devices"
+        ]
         assert outils_demandes_par_le_client("") is None
