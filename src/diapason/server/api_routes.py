@@ -512,16 +512,25 @@ async def telemetry_energy(request: Request):
 skills_router = APIRouter(prefix="/v1/skills", tags=["skills"])
 
 
+def _installed_skills() -> list:
+    """Read from disk — called through asyncio.to_thread, never on the loop."""
+    from diapason.core.config import load_config
+    from diapason.skills.inventory import installed_skills
+
+    return installed_skills(load_config())
+
+
 @skills_router.get("")
 async def list_skills(request: Request):
-    """List installed skills."""
-    try:
-        from diapason.core.registry import SkillRegistry
+    """List installed skills, from disk: name, source, commit, active.
 
-        skills = []
-        for key in sorted(SkillRegistry.keys()):
-            skills.append({"name": key})
-        return {"skills": skills}
+    28/09/2026: it listed SkillRegistry, which nothing fills — always
+    {"skills": []}, imported ECC skills included. The walk reads files and
+    hashes nothing, but a disk read inline in an ``async`` route freezes the
+    voice WebSocket and the chat stream (CLAUDE.md §5): it runs in a thread.
+    """
+    try:
+        return {"skills": await asyncio.to_thread(_installed_skills)}
     except Exception as exc:
         logger.warning("Failed to list skills: %s", exc)
         return {"skills": []}
