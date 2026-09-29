@@ -107,7 +107,15 @@ jamais ce qu'il annonce. Deux opérations :
 
 - `chercher` (requete) — score lexical en code, avec un petit lexique
   français → anglais générique ; aucun appel à Ollama ni au réseau ; trois
-  résultats, ou la liste complète quand rien ne correspond ;
+  résultats, ou la liste complète quand rien ne correspond. Requête, clés
+  du lexique et méthodes passent par la même racine : pluriel ou personne
+  d'abord, puis une terminaison anglaise ou française (-er, -ez, -e,
+  -ing…) — « évalue », « trie », « rédige » atteignent leur clé ; les
+  formes irrégulières (écris, envoie, réponds) y sont en toutes lettres.
+  Sonde du 29/09/2026 sur les huit vraies copies : 18 demandes sur 20 en
+  tête (13 avant), les deux autres en deuxième place (« trouve le bon ton
+  pour ma lettre » → article-writing puis brand-voice ; « compare deux
+  logiciels de notes » : « note » y est lue comme une notation) ;
 - `lire` (nom, section facultative) — provenance, sommaire numéroté, puis
   les parties `##` ENTIÈRES qui tiennent, choisies par nature : d'abord la
   méthode (Workflow, Guardrails, Rules, Rubric, Untrusted…, Pitfalls,

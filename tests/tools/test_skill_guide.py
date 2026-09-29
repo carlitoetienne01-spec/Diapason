@@ -656,6 +656,123 @@ class TestChercherSansOllama:
         assert len(lue.metadata["section"]) <= 80, "la section revient bornée"
 
 
+# Les huit, réduites à leur nom, leur description (celle d'ECC 5064474) et
+# leurs titres ## : ce sur quoi `chercher` pèse le plus.
+_HUIT = {
+    "research-ops": (
+        "Evidence-first current-state research workflow for ECC. Use when the "
+        "user wants fresh facts, comparisons, enrichment, or a recommendation "
+        "built from current public evidence and any supplied local context.",
+        ["Skill Stack", "When to Use", "Guardrails", "Workflow", "Output Format"],
+    ),
+    "article-writing": (
+        "Write articles, guides, blog posts, tutorials, newsletter issues, and "
+        "other long-form content in a distinctive voice derived from supplied "
+        "examples or brand guidance.",
+        ["When to Activate", "Core Rules", "Voice Handling", "Writing Process"],
+    ),
+    "brand-voice": (
+        "Build a source-derived writing style profile from real posts, essays, "
+        "launch notes, docs, or site copy, then reuse that profile across "
+        "content, outreach, and social workflows.",
+        ["When to Activate", "Source Priority", "What to Extract", "Hard Bans"],
+    ),
+    "email-ops": (
+        "Evidence-first mailbox triage, drafting, send verification, and "
+        "sent-mail-safe follow-up workflow for ECC. Use when the user wants to "
+        "organize email, draft or send through the real mail surface.",
+        ["Skill Stack", "When to Use", "Guardrails", "Workflow", "Verification"],
+    ),
+    "growth-log": (
+        "Use after a complex task, failure, or when reviewing what was learned. "
+        "Teaches how to write growth logs that extract reusable patterns.",
+        ["When to Activate", "The Three Rules", "Entry Template", "Anti-Patterns"],
+    ),
+    "deep-research": (
+        "Multi-source deep research using firecrawl and exa MCPs. Searches the "
+        "web, synthesizes findings, and delivers cited reports with source "
+        "attribution.",
+        ["When to Activate", "MCP Requirements", "Untrusted Sources", "Workflow"],
+    ),
+    "literature-review": (
+        "Systematic literature-review workflow for academic, biomedical, "
+        "technical, and scientific topics, including search planning, source "
+        "screening, synthesis, citation checks, and evidence logging.",
+        ["When to Use", "Review Types", "Workflow", "Output Template"],
+    ),
+    "scholar-evaluation": (
+        "Structured scholarly-work evaluation for papers, proposals, literature "
+        "reviews, methods sections, evidence quality, citation support, and "
+        "research-writing feedback.",
+        ["When to Use", "Evaluation Scope", "Rubric", "Review Process"],
+    ),
+}
+
+
+class TestUneDemandeALImperatifTrouveSaMethode:
+    """29/09/2026 : le lexique était indexé par infinitifs, et la racine
+    n'ôtait que des terminaisons anglaises. « évalue » donnait « evalu »,
+    la clé « evaluer » : jamais atteinte. 14 verbes et « ton » (mot vide
+    ET clé) étaient morts pour la façon réelle de demander ; « note »
+    devenait « not », le « not » anglais de chaque corps. Seules les
+    demandes qui nommaient la méthode passaient (§5)."""
+
+    @pytest.fixture
+    def huit(self, tmp_path):
+        return {
+            nom: _installer(
+                tmp_path / "ecc",
+                nom,
+                "# T\n\n" + "".join(f"## {t}\n\nx\n\n" for t in titres),
+                description=description,
+            )
+            for nom, (description, titres) in _HUIT.items()
+        }
+
+    @pytest.mark.parametrize(
+        ("demande", "attendue"),
+        [
+            ("évalue mon travail de recherche", "scholar-evaluation"),
+            ("donne une note à mon travail", "scholar-evaluation"),
+            ("critique mon rapport de stage", "scholar-evaluation"),
+            ("réponds à ce courriel", "email-ops"),
+            ("trie mes courriels", "email-ops"),
+            ("rédige une lettre", "article-writing"),
+            ("cherche des sources fiables", "deep-research"),
+            ("fais-moi une revue de littérature", "literature-review"),
+            ("tire une leçon de cet échec", "growth-log"),
+        ],
+    )
+    def test_la_bonne_methode_vient_en_tete(self, huit, demande, attendue):
+        r = SkillGuideTool(huit).execute(operation="chercher", requete=demande)
+        assert r.metadata["trouvees"][:1] == [attendue], (
+            f"{demande!r} → {r.metadata['trouvees']}"
+        )
+
+    def test_les_formes_conjuguees_atteignent_leur_cle(self):
+        from diapason.tools.skill_guide import _requete_etendue
+
+        for forme in ("évaluer", "évalue", "évaluez", "évalues"):
+            assert {"evaluat", "rubric"} <= _requete_etendue(forme), forme
+        for forme in ("trier", "trie", "triez"):
+            assert "triag" in _requete_etendue(forme), forme
+        assert {"voic", "ton"} <= _requete_etendue("le ton"), "« ton » est une clé"
+        assert _requete_etendue("réponds") >= {"reply", "respond"}
+        for forme in ("écris", "écrire", "écrit", "écrivez", "rédige", "rédiger"):
+            assert "writ" in _requete_etendue(forme), forme
+        assert "scor" in _requete_etendue("note")
+        assert "scor" in _requete_etendue("noter")
+
+    def test_le_not_anglais_ne_repond_pas_a_une_note(self, tmp_path):
+        d = _installer(
+            tmp_path / "ecc", "x", "# X\n\nDo not skip. Do not guess. Not now.\n"
+        )
+        r = SkillGuideTool({"x": d}).execute(operation="chercher", requete="une note")
+        assert r.metadata["trouvees"] == [], (
+            "« note » a trouvé une méthode par le « not » anglais de son corps"
+        )
+
+
 class TestRienHorsDeLaListe:
     def _cfg(self, tmp_path, noms, enabled=True):
         return SimpleNamespace(

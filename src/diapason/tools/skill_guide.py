@@ -194,25 +194,43 @@ def _norme(texte: str) -> str:
     return " ".join(re.findall(r"[a-z0-9]+", texte))
 
 
-# Une racine grossière, la même pour les deux langues : « sources » et
-# « source » → « sourc », « writing » et « write » → « writ »,
-# « evaluation » et « evaluate » → « evaluat ».
-_SUFFIXES = ("ings", "ing", "ions", "ion", "ies", "es", "ed", "s", "e")
+# Une racine grossière, la même pour les deux langues et pour les deux côtés
+# (requête, méthode, clés du lexique) : d'abord le pluriel ou la personne
+# (« notes » → « note », « écris » → « ecri »), puis une terminaison
+# anglaise ou française. « sources » et « source » → « sourc » ;
+# « writing », « writer » et « write » → « writ » ; « evaluation » et
+# « evaluate » → « evaluat ». 29/09/2026 : sans les terminaisons
+# françaises, « évalue », « trie », « rédige », « cherche », « compare »
+# n'atteignaient jamais leur clé à l'infinitif (« evalu » ≠ « evaluer ») :
+# une demande à l'impératif — la façon réelle de demander — ratait sa
+# méthode (« Évalue mon travail de recherche » → deep-research,
+# research-ops, literature-review ; scholar-evaluation absente).
+_SUFFIXES = ("ing", "ion", "ie", "ee", "ez", "er", "ed", "e")
 
 _MOTS_VIDES = frozenset(
     _norme(m)
     for m in (
+        # « ton » n'y est plus : c'est aussi le ton d'un texte, une clé du
+        # lexique (29/09/2026 : mot vide, la clé était morte).
         "les des une pour avec dans sur par pas que qui quoi est son ses mes "
-        "mon ton tes aux ces cet cette mais donc car comme plus moins tout "
-        "tous fait faire peux veux aide aider moi toi elle ils nous vous "
+        "mon tes aux ces cet cette mais donc car comme plus moins tout "
+        "tous fait faire fais peux veux aide aider moi toi elle ils nous vous "
+        "donne donner trouve trouver "
         "the and for with from into that this what how when use using your "
-        "you are can will about want need make"
+        "you are can will about want need make "
+        # « not » : sans lui, « note » (racine « not ») rencontrait le « not »
+        # anglais de chaque corps.
+        "not all any only also each must should never always then than them "
+        "they their there which have has was were been its one more most such "
+        "out other"
     ).split()
 )
 
 # Français → anglais : les méthodes sont en anglais, les demandes le plus
 # souvent en français. Un lexique GÉNÉRIQUE, jamais la liste des méthodes
-# installées : il vaut pour la sélection de demain.
+# installées : il vaut pour la sélection de demain. Les formes irrégulières
+# (écris, envoie, réponds) sont écrites en toutes lettres ; les verbes en
+# -er se retrouvent par la racine.
 _SYNONYMES_BRUTS: dict[str, tuple[str, ...]] = {
     "recherche": ("research", "search"),
     "rechercher": ("research", "search"),
@@ -221,7 +239,8 @@ _SYNONYMES_BRUTS: dict[str, tuple[str, ...]] = {
     "approfondir": ("deep",),
     "source": ("source", "evidence", "citation"),
     "preuve": ("evidence", "proof"),
-    "fiable": ("evidence", "verification"),
+    "fiable": ("evidence", "verification", "reliable"),
+    "verifier": ("verify", "verification", "evidence"),
     "comparer": ("compare", "comparison"),
     "comparaison": ("comparison", "compare"),
     "actuel": ("current", "fresh"),
@@ -232,17 +251,25 @@ _SYNONYMES_BRUTS: dict[str, tuple[str, ...]] = {
     "rediger": ("writing", "draft", "write"),
     "redaction": ("writing", "draft"),
     "ecrire": ("write", "writing"),
+    "ecris": ("write", "writing"),
+    "ecrit": ("write", "writing"),
+    "ecrivez": ("write", "writing"),
     "texte": ("writing", "content"),
     "voix": ("voice",),
     "ton": ("voice", "tone"),
-    "style": ("style", "voice"),
+    "tonalite": ("voice", "tone"),
+    "style": ("style", "voice", "profile"),
     "courriel": ("email", "mail"),
     "courriels": ("email", "mail", "mailbox"),
     "mail": ("email", "mail"),
     "boite": ("mailbox", "inbox"),
     "brouillon": ("draft",),
     "envoyer": ("send", "sent"),
-    "repondre": ("reply",),
+    "envoie": ("send", "sent"),
+    "envoi": ("send", "sent"),
+    "repondre": ("reply", "respond"),
+    "reponds": ("reply", "respond"),
+    "reponse": ("reply", "respond"),
     "trier": ("triage",),
     "apprendre": ("learn", "learning", "growth"),
     "lecon": ("lesson", "pattern", "learning"),
@@ -258,18 +285,25 @@ _SYNONYMES_BRUTS: dict[str, tuple[str, ...]] = {
     "universitaire": ("academic", "scholarly"),
     "these": ("thesis",),
     "memoire": ("thesis",),
+    "travail": ("work", "paper", "scholarly"),
     "evaluer": ("evaluate", "evaluation", "rubric"),
     "evaluation": ("evaluation", "rubric"),
-    "critiquer": ("critique", "evaluate", "review"),
-    "noter": ("score", "rubric"),
+    "critiquer": ("critique", "evaluate", "feedback"),
+    "critique": ("critique", "evaluate", "feedback"),
+    "noter": ("score", "rubric", "grade"),
+    "notation": ("score", "rubric", "grade"),
     "grille": ("rubric",),
     "rapport": ("report",),
     "citer": ("cite", "citation"),
     "citation": ("citation", "cite"),
+    "logiciel": ("tool", "software", "comparison"),
+    "marche": ("market",),
 }
 
 
 def _racine(mot: str) -> str:
+    if len(mot) >= 5 and mot.endswith("s") and not mot.endswith("ss"):
+        mot = mot[:-1]
     for suffixe in _SUFFIXES:
         if mot.endswith(suffixe) and len(mot) - len(suffixe) >= 3:
             return mot[: -len(suffixe)]
