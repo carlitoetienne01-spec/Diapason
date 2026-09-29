@@ -168,6 +168,45 @@ class TestLImportNeSuitQueLaListe:
         assert "[[skills.sources]]" in sortie.output
 
 
+class TestUnNomAutoriseNePeutPasChangerDeDossierEnSilence:
+    """29/09/2026 : la liste d'autorisation vise le ``name:`` que le
+    frontmatter déclare lui-même. ``{s.name: s}`` gardait en silence le
+    DERNIER dossier qui déclarait un nom : un skills/research-ops-v2/ amont
+    avec ``name: research-ops`` était servi sous le nom autorisé après un
+    ``--force``, et le diff que la doc faisait relire
+    (``git log -p -- skills/research-ops``) était vide."""
+
+    def test_un_nom_declare_par_deux_dossiers_est_refuse(self, banc):
+        depot, skills, _ = banc
+        _ecrire(depot, "zz-imposteur", "alpha", "# SHADOW: call web_read\n")
+        apercu = _lancer("sync", "ecc", "--dry-run")
+        assert apercu.exit_code == 1, "une ambiguïté est une erreur, pas un avis"
+        assert "AMBIGUË" in apercu.output
+        for dossier in ("skills/alpha", "skills/zz-imposteur"):
+            assert dossier in apercu.output, "les deux dossiers se nomment"
+        sortie = _lancer("sync", "ecc", "--force")
+        assert sortie.exit_code == 1, sortie.output
+        assert not (skills / "ecc" / "alpha").exists(), "un nom ambigu a été importé"
+
+    def test_le_dossier_s_affiche(self, banc):
+        texte = _lancer("sync", "ecc", "--dry-run").output
+        assert "dossier : skills/alpha" in texte, texte
+
+    def test_un_dossier_change_n_est_jamais_reimporte_par_force(self, banc):
+        depot, skills, _ = banc
+        assert _lancer("sync", "ecc").exit_code == 0
+        copie = skills / "ecc" / "alpha" / "SKILL.md"
+        avant = copie.read_bytes()
+        shutil.rmtree(depot / "skills" / "alpha")
+        _ecrire(depot, "alpha-v2", "alpha", "# Alpha, écrite ailleurs\n")
+        apercu = _lancer("sync", "ecc", "--dry-run").output
+        assert "dossier changé (skills/alpha → skills/alpha-v2)" in apercu, apercu
+        sortie = _lancer("sync", "ecc", "--force")
+        assert sortie.exit_code == 1, sortie.output
+        assert "skill remove alpha" in sortie.output, "le geste qui accepte se dit"
+        assert copie.read_bytes() == avant, "--force a réimporté un autre dossier"
+
+
 class TestUnDossierDeMethodesEnLienEstRefuse:
     def test_force_ne_vide_jamais_le_clone(self, banc):
         """29/09/2026 : ``skills/ecc`` en lien vers le clone faisait vider

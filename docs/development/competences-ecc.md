@@ -174,7 +174,12 @@ Les deux « community » sont d'auteurs tiers, sans licence propre, publiées
 dans le dépôt ECC sous MIT : leur `.source` et la tête de chaque lecture le
 disent (« aucune licence propre (dépôt ECC : MIT) », « auteur tiers »).
 `filter.names` prend le `name:` du frontmatter, pas le dossier : le
-`--dry-run` le rappelle quand on écrit un dossier.
+`--dry-run` le rappelle quand on écrit un dossier, et affiche le dossier de
+chaque nom. Comme ce `name:` est déclaré par l'amont lui-même, deux gardes
+(29/09/2026) empêchent un autre dossier de parler sous un nom autorisé : un
+nom que **deux dossiers** déclarent est « AMBIGUË » (erreur, jamais importé,
+même avec `--force`) ; un nom dont le dossier a **changé** depuis l'import
+est « dossier changé (a → b) » et n'est jamais réimporté par `--force`.
 
 Écartées (tri du 28/09/2026) : les guides de langages et de piles (le 9b
 n'écrit pas de code, et chacun pèse 2 000 à 8 000 jetons), le méta-outillage
@@ -214,8 +219,14 @@ chat garde ses autres outils).
    elle-même :
    - **à jour** — rien à faire ;
    - **changée en amont (ancien → nouveau)** — lire le diff :
-     `git -C ~/Projets/ECC log -p <ancien>..<nouveau> -- skills/<dossier>` ;
-     relire en particulier ce qu'elle cite de nouveau (outils, MCP, scripts) ;
+     `git -C ~/Projets/ECC log -p <ancien>..<nouveau> -- skills/<dossier>`,
+     avec le dossier que le dry-run affiche ; relire en particulier ce
+     qu'elle cite de nouveau (outils, MCP, scripts) ;
+   - **dossier changé (a → b)** — le même nom vient d'un autre dossier :
+     jamais réimportée par `--force`. Relire `b/SKILL.md` en entier ; pour
+     l'accepter, `diapason skill remove <nom>` puis `sync ecc` ;
+   - **AMBIGUË** — deux dossiers déclarent ce nom : erreur, rien n'est
+     importé sous ce nom tant qu'un seul le porte ;
    - **copie altérée** — la copie importée a été retouchée à la main ;
    - **retirée en amont** — la copie reste, rien n'est effacé ;
    - **introuvable en amont** — nom mal écrit, ou renommé ;

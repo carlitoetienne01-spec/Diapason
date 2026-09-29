@@ -462,11 +462,21 @@ def _read_dot_source(skill_dir: Path) -> dict:
         return {}
 
 
+def _folder(chemin: str) -> str:
+    """« skills/<dossier> » from a .source ``chemin`` (…/SKILL.md)."""
+    return chemin.rsplit("/", 1)[0] if chemin.endswith("/SKILL.md") else chemin
+
+
+_DOSSIER_CHANGE = "dossier changé"
+
+
 def _ecc_status(upstream, installed_dir: Path | None) -> str:
-    """nouvelle / à jour / changée en amont / retirée en amont / copie altérée.
+    """nouvelle / à jour / changée en amont / retirée en amont / copie altérée
+    / dossier changé.
 
     Compares the .source written at import time with HEAD's files (was it
-    changed upstream?) and with the files on disk (was the copy edited?).
+    changed upstream? does the same NAME now come from another folder?) and
+    with the files on disk (was the copy edited?).
     """
     from diapason.skills.provenance import fingerprint
 
@@ -476,6 +486,13 @@ def _ecc_status(upstream, installed_dir: Path | None) -> str:
         return "nouvelle"
     prov = _read_dot_source(installed_dir)
     parts = []
+    ancien = str(prov.get("chemin") or "")
+    nouveau = str(upstream.sidecar_data.get("provenance", {}).get("chemin") or "")
+    if ancien and nouveau and ancien != nouveau:
+        # 29/09/2026: `name: research-ops` in a NEW folder took over the
+        # allowed name at the next --force; the diff Carlito was told to
+        # read (`git log -p -- skills/research-ops`) was empty.
+        parts.append(f"{_DOSSIER_CHANGE} ({_folder(ancien)} → {_folder(nouveau)})")
     if fingerprint(installed_dir, text_only=True) != prov.get("sha256_importe"):
         parts.append("copie altérée")
     if upstream.sidecar_data.get("fingerprint") != prov.get("sha256_source"):
@@ -565,7 +582,14 @@ def _sync_ecc(cfg, *, dry_run: bool, force: bool, with_scripts: bool) -> None:
         raise SystemExit(1)
     state = resolver.state
     upstream = resolver.list_skills()
-    by_name = {s.name: s for s in upstream}
+    # 29/09/2026: the allow-list names what the frontmatter DECLARES, and
+    # `{s.name: s}` kept, in silence, the LAST folder declaring it. An
+    # upstream skills/research-ops-v2/ with `name: research-ops` was served
+    # under the allowed name. A name two folders declare is refused.
+    declared: dict[str, list] = {}
+    for skill in upstream:
+        declared.setdefault(skill.name, []).append(skill)
+    by_name = {name: found[0] for name, found in declared.items() if len(found) == 1}
     by_dir = {s.sidecar_data.get("dir"): s for s in upstream}
     installed: dict[str, Path] = {}
     if root.is_dir():
@@ -600,7 +624,20 @@ def _sync_ecc(cfg, *, dry_run: bool, force: bool, with_scripts: bool) -> None:
     console.print(f"  liste d'autorisation : {len(names)} nom(s)")
 
     statuses: dict[str, str] = {}
+    ambiguous: list[str] = []
     for name in names:
+        found = declared.get(name, [])
+        if len(found) > 1:
+            ambiguous.append(name)
+            dossiers = ", ".join(
+                sorted(f"skills/{s.sidecar_data.get('dir')}" for s in found)
+            )
+            console.print(
+                f"- {escape(name)} — [red]AMBIGUË : {len(found)} dossiers "
+                f"déclarent ce nom ({escape(dossiers)}). Jamais importée tant "
+                "qu'un seul dossier le porte.[/red]"
+            )
+            continue
         up = by_name.get(name)
         status = _ecc_status(up, installed.get(name))
         statuses[name] = status
@@ -617,8 +654,9 @@ def _sync_ecc(cfg, *, dry_run: bool, force: bool, with_scripts: bool) -> None:
         console.print(
             f"- {escape(name)} — origine {escape(prov.get('origine') or '?')}, "
             f"≈{up.sidecar_data.get('tokens', 0)} jetons, "
-            f"{up.sidecar_data.get('sections', 0)} sections — {status}"
+            f"{up.sidecar_data.get('sections', 0)} sections — {escape(status)}"
         )
+        console.print(f"    dossier : skills/{escape(str(up.sidecar_data.get('dir')))}")
         outils = ", ".join(prov.get("outils_cites") or []) or "aucun"
         citees = ", ".join(prov.get("competences_citees") or []) or "aucune"
         absentes = ", ".join(prov.get("ressources_absentes") or []) or "aucune"
@@ -646,8 +684,12 @@ def _sync_ecc(cfg, *, dry_run: bool, force: bool, with_scripts: bool) -> None:
 
     if dry_run:
         console.print("[yellow]--dry-run : rien n'a été écrit.[/yellow]")
+        if ambiguous:
+            raise SystemExit(1)
         return
     if getattr(src_cfg, "enabled", True) is not True:
+        if ambiguous:
+            raise SystemExit(1)
         return
 
     importer = SkillImporter(
@@ -656,9 +698,24 @@ def _sync_ecc(cfg, *, dry_run: bool, force: bool, with_scripts: bool) -> None:
         target_root=root.parent,
     )
     imported = 0
+    refused = list(ambiguous)
     for name in names:
+        if name in ambiguous:
+            continue
         up = by_name.get(name)
         status = statuses[name]
+        if _DOSSIER_CHANGE in status:
+            # Not even with --force: another folder now speaks under an
+            # allowed name. Accepting it is a decision, taken by hand.
+            refused.append(name)
+            dossier = f"skills/{up.sidecar_data.get('dir')}" if up else "?"
+            console.print(
+                f"  [red]{escape(name)} : {escape(status)} — jamais réimportée, "
+                f"même avec --force. Relis {escape(dossier)}/SKILL.md ; pour "
+                f"l'accepter : `diapason skill remove {escape(name)}` puis "
+                "`diapason skill sync ecc`.[/red]"
+            )
+            continue
         if up is None:
             if status == "retirée en amont":
                 console.print(
@@ -689,6 +746,12 @@ def _sync_ecc(cfg, *, dry_run: bool, force: bool, with_scripts: bool) -> None:
             "Le chat lit sa trousse au démarrage : relance le service pour "
             f"qu'il voie l'outil skill_guide — {_RELANCE}"
         )
+    if refused:
+        console.print(
+            f"[red]{len(refused)} nom(s) refusé(s) : {escape(', '.join(refused))}."
+            "[/red]"
+        )
+        raise SystemExit(1)
 
 
 @skill.command("sources")
