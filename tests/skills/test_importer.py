@@ -416,6 +416,51 @@ class TestLImportEccNeTraduitRienEtNeCopiePasLesScripts:
         assert (tmp_path / "skills" / "temoin").exists(), "rmtree a frappé hors cible"
 
 
+class TestUnLienNeFaitJamaisEffacerHorsDeLaCible:
+    """29/09/2026 : le refus de ``name: ..`` laissait ouverte sa variante.
+    Avec ~/.diapason/skills/ecc en lien vers ~/Projets/ECC/skills (pour ne
+    pas dupliquer), ``force=True`` faisait un rmtree À TRAVERS le lien —
+    rmtree ne refuse un lien qu'en dernière position — et vidait
+    skills/<nom> DANS le clone, fichiers non suivis perdus pour de bon."""
+
+    def _clone_avec_un_temoin(self, tmp_path: Path) -> Path:
+        dossier = tmp_path / "ECC" / "skills" / "guide"
+        dossier.mkdir(parents=True)
+        (dossier / "SKILL.md").write_text("---\nname: guide\ndescription: x\n---\n")
+        (dossier / "brouillon_non_suivi.md").write_text("irremplaçable")
+        return dossier
+
+    def test_une_racine_de_source_en_lien_est_refusee(self, tmp_path: Path):
+        resolved = _ecc(tmp_path)
+        temoin = self._clone_avec_un_temoin(tmp_path)
+        (tmp_path / "skills").mkdir()
+        (tmp_path / "skills" / "ecc").symlink_to(tmp_path / "ECC" / "skills")
+        result = _importeur(tmp_path).import_skill(resolved, force=True)
+        assert not result.success, "l'import a écrit à travers un lien"
+        assert (temoin / "brouillon_non_suivi.md").exists(), (
+            "rmtree a vidé un dossier du clone"
+        )
+
+    def test_un_lien_vers_une_autre_source_est_refuse_aussi(self, tmp_path: Path):
+        resolved = _ecc(tmp_path)
+        autre = tmp_path / "skills" / "hermes" / "guide"
+        autre.mkdir(parents=True)
+        (autre / "notes.md").write_text("copie hermes")
+        (tmp_path / "skills" / "ecc").symlink_to(tmp_path / "skills" / "hermes")
+        result = _importeur(tmp_path).import_skill(resolved, force=True)
+        assert not result.success, "un lien, même vers la racine, n'est pas une copie"
+        assert (autre / "notes.md").exists(), "la copie d'une autre source a été vidée"
+
+    def test_un_dossier_cible_en_lien_est_refuse(self, tmp_path: Path):
+        resolved = _ecc(tmp_path)
+        temoin = self._clone_avec_un_temoin(tmp_path)
+        (tmp_path / "skills" / "ecc").mkdir(parents=True)
+        (tmp_path / "skills" / "ecc" / "guide").symlink_to(temoin)
+        result = _importeur(tmp_path).import_skill(resolved, force=True)
+        assert not result.success
+        assert (temoin / "brouillon_non_suivi.md").exists()
+
+
 class TestLaProvenanceEstCompleteEtLisible:
     def test_le_fichier_source_porte_toute_la_provenance(self, tmp_path: Path):
         resolved = _ecc(tmp_path)

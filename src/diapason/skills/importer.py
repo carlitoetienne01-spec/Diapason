@@ -155,6 +155,18 @@ class SkillImporter:
         target_dir = self._target_root / resolved.source / resolved.name
         result.target_path = target_dir
         verbatim = resolved.source in VERBATIM_SOURCES
+        # 29/09/2026: `name: ..` was closed, not its twin. With
+        # ~/.diapason/skills/ecc a link to ~/Projets/ECC/skills (to avoid a
+        # copy), force=True ran rmtree THROUGH the link — rmtree only refuses
+        # a link as the LAST component — and emptied skills/<name> in the
+        # clone, untracked files lost for good.
+        if self._escapes_root(target_dir):
+            result.success = False
+            result.warnings.append(
+                f"Refusing to install: {target_dir} is, or goes through, a "
+                f"symbolic link out of {self._target_root}"
+            )
+            return result
 
         if with_scripts and resolved.source in NO_SCRIPT_SOURCES:
             result.success = False
@@ -289,6 +301,13 @@ class SkillImporter:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    def _escapes_root(self, target_dir: Path) -> bool:
+        """A link as <source> or <name>: the only two components below the
+        root (_safe_segment keeps them single). A link pointing INSIDE the
+        root (skills/ecc → skills/hermes) is refused too: rmtree would empty
+        another source's copy."""
+        return target_dir.parent.is_symlink() or target_dir.is_symlink()
 
     def _read_skill_md(self, path: Path) -> tuple[dict, str]:
         """Parse a SKILL.md file into (frontmatter dict, markdown body)."""

@@ -168,6 +168,22 @@ class TestLImportNeSuitQueLaListe:
         assert "[[skills.sources]]" in sortie.output
 
 
+class TestUnDossierDeMethodesEnLienEstRefuse:
+    def test_force_ne_vide_jamais_le_clone(self, banc):
+        """29/09/2026 : ``skills/ecc`` en lien vers le clone faisait vider
+        ``skills/<nom>`` DANS le clone par ``sync ecc --force``."""
+        depot, skills, _ = banc
+        skills.mkdir()
+        (skills / "ecc").symlink_to(depot / "skills")
+        brouillon = depot / "skills" / "alpha" / "brouillon.md"
+        brouillon.write_text("non suivi, irremplaçable")
+        sortie = _lancer("sync", "ecc", "--force")
+        assert sortie.exit_code == 1, sortie.output
+        assert "lien symbolique" in sortie.output
+        assert brouillon.exists(), "le clone a été touché"
+        assert (depot / "skills" / "alpha" / "SKILL.md").exists()
+
+
 class TestLesStatutsDisentLEtatDeLaCopie:
     def test_a_jour_puis_changee_puis_alteree_puis_retiree(self, banc):
         depot, skills, _ = banc

@@ -547,6 +547,16 @@ def _sync_ecc(cfg, *, dry_run: bool, force: bool, with_scripts: bool) -> None:
     if root is None:
         console.print("[red]skills_dir illisible dans [skills] : rien à faire.[/red]")
         raise SystemExit(1)
+    if root.is_symlink():
+        # 29/09/2026: a skills/ecc linked to the clone's skills/ made
+        # `--force` empty skills/<name> IN the clone. served_skills already
+        # refused to serve through such a link; the import did not.
+        console.print(
+            f"[red]{escape(str(root))} est un lien symbolique : les méthodes "
+            "doivent être des COPIES, jamais le clone lui-même. Remplace le "
+            "lien par un dossier vide, puis relance.[/red]"
+        )
+        raise SystemExit(1)
     resolver = EccResolver(repo_path(src_cfg))
     try:
         resolver.sync()
