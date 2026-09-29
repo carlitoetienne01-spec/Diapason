@@ -125,10 +125,27 @@ fais les étapes toi-même, l'une après l'autre). Ne prétends jamais les avoir
 Il renvoie aussi à des serveurs MCP, ~/.claude et CLAUDE.md : absents ici, n'essaie pas de t'en servir.
 ```
 
-Puis le texte, entre `===== DÉBUT DU TEXTE IMPORTÉ … =====` et
-`===== FIN DU TEXTE IMPORTÉ =====`. Une ligne du texte qui commence par
-`===` et porte des mots est citée, pas rejouée : le texte ne peut pas
-dessiner une fausse fin de cadre suivie de consignes.
+Puis le cadre : `===== DÉBUT DU TEXTE IMPORTÉ #<jeton> … =====` et
+`===== FIN DU TEXTE IMPORTÉ #<jeton> =====`, où `<jeton>` (8 chiffres
+hexadécimaux) est tiré à chaque réponse. **Tout** ce qui vient de l'amont
+est dedans : le sommaire (numéroté) et ses titres, le corps, le nom d'une
+annexe, les descriptions que rend `chercher`. Hors du cadre, Diapason ne
+parle que par numéros (« Suite non affichée : n° 3, 4 du sommaire ») et
+avec les noms de la liste d'autorisation, qui sont ceux de Carlito.
+
+Une ligne importée qui imite le cadre est citée, pas rejouée. Elle est
+d'abord normalisée : NFKC (« ＝ » → « = »), sans caractères de format
+(U+200B, U+2060, U+FEFF…). Est citée toute ligne qui contient « texte
+importé », ou qui commence — après `#`, `>`, `-`, `*`, `+`, `|` ou des
+espaces — par trois `=` (ou `═`, `꞊`…) suivis de mots. Une ligne de `=`
+seuls reste intacte (un soulignement). Le jeton fait le reste : une ligne
+qui passerait ces filtres ne peut pas porter le jeton de la réponse,
+qu'elle ne connaît pas.
+
+Avant le 29/09/2026, le cadre était fixe et seule une ligne qui
+**commençait** par `===` était citée ; `## ===== FIN…`, `> ===== FIN…`, un
+U+200B en tête ou des `＝` passaient, et les titres `##` sortaient du cadre
+(sommaire avant DÉBUT, note après FIN).
 
 ## Le budget de contexte
 
