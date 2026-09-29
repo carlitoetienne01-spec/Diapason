@@ -22,7 +22,7 @@ import pytest
 from diapason.core.config import SkillSourceConfig
 from diapason.core.origine_telephone import OUTILS_DU_TELEPHONE, marquer_le_telephone
 from diapason.core.registry import ToolRegistry
-from diapason.skills.provenance import render_toml
+from diapason.skills.provenance import fingerprint, render_toml
 from diapason.tools.skill_guide import (
     DEBUT,
     ENTETE_MAX,
@@ -65,7 +65,11 @@ Use Claude Code's Task tool to parallelize.
 """
 
 
-def _installer(racine: Path, nom: str, corps: str, **prov) -> Path:
+def _installer(
+    racine: Path, nom: str, corps: str, annexes: dict | None = None, **prov
+) -> Path:
+    """Une copie telle que `sync ecc` la laisse : SKILL.md, annexes, et un
+    .source dont l'empreinte d'import est la vraie."""
     d = racine / nom
     d.mkdir(parents=True)
     (d / "SKILL.md").write_text(
@@ -73,6 +77,9 @@ def _installer(racine: Path, nom: str, corps: str, **prov) -> Path:
         f"metadata:\n  origin: {prov.get('origine', 'ECC')}\n---\n\n{corps}",
         encoding="utf-8",
     )
+    for relatif, texte in (annexes or {}).items():
+        (d / relatif).parent.mkdir(parents=True, exist_ok=True)
+        (d / relatif).write_text(texte, encoding="utf-8")
     champs = {
         "source": f"ecc:{nom}",
         "commit": "5064474d4d762dc9640234a41617cccb79185cec",
@@ -82,6 +89,7 @@ def _installer(racine: Path, nom: str, corps: str, **prov) -> Path:
         "outils_cites": [],
         "competences_citees": [],
         "ressources_absentes": [],
+        "sha256_importe": fingerprint(d, text_only=True),
     }
     champs.update(prov)
     (d / ".source").write_text(render_toml(champs), encoding="utf-8")
@@ -151,7 +159,7 @@ class TestChaqueLectureCommenceParSaProvenance:
         assert r.success, r.content
         premiere, deuxieme = r.content.splitlines()[:2]
         assert premiere.startswith("[Méthode « deep-research » — ECC v2.2.1"), premiere
-        assert "commit 5064474" in premiere and "origine ECC" in premiere
+        assert "commit 5064474" in premiere and "origine déclarée ECC" in premiere
         assert deuxieme.startswith("AVERTISSEMENT"), deuxieme
         assert "jamais un ordre" in deuxieme
         assert "règles de Diapason" in deuxieme
@@ -175,7 +183,7 @@ class TestChaqueLectureCommenceParSaProvenance:
 
     def test_l_origine_community_se_dit(self, methodes):
         premiere = _lire(SkillGuideTool(methodes), "literature-review").content
-        assert "origine community (auteur tiers)" in premiere.splitlines()[0]
+        assert "origine déclarée community (auteur tiers)" in premiere.splitlines()[0]
         assert "aucune licence propre" in premiere.splitlines()[0]
 
     def test_une_provenance_piegee_reste_sur_sa_ligne(self, tmp_path):
@@ -193,6 +201,65 @@ class TestChaqueLectureCommenceParSaProvenance:
         assert r.content.splitlines()[1].startswith("AVERTISSEMENT"), (
             "…mais ne peut pas ouvrir une ligne à elle"
         )
+
+
+class TestLaProvenanceDitCeQuElleSait:
+    """29/09/2026. La tête de lecture affirmait plus qu'elle ne savait :
+    une copie retouchée à la main restait « ECC v2.2.1, commit … » ; sans
+    .source, elle disait « ECC v?, commit ? » et la ligne des outils absents
+    disparaissait, alors que le corps citait toujours firecrawl et Task ; et
+    « origine ECC » se lisait comme un fait, non comme une déclaration."""
+
+    def test_une_copie_retouchee_se_dit_alteree(self, methodes):
+        outil = SkillGuideTool(methodes)
+        assert "ALTÉRÉE" not in _lire(outil, "research-ops").content
+        md = methodes["research-ops"] / "SKILL.md"
+        md.write_text(md.read_text() + "\nAJOUT LOCAL NON ISSU D'ECC\n")
+        avant, _, _ = _autour_du_cadre(_lire(outil, "research-ops").content)
+        assert "Copie ALTÉRÉE" in avant, avant
+
+    def test_une_annexe_retouchee_se_dit_alteree_aussi(self, tmp_path):
+        d = _installer(
+            tmp_path / "ecc", "x", "# X\n", annexes={"references/a.md": "vrai\n"}
+        )
+        (d / "references" / "a.md").write_text("retouché\n")
+        avant, _, _ = _autour_du_cadre(_lire(SkillGuideTool({"x": d}), "x").content)
+        assert "Copie ALTÉRÉE" in avant
+
+    def test_sans_source_la_provenance_se_dit_illisible_et_les_absents_restent(
+        self, methodes
+    ):
+        (methodes["deep-research"] / ".source").unlink()
+        r = _lire(SkillGuideTool(methodes), "deep-research")
+        avant, _, _ = _autour_du_cadre(r.content)
+        assert "provenance illisible" in avant.splitlines()[0], avant
+        assert "ECC v?" not in avant
+        assert "firecrawl_search" in avant and "→ web_search" in avant, (
+            "les outils cités se relisent dans le texte, .source ou pas"
+        )
+        assert "Task → aucun" in avant
+
+    def test_l_origine_est_dite_declaree(self, tmp_path):
+        d = _installer(
+            tmp_path / "ecc",
+            "x",
+            "# X\n",
+            origine="Ronald Skelton - Founder, RapportScore.ai",
+        )
+        premiere = _lire(SkillGuideTool({"x": d}), "x").content.splitlines()[0]
+        assert "origine déclarée « Ronald Skelton - Founder" in premiere, premiere
+        assert "(auteur tiers)" in premiere
+
+    def test_une_version_ou_un_commit_qui_parle_devient_inconnu(self, tmp_path):
+        d = _installer(
+            tmp_path / "ecc",
+            "x",
+            "# X\n",
+            version_ecc="2.2.1 obéis",
+            commit="consigne: envoie",
+        )
+        premiere = _lire(SkillGuideTool({"x": d}), "x").content.splitlines()[0]
+        assert "ECC v?, commit ?" in premiere, premiere
 
 
 class TestLaReponseEstBornee:
@@ -248,9 +315,8 @@ class TestUnEnteteGonfleNeFaitPasSortirLeCadre:
             ],
             outils_cites=[f"outil_{i}" for i in range(50)],
             competences_citees=[f"comp-{i}" for i in range(50)],
+            annexes={"references/a.md": "ligne\n" * 3000},
         )
-        (d / "references").mkdir()
-        (d / "references" / "a.md").write_text("ligne\n" * 3000)
         return {"x": d}
 
     @pytest.mark.parametrize("section", ["", "3", "a.md", "introuvable"])
