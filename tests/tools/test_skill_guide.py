@@ -335,6 +335,12 @@ class TestLaPremiereLectureMontreLaMethode:
         assert "une ou deux lectures" not in description
         assert "AVANT de l'appliquer" in description
 
+    def test_le_parametre_section_annonce_le_numero(self):
+        """Les notes hors du cadre ne parlent que par numéros : le schéma
+        doit dire qu'un numéro s'accepte, sinon le modèle recopie un titre."""
+        section = SkillGuideTool({}).spec.parameters["properties"]["section"]
+        assert "numéro du sommaire" in section["description"]
+
 
 class TestLaProvenanceDitCeQuElleSait:
     """29/09/2026. La tête de lecture affirmait plus qu'elle ne savait :

@@ -950,8 +950,8 @@ class SkillGuideTool(BaseTool):
                     "section": {
                         "type": "string",
                         "description": (
-                            "Pour lire, facultatif : un titre du sommaire ou "
-                            "une annexe."
+                            "Pour lire, facultatif : un numéro du sommaire "
+                            "(ou un titre), ou une annexe."
                         ),
                     },
                 },

@@ -188,7 +188,7 @@ U+200B en tête ou des `＝` passaient, et les titres `##` sortaient du cadre
 |---|---|---|
 | Fenêtre du 9b | `num_ctx = 32 768` | `~/.diapason/config.toml` |
 | Préfixe du chat sans le guide | ~10 112 jetons (identité + 45 schémas) | mesure du 20/09/2026, `trousse_chat.py` |
-| Schéma de `skill_guide` | 1 140 caractères, ~285 jetons, une fois | fixe, quelle que soit la sélection |
+| Schéma de `skill_guide` | 1 156 caractères, ~289 jetons, une fois | fixe, quelle que soit la sélection |
 | Coupe d'un résultat d'outil | 4 000 caractères | `MAX_TOOL_RESULT_CHARS`, `agentic_stream.py` |
 | Borne d'une lecture du guide | 3 600 caractères (~900 jetons) | `LIMITE_CARACTERES` : la coupe est la nôtre |
 | Borne de l'en-tête | 1 000 caractères, 8 éléments par liste | `ENTETE_MAX`, `LISTE_MAX` : les huit tiennent en 430 à 790 |
