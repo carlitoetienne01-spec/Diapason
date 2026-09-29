@@ -27,6 +27,38 @@ def test_la_temperature_des_tours_outilles_est_basse():
     )
 
 
+def test_la_voix_finit_la_phrase_puis_la_reponse():
+    """29/09/2026 : « une à trois phrases » coupait la réponse demandée.
+
+    Appelant : LocalVoiceSession._system_prompt. Pas de route.
+    Carlito : terminer les trois qui restent, dont la voix qui coupe.
+    """
+    session = LocalVoiceSession.__new__(LocalVoiceSession)
+    session._instructions = "PERSONA"
+    session._language = "français"
+    session._enable_tools = True
+    session._conversation_seule = False
+    bas = session._system_prompt().lower()
+    assert "one to three sentences" not in bas
+    assert "finish every sentence" in bas
+    assert "never stop in the middle of a sentence" in bas
+    session._conversation_seule = True
+    seule = session._system_prompt().lower()
+    assert "une ou deux phrases" not in seule
+    assert "ne t'arrête pas au milieu d'une phrase" in seule
+
+
+def test_une_phrase_coupee_par_le_budget_reprend():
+    from diapason.speech.realtime.local_voice import continuer_la_phrase
+
+    assert continuer_la_phrase("length", "Il fait 18", 0) is True
+    assert continuer_la_phrase("length", "Il fait 18 °C.", 0) is False
+    assert continuer_la_phrase("stop", "Il fait 18", 0) is False, (
+        "un arrêt choisi n'est pas une phrase coupée par le budget"
+    )
+    assert continuer_la_phrase("length", "Il fait 18", 8) is False
+
+
 def test_la_regle_orale_dit_que_la_brievete_ne_dispense_pas_d_agir():
     """Sans cette phrase, « court » se lit comme « n'appelle rien »."""
     session = LocalVoiceSession.__new__(LocalVoiceSession)

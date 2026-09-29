@@ -81,6 +81,13 @@ from diapason.server.liens_verifies import (
     page_a_verifier,
     repli_liens,
 )
+from diapason.server.meteo_ouverte import lire_prevision_ouverte
+from diapason.server.precision import (
+    demande_completee,
+    meteo_heritee,
+    question_a_poser,
+    reponse_meteo,
+)
 from diapason.server.questions_chat import (
     CADRAGE_MAX_JETONS,
     POSER_QUESTIONS,
@@ -115,6 +122,29 @@ DEFAULT_MAX_TOOL_TURNS = 12
 # suivant. On tronque en le disant, plutôt que de laisser le modèle croire
 # qu'il a tout vu.
 MAX_TOOL_RESULT_CHARS = 4000
+# 29/09/2026 : « je n'ai pas d'outil pour la météo » n'est pas une promesse
+# (promesse.py ne la reconnaît pas) et fermait le tour après la lecture.
+_REFUS_DOUTIL = re.compile(
+    r"pas d['’]outil|aucun outil|no tool|pas acc[eè]s|"
+    r"ne peux pas v[eé]rifier|services m[eé]t[eé]o",
+    re.I,
+)
+_TEMPERATURE_LUE = re.compile(r"-?\d+(?:[.,]\d+)?\s*°\s*C", re.I)
+
+
+def _chiffre_si_refus_doutil(texte: str, corpus: str, officielle_lue: bool) -> str:
+    """La page est lue et le modèle répète qu'il n'a pas d'outil : le premier
+    degré de la page (la fenêtre de lecture pose « ce soir » en tête) est la
+    réponse, pas le refus."""
+    if not officielle_lue or not _REFUS_DOUTIL.search(texte or ""):
+        return ""
+    trouve = _TEMPERATURE_LUE.search(corpus or "")
+    if trouve is None:
+        return ""
+    source = "Open-Meteo" if "Open-Meteo" in (corpus or "") else "Environnement Canada"
+    return source + " indique " + re.sub(r"\s+", "", trouve.group(0)) + "."
+
+
 # Sur une non-réponse, le code lit au plus deux sources prometteuses avant
 # de renvoyer le modèle chercher autrement (21/09/2026).
 LECTURES_SUR_NON_REPONSE = 2
@@ -426,6 +456,33 @@ async def stream_with_tools(
     préfixe calculé par Ollama survive d'un tour à l'autre (20/09/2026).
     """
     trousse = TrousseChat(tools, messages, adaptative=trousse_adaptative)
+    # 29/09/2026 : « il fait quelle température maintenant ? » sans ville
+    # partait en web_search et revenait avec une fourchette pour la France,
+    # badge vérifié. Le trou se demande, la config ne le comble pas (§34).
+    # « Lyon » au tour suivant reprend la question laissée ouverte.
+    dernier = next((m for m in reversed(messages) if m.role == Role.USER), None)
+    if dernier is not None and not dernier.images:
+        demande = dernier.content or ""
+        precisee = demande_completee(demande, messages) or meteo_heritee(
+            demande, messages
+        )
+        if precisee:
+            dernier.content = precisee
+            demande = precisee
+        else:
+            # 29/09/2026 : sans ville nommée, le lieu est celui de Météo
+            # sur ce Mac. La config (Ottawa) et une fourchette pour la
+            # France ne répondent pas à « il fait quelle température ».
+            from diapason.server.meteo_systeme import phrase_ici
+
+            phrase = await asyncio.to_thread(phrase_ici, demande)
+            if phrase:
+                yield ToolStreamEvent("token", phrase)
+                return
+        a_poser = question_a_poser(demande)
+        if a_poser:
+            yield ToolStreamEvent("token", a_poser)
+            return
     travail: list[Message] = list(messages)
     from diapason.etudes.conversation import (
         ECHEC_PREUVE,
@@ -990,7 +1047,66 @@ async def stream_with_tools(
                     # Le premier passage a répondu de mémoire : une seule
                     # relance, ferme, sans afficher l'affirmation non vérifiée.
                     relance_actualite_faite = True
-                    travail = consigne_actualite(travail, CONSIGNE_FERME)
+                    # 29/09/2026 : « je n'ai pas d'outil pour la météo » n'est
+                    # pas une promesse, donc aucune convocation ne partait, et
+                    # la page officielle n'était lue qu'après un web_search.
+                    # Le refus fermait le tour sans chiffre.
+                    texte_officiel = ""
+                    if not officielle_lue and "web_read" in trousse.noms:
+                        off = page_officielle(question_courante, ville)
+                        # La page du titulaire (pm.gc.ca) reste un complément
+                        # de la recherche : la lire à la place de web_search
+                        # supprimait la recherche (29/09). La prévision et le
+                        # taux, eux, SONT la donnée.
+                        if off is not None and not off.titre_de_la_page:
+                            officielle_lue = True
+                            pages_lues.append(off.url)
+                            async for evt, lu in _lire_la_page(
+                                executor,
+                                off.url,
+                                question_courante,
+                                sources_du_tour,
+                                off,
+                            ):
+                                if evt is not None:
+                                    yield evt
+                                if lu:
+                                    texte_officiel = lu
+                                    corpus_sources += "\n" + lu
+                    # 29/09/2026 : Lyon, Tokyo, Tombouctou ne sont pas dans la
+                    # table canadienne. La config ne prend pas leur place, et
+                    # sans cette lecture la question restait sans degré.
+                    if not texte_officiel.strip():
+                        texte_ouvert = await asyncio.to_thread(
+                            lire_prevision_ouverte, question_courante
+                        )
+                        if texte_ouvert.strip():
+                            texte_officiel = texte_ouvert
+                            corpus_sources += "\n" + texte_ouvert
+                            officielle_lue = True
+                    if texte_officiel.strip():
+                        travail.append(
+                            Message(
+                                role=Role.SYSTEM,
+                                content=(
+                                    "Source officielle, lue par le code — "
+                                    "réponds d'après elle :\n" + texte_officiel
+                                ),
+                            )
+                        )
+                        travail.append(
+                            Message(
+                                role=Role.SYSTEM,
+                                content=(
+                                    "La page officielle vient d'être lue. "
+                                    "Réponds maintenant d'après ce texte, avec "
+                                    "le chiffre et la source. Ne dis pas que "
+                                    "tu n'as pas d'outil."
+                                ),
+                            )
+                        )
+                    else:
+                        travail = consigne_actualite(travail, CONSIGNE_FERME)
                     continue
                 if verifier_actualite:
                     # Deux refus d'appeler web_search, ou une recherche qui n'a
@@ -998,7 +1114,25 @@ async def stream_with_tools(
                     # est (§100) — par le niveau « memory » du signal, plus par
                     # un préfixe de texte qui se copiait et se prononçait
                     # (21/09) ; un silence devient un aveu, pas un bandeau nu.
-                    if not texte_retenu.strip():
+                    # 29/09 : la page officielle est déjà lue et le modèle
+                    # répète qu'il n'a pas d'outil. Le chiffre lu part, pas
+                    # le refus. verification_faite reste faux jusqu'ici : le
+                    # poser pendant la lecture faisait sortir ce second
+                    # passage du garde (il publiait le refus tel quel).
+                    if officielle_lue:
+                        verification_faite = True
+                    chiffre = _chiffre_si_refus_doutil(
+                        texte_retenu, corpus_sources, officielle_lue
+                    ) or reponse_meteo(
+                        question_courante,
+                        texte_retenu,
+                        corpus_sources,
+                        officielle_lue=officielle_lue,
+                    )
+                    if chiffre:
+                        morceaux = [chiffre]
+                        texte_retenu = chiffre
+                    elif not texte_retenu.strip():
                         morceaux = [AVEU]
                     elif signal_textuel:
                         # Un client qui ne lit pas les événements (curl, SDK
@@ -1477,6 +1611,20 @@ async def stream_with_tools(
                                 "d'après elle :\n" + texte
                             )
                             corpus_sources += "\n" + texte
+                else:
+                    # Une ville nommée hors table (Lyon, Tokyo) : Open-Meteo,
+                    # pas la ville de la config (29/09/2026).
+                    texte_ouvert = await asyncio.to_thread(
+                        lire_prevision_ouverte, question_courante
+                    )
+                    if texte_ouvert.strip():
+                        officielle_lue = True
+                        verification_faite = True
+                        page_lue = (page_lue + "\n\n" if page_lue else "") + (
+                            "Prévision lue par le code — réponds d'après elle :\n"
+                            + texte_ouvert
+                        )
+                        corpus_sources += "\n" + texte_ouvert
             elif nom == "web_read" and succes:
                 # Une page lue est une source au même titre qu'une recherche.
                 verification_faite = True

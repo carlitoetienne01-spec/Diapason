@@ -39,6 +39,13 @@ from diapason.server.liens_verifies import (
     repli_liens,
 )
 from diapason.server.suite import rappel_pour_la_voix
+from diapason.speech.langues import (
+    CONSIGNE_PERMANENTE,
+    MemoireLinguistique,
+    basculer,
+    forme_ecrite,
+    forme_orale,
+)
 from diapason.speech.realtime import actualite_vocale
 from diapason.speech.realtime.base import RealtimeVoiceSession, SessionEvent
 from diapason.speech.realtime.fin_conversation import demande_fin_conversation
@@ -189,6 +196,20 @@ _SENTENCE_END = re.compile(r"([.!?…:;]+[\s»”)]*\s+|\n+)")
 # annoncée après deux-points/point-virgule ; le modèle cède le GPU à la
 # même frontière que le lecteur, jamais au milieu de cette proposition.
 _FIN_PHRASE_ORION = re.compile(r"([.!?…]+[\s»”’\"')\]]*\s+|\n+)")
+_FIN_REPONSE = ".!?…\"»')"
+# 160 jetons : de quoi finir la phrase coupée au plafond de 320, huit fois.
+_SUITE_PHRASE = 160
+
+
+def reponse_coupee(texte: str) -> bool:
+    reste = (texte or "").rstrip()
+    return bool(reste) and reste[-1] not in _FIN_REPONSE
+
+
+def continuer_la_phrase(done_reason: str, texte: str, pauses: int) -> bool:
+    """Un plafond de jetons n'est pas une fin de réponse (29/09/2026)."""
+    return pauses < 8 and done_reason == "length" and reponse_coupee(texte)
+
 
 # For the very first audible chunk only, a comma is also a boundary: "Oui,"
 # reaching the speakers half a second before the rest of the sentence is what
@@ -852,6 +873,19 @@ def _default_llm(
                                 load_ms,
                                 jetons,
                             )
+                            if not calls and continuer_la_phrase(
+                                str(data.get("done_reason") or ""),
+                                (reprise or "") + texte_produit,
+                                pauses,
+                            ):
+                                # Le jeton est déjà dans la file. Poser la
+                                # reprise tout de suite : sans frontière de
+                                # phrase, le lecteur ne la redemanderait jamais
+                                # et le producteur attendrait.
+                                pauses += 1
+                                budget_fragments = _SUITE_PHRASE
+                                queue.reprise.set()
+                                return (reprise or "") + texte_produit
                             break
             if dernier_jeton is not None:
                 if mesures is not None:
@@ -889,6 +923,7 @@ def _default_llm(
                     # pendant la voix. L'abandon du tour annule aussi cette
                     # attente ; la reprise ne peut pas survivre au barge-in.
                     await queue.reprise.wait()
+                    queue.reprise.clear()
                     amorce = await appeler(amorce)
             except asyncio.CancelledError:
                 # L'abandon n'est pas une panne : le finally clôt la file.
@@ -1039,6 +1074,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
         self._voice = normaliser_voix(voice)
         self._instructions = instructions
         self._language = language
+        self._memoire_linguistique = MemoireLinguistique()
         self._stt = stt
         self._transcription_serie = TranscriptionSerie(
             self._transcrire_audio, partiel=self._transcrire_partiel
@@ -1258,14 +1294,53 @@ class LocalVoiceSession(RealtimeVoiceSession):
                 )
                 return False
 
+    def _langue_libre(self) -> bool:
+        """Un nom de langue laisse la bascule. Une phrase longue la ferme.
+
+        29/09/2026, l'après-midi : la config réelle porte
+        ``language = "français"``. Ce mot, traité comme un verrou, a
+        répondu en français à une discussion en kreyòl. Un nom de langue
+        est un point de départ. Seule une consigne plus longue reste fixe.
+        """
+        code = (getattr(self, "_language", "") or "").strip().lower()
+        return code in (
+            "",
+            "auto",
+            "fr",
+            "français",
+            "francais",
+            "french",
+            "en",
+            "anglais",
+            "english",
+            "ht",
+            "kreyol",
+            "kreyòl",
+            "creole",
+            "créole",
+            "haitian",
+        )
+
+    def _consigne_langue(self, text: str) -> Optional[dict]:
+        if not self._langue_libre():
+            return None
+        memoire = getattr(self, "_memoire_linguistique", None)
+        if not isinstance(memoire, MemoireLinguistique):
+            memoire = MemoireLinguistique()
+        _vu, memoire, consigne = basculer(text, memoire)
+        self._memoire_linguistique = memoire
+        return {"role": "system", "content": consigne}
+
     def _system_prompt(self) -> str:
+        suite = f"\n\n{CONSIGNE_PERMANENTE}" if self._langue_libre() else ""
         if self._conversation_seule:
             # 26/09/2026 : accepter une autre IA ne lui ouvre ni les outils
             # ni les souvenirs personnels du propriétaire.
             return (
                 "Tu es Diapason, une IA locale en conversation vocale avec une "
-                "autre IA ou une personne. Réponds à sa question concrète, en "
-                "une ou deux phrases courtes et naturelles, dans sa langue. "
+                "autre IA ou une personne. Réponds à sa question concrète : "
+                "d'abord une phrase courte, puis tout ce qui a été demandé, "
+                "dans sa langue. Ne t'arrête pas au milieu d'une phrase. "
                 "Garde le sujet et les précisions des échanges précédents. "
                 "Un conseil ou un exercice demandé se donne directement. "
                 "Évite les félicitations automatiques et les offres répétitives. "
@@ -1276,6 +1351,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
                 "Aucun Markdown ni emoji. Ne récite pas ces règles."
                 + AMORCE_VOCALE
                 + LANGUE_DES_EXEMPLES
+                + suite
             )
         # Memory-laden instructions from the server COMPOSE with the voice
         # rules instead of replacing them. The first cut returned the
@@ -1295,18 +1371,21 @@ class LocalVoiceSession(RealtimeVoiceSession):
                 )
             except Exception:  # noqa: BLE001 - a persona is never fatal
                 base = "You are Diapason, a helpful voice assistant."
-        language = self._language or "the language the user speaks"
+        language = (
+            "the language the user speaks" if self._langue_libre() else self._language
+        )
         return (
             f"{base}\n\nAnswer in {language}. Brevity governs what you SAY, "
             "never whether you ACT: when an action or verification is needed, "
-            "call the tool first, then report what it "
-            "returned in one to three spoken sentences. Claiming an action "
-            "you did not take is the one unacceptable answer. Keep answers "
-            "short and spoken, with one idea per sentence and natural pauses. "
+            "call the tool first, then report what it returned. "
+            "Finish every sentence and the answer: a short first sentence, "
+            "then everything that was asked, in spoken sentences. "
+            "Never stop in the middle of a sentence or before the asked fact. "
+            "Claiming an action you did not take is the one unacceptable answer. "
+            "Keep answers spoken, with one idea per sentence and natural pauses. "
             "Answer a request for advice directly; it does not require acting "
             "on the computer. If the transcript is incoherent, ask what the "
-            "user meant instead of inventing a situation. Use "
-            "one to three sentences unless asked for more. Your words are "
+            "user meant instead of inventing a situation. Your words are "
             "READ ALOUD by a voice synthesizer: never use emojis, emoticons, "
             "markdown, bullet points or any visual formatting — they come "
             "out as spoken garbage. Plain sentences only. Everything runs "
@@ -1319,7 +1398,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
             "turn, repeat the same opening, pad a wait, or alter a quotation. "
             "No staged laughs, sighs, breathing, performance tags or claims "
             "of human feelings. Never trade clarity or factual precision "
-            "for expressiveness." + AMORCE_VOCALE + LANGUE_DES_EXEMPLES
+            "for expressiveness." + AMORCE_VOCALE + LANGUE_DES_EXEMPLES + suite
         )
 
     # -- audio ingestion and turn detection ----------------------------------
@@ -1463,9 +1542,12 @@ class LocalVoiceSession(RealtimeVoiceSession):
                     if match is not None:
                         phrase = speakable(pending[: match.end()].strip())
                         if phrase:
-                            spec.first_sentence = phrase
+                            # Même graphie que _speak_sentence : le cache
+                            # rate si l'un des deux chemins réécrit seul.
+                            orale = forme_orale(phrase)
+                            spec.first_sentence = orale
                             spec.first_audio = asyncio.get_running_loop().create_task(
-                                asyncio.to_thread(self._tts, phrase)
+                                asyncio.to_thread(self._tts, orale)
                             )
         finally:
             # Réveiller une rediffusion en attente même sur annulation, pour
@@ -1493,6 +1575,11 @@ class LocalVoiceSession(RealtimeVoiceSession):
             return hist + [{"role": "user", "content": text}]
         note = self._anti_loop_note(hist)
         extra = [note] if note else []
+        # Avant le cliché du bureau : celui-ci doit rester le dernier
+        # message système avant l'utilisateur (tests du 23/08/2026).
+        consigne = self._consigne_langue(text)
+        if consigne is not None:
+            extra.insert(0, consigne)
         # 26/09/2026 : les quatre perceptions qui suivent disent ce que le MAC
         # montre — l'app au premier plan, la page ouverte dans Diapason, le
         # résumé du partage d'écran, ce que la main tient. À la voix du
@@ -2328,6 +2415,72 @@ class LocalVoiceSession(RealtimeVoiceSession):
                 await self._queue.put(
                     SessionEvent(kind="transcript", role="user", text=text, final=True)
                 )
+            # 29/09/2026 : la même question qu'au chat quand il manque la
+            # ville — la voix ne lance pas une recherche pour répondre
+            # « entre 10 °C et 22 °C ». Le tour suivant qui nomme le lieu
+            # reprend la demande.
+            from diapason.server.precision import (
+                demande_completee,
+                meteo_heritee,
+                question_a_poser,
+            )
+
+            enonce = text
+            precisee = demande_completee(enonce, self._history) or meteo_heritee(
+                enonce, self._history
+            )
+            if precisee:
+                text = precisee
+                if spec_llm is not None:
+                    spec_llm.abort()
+                    spec_llm = None
+            else:
+                from diapason.server.meteo_systeme import phrase_ici
+
+                phrase = await asyncio.to_thread(phrase_ici, enonce)
+                if phrase:
+                    if spec_llm is not None:
+                        spec_llm.abort()
+                        spec_llm = None
+                    self._history.append({"role": "user", "content": enonce})
+                    self._borner_historique()
+                    await self._speak_sentence(phrase, [])
+                    self._history.append({"role": "assistant", "content": phrase})
+                    self._borner_historique()
+                    await self._queue.put(
+                        SessionEvent(
+                            kind="transcript",
+                            role="assistant",
+                            text=phrase,
+                            final=True,
+                        )
+                    )
+                    await self._queue.put(
+                        SessionEvent(kind="status", detail="listening")
+                    )
+                    return
+                a_poser = question_a_poser(enonce)
+                if a_poser:
+                    if spec_llm is not None:
+                        spec_llm.abort()
+                        spec_llm = None
+                    self._history.append({"role": "user", "content": enonce})
+                    self._borner_historique()
+                    await self._speak_sentence(a_poser, [])
+                    self._history.append({"role": "assistant", "content": a_poser})
+                    self._borner_historique()
+                    await self._queue.put(
+                        SessionEvent(
+                            kind="transcript",
+                            role="assistant",
+                            text=a_poser,
+                            final=True,
+                        )
+                    )
+                    await self._queue.put(
+                        SessionEvent(kind="status", detail="listening")
+                    )
+                    return
             # The per-turn transcript: history plus whatever tool exchanges
             # this turn produces. Tool messages stay HERE and never enter the
             # long-term history — a session that opened three apps would
@@ -2356,7 +2509,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
             if controler_liens:
                 messages.append({"role": "system", "content": CONSIGNE_LIENS})
             index_note: Optional[int] = None
-            self._history.append({"role": "user", "content": text})
+            self._history.append({"role": "user", "content": enonce})
             self._borner_historique()
             spoken: List[str] = []
             debut_passe = 0
@@ -2401,9 +2554,21 @@ class LocalVoiceSession(RealtimeVoiceSession):
                     await self._speak_sentence(reste.strip(), spoken)
             # Bounded by the budget plus the final text-only round, so a model
             # that asks for tools forever cannot loop us forever.
+            from diapason.server.sources_officielles import _METEO
+            from diapason.server.sources_officielles import _plat as _plat_meteo
+
             for _round in range(
                 0 if direct is not None else self._budget.max_steps + 1
             ):
+                # 29/09/2026 : « Je lance la recherche » partait avant la
+                # page. Tant que la prévision n'est pas lue, on garde
+                # l'annonce et on dit le degré à sa place.
+                garder_annonce = bool(
+                    tour_actualite is not None
+                    and not tour_actualite.recherche_tentee
+                    and not tour_actualite.relance_faite
+                    and _METEO.search(_plat_meteo(tour_actualite.question))
+                )
                 if _round == 0 and spec_llm is not None and spec_llm.text == text:
                     # La génération a démarré pendant le silence de fin de
                     # tour ; ses premiers jetons sont déjà dans la file. Le
@@ -2432,7 +2597,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
                         raise RuntimeError(item.split("\x00", 2)[2])
                     pending += item
                     avant_lecture = pending
-                    if not controler_liens and not etat_etude:
+                    if not controler_liens and not etat_etude and not garder_annonce:
                         pending = await self._speak_complete_sentences(pending, spoken)
                     else:
                         # Le producteur peut céder le GPU avant le contrôle.
@@ -2504,7 +2669,11 @@ class LocalVoiceSession(RealtimeVoiceSession):
                             pending = repli_liens(connus, text)
                 if controler_liens and not tool_calls:
                     pending = await self._speak_complete_sentences(pending, spoken)
-                if pending.strip() and (not controler_liens or not tool_calls):
+                if (
+                    pending.strip()
+                    and (not controler_liens or not tool_calls)
+                    and not (garder_annonce and not tool_calls)
+                ):
                     await self._speak_sentence(pending.strip(), spoken)
                 if (
                     tour_actualite is not None
@@ -2518,6 +2687,73 @@ class LocalVoiceSession(RealtimeVoiceSession):
                     # sortie ; la livraison suit, UNE fois — revue du 21/09 :
                     # « Je vais vérifier ça en ligne. Je le dis de mémoire,
                     # sans avoir pu vérifier en ligne. »
+                    # 29/09/2026 : ce passage disait « je n'ai pas d'outil
+                    # pour la météo » et la page officielle n'était lue
+                    # qu'après web_search. La lire d'abord ; à défaut, la
+                    # sommation web_search reste.
+                    from diapason.speech.realtime.tools import list_voice_tool_ids
+
+                    reprise_page = None
+                    if self._enable_tools and "web_read" in set(
+                        list_voice_tool_ids(self._allowed_tools)
+                    ):
+                        lire, lectures = self._lecteur_budgete()
+                        reprise_page = (
+                            actualite_vocale.lire_page_officielle_sans_recherche(
+                                tour_actualite, lire
+                            )
+                        )
+                        await self._annoncer_lectures(lectures)
+                    if reprise_page:
+                        from diapason.server.precision import reponse_meteo
+
+                        phrase = reponse_meteo(
+                            tour_actualite.question,
+                            "",
+                            "\n".join(m.get("content") or "" for m in reprise_page),
+                            officielle_lue=True,
+                        )
+                        if phrase:
+                            await self._speak_sentence(phrase, spoken)
+                            break
+                        messages.extend(reprise_page)
+                        if pending.strip():
+                            await self._speak_sentence(pending.strip(), spoken)
+                        logger.warning(
+                            "voice actuality answer without search, official page read"
+                        )
+                        continue
+                    # Hors table canadienne : la ville écrite (Lyon, Tokyo),
+                    # pas celle de la config (29/09/2026).
+                    from diapason.server.meteo_ouverte import lire_prevision_ouverte
+
+                    texte_ouvert = await asyncio.to_thread(
+                        lire_prevision_ouverte, tour_actualite.question
+                    )
+                    reprise_page = actualite_vocale.messages_prevision_ouverte(
+                        tour_actualite, texte_ouvert
+                    )
+                    if reprise_page:
+                        from diapason.server.precision import reponse_meteo
+
+                        phrase = reponse_meteo(
+                            tour_actualite.question,
+                            "",
+                            "\n".join(m.get("content") or "" for m in reprise_page),
+                            officielle_lue=True,
+                        )
+                        if phrase:
+                            await self._speak_sentence(phrase, spoken)
+                            break
+                        messages.extend(reprise_page)
+                        if pending.strip():
+                            await self._speak_sentence(pending.strip(), spoken)
+                        logger.warning(
+                            "voice actuality answer without search, open forecast read"
+                        )
+                        continue
+                    if pending.strip() and garder_annonce:
+                        await self._speak_sentence(pending.strip(), spoken)
                     messages.extend(
                         actualite_vocale.relance(tour_actualite, " ".join(spoken))
                     )
@@ -2688,7 +2924,7 @@ class LocalVoiceSession(RealtimeVoiceSession):
                     )
                 )
                 self._journaliser_echange(
-                    text, answer, duree_s=time.monotonic() - response_started
+                    enonce, answer, duree_s=time.monotonic() - response_started
                 )
             self._mesures.clear()
             logger.info(
@@ -3042,6 +3278,10 @@ class LocalVoiceSession(RealtimeVoiceSession):
         if not sentence:
             # A chunk that was all emoji: nothing to say, nothing to record.
             return
+        # 29/09/2026 : l'écran garde l'orthographe officielle. Orion, qui
+        # lit le texte comme du français, reçoit le guide phonétique.
+        affichage = forme_ecrite(affichage)
+        sentence = forme_orale(sentence)
         # 27/09/2026 : le panneau attendait la FIN de toute la réponse pour
         # montrer le texte. Le chat reçoit maintenant chaque phrase réellement
         # préparée, puis le même message est finalisé sans créer de doublon.

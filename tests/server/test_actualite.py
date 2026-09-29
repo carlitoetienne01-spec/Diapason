@@ -48,6 +48,9 @@ class TestCeQuiEstDActualite:
             "Quelles sont les nouvelles ?",
             "Que se passe-t-il en Haïti ?",
             "Quel est le salaire minimum en Ontario ?",
+            "Quel temps fait-il à Lyon ?",
+            "Météo à Tokyo",
+            "What's the weather in Lisbon?",
         ],
     )
     def test_ce_qui_depend_du_moment(self, question):
@@ -1980,11 +1983,14 @@ class TestLaPageOfficielle:
         )
         vide = Outil("web_search", reponse="No results found.")
         evts = await collecter(
-            moteur, [vide, lecture], "Quel temps fait-il ce soir ?", ville="Ottawa"
+            moteur,
+            [vide, lecture],
+            "Quel temps fait-il à Ottawa ce soir ?",
+            ville="Ottawa",
         )
         assert lecture.executions and lecture.executions[0]["url"] == (
             "https://meteo.gc.ca/fr/location/index.html?coords=45.421,-75.697"
-        ), "la ville vient de la config quand la question n'en nomme pas"
+        ), "la ville nommée dans la question a sa page"
         assert "ce soir cette nuit demain" in lecture.executions[0]["focus"]
         sources = [
             s for lot in (e.data for e in evts if e.kind == "sources") for s in lot
@@ -2014,7 +2020,136 @@ class TestLaPageOfficielle:
         assert texte(evts) == "Ce soir, 3 °C et partiellement nuageux [1]."
 
     @pytest.mark.asyncio
-    async def test_sans_ville_connue_aucune_page_n_est_lue(self):
+    async def test_un_refus_doutil_lit_quand_meme_la_prevision(self):
+        """29/09/2026 : « je n'ai pas d'outil pour la météo » fermait le tour.
+        La page d'Environnement Canada n'était lue qu'après un web_search,
+        donc le refus partait sans chiffre."""
+        lecture = self.lecture_meteo()
+        moteur = Moteur(
+            [
+                [
+                    StreamChunk(
+                        content="Je n'ai pas d'outil pour la météo.",
+                        finish_reason="stop",
+                    )
+                ],
+                [
+                    StreamChunk(
+                        content="Ce soir, 3 °C et partiellement nuageux [1].",
+                        finish_reason="stop",
+                    )
+                ],
+            ]
+        )
+        evts = await collecter(
+            moteur,
+            [Outil("web_search"), lecture],
+            "Quel temps fait-il à Ottawa ce soir ?",
+            ville="Ottawa",
+        )
+        assert lecture.executions, "la prévision se lit même sans web_search"
+        assert "3 °C" in texte(evts), "le chiffre lu doit être dit"
+        assert "pas d'outil" not in texte(evts).lower(), (
+            "le refus ne doit pas être la réponse"
+        )
+
+    @pytest.mark.asyncio
+    async def test_annoncer_la_recherche_ne_tient_pas_lieu_du_degre(self):
+        """29/09/2026 : « Je lance la recherche pour Trois-Rivières », deux
+        fois, badge vérifié, aucun degré. La page est déjà lue."""
+        lecture = self.lecture_meteo()
+        annonce = "Je lance la recherche météo pour Ottawa."
+        moteur = Moteur(
+            [
+                [StreamChunk(content=annonce, finish_reason="stop")],
+                [StreamChunk(content=annonce, finish_reason="stop")],
+            ]
+        )
+        evts = await collecter(
+            moteur,
+            [Outil("web_search"), lecture],
+            "Quel temps fait-il à Ottawa ce soir ?",
+            ville="Ottawa",
+        )
+        assert "3°C" in texte(evts), "le degré lu doit remplacer l'annonce"
+        assert "lance la recherche" not in texte(evts).lower()
+
+    @pytest.mark.asyncio
+    async def test_un_second_refus_dit_quand_meme_le_chiffre_lu(self):
+        """29/09/2026 : la page était lue, puis le 9b répétait « pas d'outil »
+        et cette phrase partait. Le chiffre lu doit être la réponse."""
+        lecture = self.lecture_meteo()
+        moteur = Moteur(
+            [
+                [
+                    StreamChunk(
+                        content="Je n'ai pas d'outil pour la météo.",
+                        finish_reason="stop",
+                    )
+                ],
+                [
+                    StreamChunk(
+                        content="Je n'ai toujours pas d'outil pour la météo.",
+                        finish_reason="stop",
+                    )
+                ],
+            ]
+        )
+        evts = await collecter(
+            moteur,
+            [Outil("web_search"), lecture],
+            "Quel temps fait-il à Ottawa ce soir ?",
+            ville="Ottawa",
+        )
+        assert "3°C" in texte(evts), "le chiffre de la page doit être dit"
+        assert "pas d'outil" not in texte(evts).lower(), (
+            "le second refus ne doit pas être la réponse"
+        )
+
+    @pytest.mark.asyncio
+    async def test_un_refus_dacces_dit_quand_meme_le_chiffre_lu(self):
+        """29/09/2026, vu en direct : le 9b disait « je n'ai pas accès aux
+        services météo », sans le mot « outil ». Le chiffre lu doit partir."""
+        lecture = self.lecture_meteo()
+        refus = (
+            "Je ne peux pas vérifier le temps en direct car je n'ai pas "
+            "accès aux services météo externes."
+        )
+        moteur = Moteur(
+            [
+                [StreamChunk(content=refus, finish_reason="stop")],
+                [StreamChunk(content=refus, finish_reason="stop")],
+            ]
+        )
+        evts = await collecter(
+            moteur,
+            [Outil("web_search"), lecture],
+            "Quel temps fait-il à Ottawa ce soir ?",
+            ville="Ottawa",
+        )
+        assert "3°C" in texte(evts), "le chiffre de la page doit être dit"
+        assert "services météo" not in texte(evts).lower(), (
+            "le refus d'accès ne doit pas être la réponse"
+        )
+
+    @pytest.mark.asyncio
+    async def test_sans_ville_connue_aucune_page_n_est_lue(self, monkeypatch):
+        monkeypatch.setattr(
+            "diapason.server.meteo_systeme.coordonnees_meteo_mac",
+            lambda chemin=None: None,
+        )
+
+        def prevision(question: str) -> str:
+            if "Tombouctou" not in question:
+                return ""
+            return (
+                "Tombouctou, Mali — Open-Meteo, consultée le 2026-09-29\n"
+                "Maintenant : 40 °C, ciel dégagé.\n"
+            )
+
+        monkeypatch.setattr(
+            "diapason.server.agentic_stream.lire_prevision_ouverte", prevision
+        )
         lecture = self.lecture_meteo()
         moteur = Moteur(
             [
@@ -2022,10 +2157,12 @@ class TestLaPageOfficielle:
                 [StreamChunk(content="Je n'ai pas de données.", finish_reason="stop")],
             ]
         )
-        await collecter(
+        evts = await collecter(
             moteur, [Recherche("web_search"), lecture], "Quel temps fait-il ce soir ?"
         )
         assert lecture.executions == [], "on ne devine pas une ville (§34)"
+        assert texte(evts) == "Dans quelle ville ?", "sans ville, on demande"
+        assert moteur.appels == [], "on ne cherche pas avant d'avoir la ville"
         moteur = Moteur(
             [
                 [StreamChunk(tool_calls=[appel_web("météo Tombouctou")])],
@@ -2039,9 +2176,182 @@ class TestLaPageOfficielle:
             ville="Ottawa",
         )
         assert lecture.executions == [], (
-            "une ville hors de la table n'a pas de page officielle : la config "
-            "ne prend pas sa place"
+            "Ottawa en config ne prend pas la place de Tombouctou"
         )
+        outil = next(m for m in moteur.appels[1][0] if m.role == Role.TOOL)
+        assert "Tombouctou" in (outil.content or "") and "40 °C" in (
+            outil.content or ""
+        ), "la ville nommée a sa prévision, pas la ville de la config"
+
+    @pytest.mark.asyncio
+    async def test_un_refus_pour_lyon_dit_le_degre_pas_ottawa(self, monkeypatch):
+        """29/09/2026 : demander la météo d'une autre ville ne doit pas
+        répondre pour Ottawa."""
+        monkeypatch.setattr(
+            "diapason.server.agentic_stream.lire_prevision_ouverte",
+            lambda question: (
+                "Lyon, France — Open-Meteo, consultée le 2026-09-29\n"
+                "Maintenant : 18,2 °C, partiellement nuageux.\n"
+            ),
+        )
+        lecture = self.lecture_meteo()
+        refus = "Je n'ai pas d'outil pour la météo."
+        moteur = Moteur(
+            [
+                [StreamChunk(content=refus, finish_reason="stop")],
+                [StreamChunk(content=refus, finish_reason="stop")],
+            ]
+        )
+        evts = await collecter(
+            moteur,
+            [Outil("web_search"), lecture],
+            "Quel temps fait-il à Lyon ?",
+            ville="Ottawa",
+        )
+        assert lecture.executions == [], "la page d'Ottawa n'est pas lue"
+        assert "Open-Meteo" in texte(evts) and "18,2°C" in texte(evts), (
+            "le degré de la ville demandée est la réponse"
+        )
+        assert "Ottawa" not in texte(evts)
+
+    @pytest.mark.asyncio
+    async def test_la_temperature_sans_ville_pose_la_question(self, monkeypatch):
+        monkeypatch.setattr(
+            "diapason.server.meteo_systeme.coordonnees_meteo_mac",
+            lambda chemin=None: None,
+        )
+        """29/09/2026 : « il fait quelle température maintenant ? » revenait
+        avec une fourchette pour la France, badge vérifié."""
+        lecture = self.lecture_meteo()
+        moteur = Moteur(
+            [
+                [
+                    StreamChunk(
+                        content="Entre 10 °C en Savoie et 22 °C dans le sud-ouest.",
+                        finish_reason="stop",
+                    )
+                ]
+            ]
+        )
+        evts = await collecter(
+            moteur,
+            [Outil("web_search"), lecture],
+            "Dis-moi Diabazon, il fait quelle température maintenant ?",
+            ville="Ottawa",
+        )
+        assert texte(evts) == "Dans quelle ville ?", (
+            "la réponse est la question, pas la fourchette"
+        )
+        assert moteur.appels == [], "le modèle ne cherche pas tant que la ville manque"
+        assert lecture.executions == [], "Ottawa en config ne prend pas la place"
+        assert [e for e in evts if e.kind == "verification"] == [], (
+            "une question n'est pas une information vérifiée"
+        )
+
+    @pytest.mark.asyncio
+    async def test_sans_ville_le_mac_donne_son_lieu(self, monkeypatch):
+        """29/09/2026 : « à présentement » partait sur la France et Ottawa.
+        Le lieu est celui de la dernière prévision de Météo sur ce Mac."""
+        monkeypatch.setattr(
+            "diapason.server.meteo_systeme.coordonnees_meteo_mac",
+            lambda chemin=None: (45.448, -73.433),
+        )
+
+        def obtenir(url: str) -> str:
+            if "nominatim" in url:
+                return json.dumps(
+                    {"address": {"town": "Boucherville", "country": "Canada"}}
+                )
+            return json.dumps({"current": {"temperature_2m": 14.2, "weather_code": 1}})
+
+        monkeypatch.setattr("diapason.server.meteo_ouverte._http_get", obtenir)
+        lecture = self.lecture_meteo()
+        moteur = Moteur(
+            [
+                [
+                    StreamChunk(
+                        content="Entre 10 °C en Savoie et 22 °C dans le sud-ouest.",
+                        finish_reason="stop",
+                    )
+                ]
+            ]
+        )
+        evts = await collecter(
+            moteur,
+            [Outil("web_search"), lecture],
+            "Quelle température il fait à présentement ?",
+            ville="Ottawa",
+        )
+        assert texte(evts) == "À Boucherville, il fait 14,2 °C.", (
+            "le degré est celui du lieu Météo, pas une fourchette"
+        )
+        assert moteur.appels == [], "le modèle ne raconte pas la France"
+        assert lecture.executions == [], "Ottawa en config ne prend pas la place"
+        assert "Savoie" not in texte(evts)
+
+    @pytest.mark.asyncio
+    async def test_lyon_dit_ensuite_donne_le_degre(self, monkeypatch):
+        """« Lyon » seul n'est pas une question : il complète celle d'avant."""
+        monkeypatch.setattr(
+            "diapason.server.agentic_stream.lire_prevision_ouverte",
+            lambda question: (
+                "Lyon, France — Open-Meteo, consultée le 2026-09-29\n"
+                "Maintenant : 18,2 °C, partiellement nuageux.\n"
+            ),
+        )
+        lecture = self.lecture_meteo()
+        refus = "Je n'ai pas d'outil pour la météo."
+        moteur = Moteur(
+            [
+                [StreamChunk(content=refus, finish_reason="stop")],
+                [StreamChunk(content=refus, finish_reason="stop")],
+            ]
+        )
+        politique = CapabilityPolicy(default_deny=False)
+        liste = [Outil("web_search"), lecture]
+        executeur = ToolExecutor(
+            liste, autoload_capability_policy=False, capability_policy=politique
+        )
+        fil = [
+            Message(
+                role=Role.USER,
+                content="il fait quelle température maintenant ?",
+            ),
+            Message(role=Role.ASSISTANT, content="Dans quelle ville ?"),
+            Message(role=Role.USER, content="Lyon"),
+        ]
+        evts = [
+            e
+            async for e in stream_with_tools(
+                moteur,
+                "local",
+                fil,
+                tools=liste,
+                executor=executeur,
+                signal_textuel=False,
+                ville="Ottawa",
+            )
+        ]
+        assert "Open-Meteo" in texte(evts) and "18,2°C" in texte(evts), (
+            "la ville répondue reçoit son degré"
+        )
+        assert "Dans quelle ville" not in texte(evts)
+        assert lecture.executions == [], "la page d'Ottawa n'est pas lue"
+        assert "Savoie" not in texte(evts)
+
+    @pytest.mark.asyncio
+    async def test_une_capitale_sans_pays_se_demande(self):
+        moteur = Moteur([[StreamChunk(content="Paris.", finish_reason="stop")]])
+        evts = await collecter(
+            moteur, [Outil("web_search")], "Quelle est la capitale ?"
+        )
+        assert texte(evts) == "De quel pays ?", "le pays manquant se demande"
+        assert moteur.appels == []
+        moteur = Moteur([[StreamChunk(content="Paris.", finish_reason="stop")]])
+        evts = await collecter(
+            moteur, [Outil("web_search")], "Quelle est la capitale de la France ?"
+        )
+        assert texte(evts) == "Paris.", "un pays nommé ne déclenche pas la question"
 
     @staticmethod
     def lecture_pm():

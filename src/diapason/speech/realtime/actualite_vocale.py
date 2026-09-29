@@ -226,6 +226,66 @@ def consigne(tour: TourVocal) -> dict[str, str]:
     return {"role": "system", "content": CONSIGNE_VOCALE}
 
 
+def lire_page_officielle_sans_recherche(
+    tour: TourVocal, lire: Lecteur | None
+) -> list[dict[str, str]] | None:
+    """29/09/2026 : « je n'ai pas d'outil pour la météo » fermait le tour.
+    La page officielle n'était lue qu'après un web_search, donc le chiffre
+    n'était jamais dit. Ici le code la lit quand même et demande de répondre
+    d'après elle. None s'il n'y a pas de page, ou si la lecture est vide —
+    l'appelant retombe alors sur la sommation web_search."""
+    if lire is None or tour.officielle_lue or tour.lecture_faite:
+        return None
+    off = page_officielle(tour.question, tour.ville)
+    # pm.gc.ca porte un nom, pas le chiffre : la lire ici à la place de
+    # web_search supprimait la recherche (tests du 21/09). La prévision et
+    # le taux, eux, sont la donnée.
+    if off is None or off.titre_de_la_page:
+        return None
+    resultat = _avec_page_officielle(tour, {"ok": True, "content": ""}, lire)
+    contenu = str(resultat.get("content") or "").strip()
+    if not contenu:
+        return None
+    # Une seule reprise : sans ce drapeau, le passage suivant redemandait
+    # web_search alors que la page est déjà dans le fil.
+    tour.relance_faite = True
+    return [
+        {"role": "system", "content": contenu},
+        {
+            "role": "system",
+            "content": (
+                "La page officielle vient d'être lue. Dis en une ou deux "
+                "phrases le chiffre qu'elle donne, en nommant la source. "
+                "Ne dis pas que tu n'as pas d'outil."
+            ),
+        },
+    ]
+
+
+def messages_prevision_ouverte(
+    tour: TourVocal, texte: str
+) -> list[dict[str, str]] | None:
+    """29/09/2026 : une ville nommée hors table (Lyon, Tokyo) n'avait pas de
+    page. Le texte vient d'Open-Meteo ; None si ce tour a déjà une page."""
+    if tour.officielle_lue or tour.relance_faite or not texte.strip():
+        return None
+    tour.relance_faite = True
+    tour.officielle_lue = True
+    tour.verification_faite = True
+    tour.corpus += "\n" + texte
+    return [
+        {"role": "system", "content": texte},
+        {
+            "role": "system",
+            "content": (
+                "La prévision de la ville demandée vient d'être lue. Dis en "
+                "une ou deux phrases le chiffre et le lieu, en nommant "
+                "Open-Meteo. Ne dis pas que tu n'as pas d'outil."
+            ),
+        },
+    ]
+
+
 def relance(tour: TourVocal, parle: str) -> list[dict[str, str]]:
     """Le premier passage a parlé sans chercher : ce qui a été dit reste dans
     le fil (c'est sorti des haut-parleurs), et une sommation suit."""
@@ -556,6 +616,25 @@ def epilogue(tour: TourVocal, reponse: str, derniere_passe: str | None = None) -
     dit après elle, les sources désignant Mark Carney (revue du 21/09, 22 h).
     """
     if tour.verification_faite:
+        passe = derniere_passe if derniere_passe is not None else reponse
+        # 29/09/2026 : la page est lue, le modèle répète « pas d'outil ».
+        # Le premier degré du corpus (la fenêtre pose « ce soir » en tête)
+        # se dit, le refus est déjà sorti des haut-parleurs.
+        if tour.officielle_lue and re.search(
+            r"pas d['’]outil|aucun outil|no tool|pas acc[eè]s|"
+            r"ne peux pas v[eé]rifier|services m[eé]t[eé]o",
+            passe or "",
+            re.I,
+        ):
+            trouve = re.search(r"-?\d+(?:[.,]\d+)?\s*°\s*C", tour.corpus or "", re.I)
+            if trouve is not None:
+                lu = re.sub(r"\s+", "", trouve.group(0))
+                source = (
+                    "Open-Meteo"
+                    if "Open-Meteo" in (tour.corpus or "")
+                    else "Environnement Canada"
+                )
+                return f"{source} indique {lu}."
         desaccord = desaccord_sur_le_titulaire(
             derniere_passe if derniere_passe is not None else reponse,
             tour.corpus,

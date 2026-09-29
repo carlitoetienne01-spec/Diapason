@@ -572,6 +572,67 @@ class TestLesPiecesDuTour:
         actualite_vocale.absorber_resultat(tour, "web_search", {}, vide, lire)
         assert len(lectures) == 1, "une seule lecture par tour"
 
+    def test_un_refus_doutil_lit_quand_meme_la_prevision(self):
+        """29/09/2026 : « je n'ai pas d'outil pour la météo » fermait le tour
+        vocal. La page n'était lue qu'après web_search."""
+        tour = actualite_vocale.TourVocal(
+            question="Quel temps fait-il ce soir ?", ville="Ottawa"
+        )
+        lectures: list[dict] = []
+
+        def lire(nom, args):
+            lectures.append(args)
+            return {
+                "ok": True,
+                "content": (
+                    "[1] Ottawa — meteo.gc.ca\n"
+                    f"Source: {args['url']}\nCe soir et cette nuit\n3°C\n"
+                ),
+                "metadata": {
+                    "sources": [
+                        {
+                            "ref": 1,
+                            "title": "Ottawa",
+                            "url": args["url"],
+                            "date": "2026-09-03",
+                        }
+                    ]
+                },
+            }
+
+        messages = actualite_vocale.lire_page_officielle_sans_recherche(tour, lire)
+        assert lectures, "la prévision se lit même sans web_search"
+        assert messages is not None
+        assert "3°C" in messages[0]["content"], "le chiffre lu est dans le fil"
+        assert "pas d'outil" in messages[1]["content"]
+        assert tour.relance_faite, "pas une seconde sommation web_search"
+        assert (
+            actualite_vocale.lire_page_officielle_sans_recherche(tour, lire) is None
+        ), "une seule lecture"
+        assert len(lectures) == 1
+        sans_ville = actualite_vocale.TourVocal(question="Quel temps fait-il ce soir ?")
+        assert (
+            actualite_vocale.lire_page_officielle_sans_recherche(sans_ville, lire)
+            is None
+        ), "on ne devine pas une ville (§34)"
+        premier_ministre = actualite_vocale.TourVocal(
+            question="Qui est le premier ministre du Canada ?"
+        )
+        assert (
+            actualite_vocale.lire_page_officielle_sans_recherche(premier_ministre, lire)
+            is None
+        ), "la page du titulaire ne remplace pas la recherche"
+        tour_refus = actualite_vocale.TourVocal(
+            question="Quel temps fait-il ce soir ?", ville="Ottawa"
+        )
+        actualite_vocale.lire_page_officielle_sans_recherche(tour_refus, lire)
+        assert "3°C" in actualite_vocale.epilogue(
+            tour_refus, "Je n'ai pas d'outil pour la météo."
+        ), "un second refus vocal dit quand même le chiffre lu"
+        assert actualite_vocale.epilogue(tour_refus, "Ce soir, trois degrés.") == "", (
+            "une réponse qui donne le temps n'est pas recouverte"
+        )
+
     def test_le_resultat_reste_du_json_lisible_par_le_modele(self):
         tour = actualite_vocale.TourVocal(question=PREMIER_MINISTRE)
         resultat = actualite_vocale.absorber_resultat(

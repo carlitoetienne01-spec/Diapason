@@ -13,7 +13,9 @@ P6 du jury « recherches véridiques » : une table sujet → page officielle,
 lue EN COMPLÉMENT de la recherche générale, jamais à sa place, étiquetée
 comme telle dans les sources. Une table figée périme ; elle est courte et
 chaque entrée dit ce qu'elle couvre. Une ville absente de la table n'a pas
-de page officielle : la recherche générale reste seule, comme avant.
+de page d'Environnement Canada : depuis le 29/09/2026, le nom écrit dans
+la question (« à Lyon », « in Lisbon ») est géocodé par Open-Meteo
+(``meteo_ouverte``), et la config ne prend pas sa place.
 """
 
 from __future__ import annotations
@@ -68,8 +70,8 @@ VILLES: dict[str, tuple[float, float, str]] = {
     "iqaluit": (63.746, -68.517, "Iqaluit"),
 }
 _METEO = re.compile(
-    r"\b(?:meteo|temperature|previsions?|pleuvoir|pluie|neige|neiger|quel temps|"
-    r"fait.il (?:beau|froid|chaud)|weather|forecast|rain|snow)\b"
+    r"\b(?:meteo|temperature|previsions?|pleuvoir|pleut|pluie|neige|neiger|"
+    r"quel temps|fait.il (?:beau|froid|chaud)|weather|forecast|rain|snow)\b"
 )
 _TAUX_DIRECTEUR = re.compile(r"\btaux (?:directeur|cible)\b|\bpolicy rate\b")
 _BANQUE_DU_CANADA = "https://www.banqueducanada.ca/grandes-fonctions/politique-monetaire/taux-directeur/"

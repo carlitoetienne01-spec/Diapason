@@ -835,7 +835,7 @@ class TestPromptComposition:
         # back in real sessions despite the prompt saying never.
         assert "Carlito" in prompt
         assert "READ ALOUD" in prompt
-        assert "français" in prompt
+        assert "kreyòl" in prompt
 
     def test_without_instructions_the_oral_template_still_carries_rules(self):
         session = LocalVoiceSession(
@@ -1289,6 +1289,22 @@ class TestPromesseSansActe:
         await session._respond_to_text("c'est quoi le R&B ?")
         assert journal["executed"] == []
         assert len(journal["rounds"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_la_temperature_sans_ville_est_une_question(self, monkeypatch):
+        """29/09/2026 : sans ville et sans lieu Météo, la voix demande."""
+        monkeypatch.setattr(
+            "diapason.server.meteo_systeme.coordonnees_meteo_mac",
+            lambda chemin=None: None,
+        )
+        session, journal = self._harnais(["Entre 10 et 22 degrés en France."])
+        await session._respond_to_text(
+            "Dis-moi Diabazon, il fait quelle température maintenant ?"
+        )
+        assert journal["rounds"] == [], "la voix ne consulte pas le modèle"
+        assert session._history[-1]["content"] == "Dans quelle ville ?", (
+            "la question est dite et retenue pour le tour suivant"
+        )
 
     @pytest.mark.asyncio
     async def test_une_seule_sommation_jamais_deux(self):

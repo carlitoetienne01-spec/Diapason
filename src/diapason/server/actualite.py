@@ -135,6 +135,19 @@ def question_d_actualite(texte: str) -> bool:
         return False
     if _HORLOGE.search(plat):
         return False
+    # 29/09/2026 : « je parle plus de météo, je parle des recettes »
+    # nomme la météo pour la quitter. Ce n'est pas une prévision.
+    from diapason.server.precision import sujet_quitte
+
+    if sujet_quitte(plat):
+        return False
+    # 29/09/2026 : « Quel temps fait-il à Lyon ? » et « Météo à Tokyo » n'ont
+    # pas de « aujourd'hui ». Sans le mot de temps, la question n'entrait
+    # pas dans la garde, et aucune prévision n'était lue.
+    from diapason.server.sources_officielles import _METEO
+
+    if _METEO.search(plat):
+        return True
     if _FAIT_SUFFISANT.search(plat):
         return True
     marqueur = bool(_MARQUEURS.search(plat))
