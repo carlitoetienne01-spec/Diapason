@@ -521,6 +521,13 @@ class PasserelleTailnet:
                 await asyncio.sleep(min(self._intervalle_s, reste_s))
                 verdict = await asyncio.to_thread(sessions.verify_session, jeton)
                 if verdict is None:
+                    # Couper D'ABORD. Revue du 28/09/2026 : le motif (qui ne
+                    # sert qu'au journal) se lisait avant la coupure, dans
+                    # mesh.db (busy_timeout 5 000 ms). Un registre tenu par
+                    # un autre écrivain laissait la réponse du chat couler
+                    # vers le téléphone révoqué : 98 morceaux en 2,06 s au
+                    # banc, contre 3 en 0,06 s, pour une lecture de 2 s.
+                    await couper()
                     # 28/09/2026 : cette ligne était en INFO, sous le niveau
                     # WARNING du logger diapason (cli/log_config.py) : elle
                     # n'atteignait jamais serve.err.log. Le 26/09 à 19:44, une
@@ -541,7 +548,6 @@ class PasserelleTailnet:
                         _pour_le_journal(appareil),
                         f", requête {_pour_le_journal(requete[0])}" if requete else "",
                     )
-                    await couper()
                     return
                 echeance_ms = int(verdict["expiresAtMs"])
 
@@ -556,9 +562,19 @@ class PasserelleTailnet:
             if not coupure.faite:
                 raise
         finally:
-            garde.cancel()
             if attente_recue is not None and not attente_recue.done():
                 attente_recue.cancel()
+            if coupure.faite:
+                # La surveillance a coupé et lit encore le motif de sa ligne
+                # de journal : l'annuler ici perdrait la ligne, la seule
+                # trace de QUI a coupé. Plus rien ne part vers le téléphone
+                # (envoyer lève) ; seule la fermeture de la connexion attend
+                # cette lecture — quelques millisecondes, 5 s au pire d'un
+                # mesh.db verrouillé. shield : une annulation venue du
+                # serveur n'emporte pas la ligne avec elle.
+                await asyncio.shield(garde)
+            else:
+                garde.cancel()
 
     # ── les deux portes d'appareil ───────────────────────────────────────
 
