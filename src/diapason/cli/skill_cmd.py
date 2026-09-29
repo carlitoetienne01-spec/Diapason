@@ -829,7 +829,16 @@ def search(query: str, source: str):
     console.print(
         f"[dim]{len(rows)} match(es). "
         f"Install with: diapason skill install <source>:<name>[/dim]"
+        if any(row[0] != "ecc" for row in rows)
+        else f"[dim]{len(rows)} match(es).[/dim]"
     )
+    if any(row[0] == "ecc" for row in rows):
+        # `install ecc:<nom>` is refused (it would bypass the allow-list):
+        # the hint must not send Carlito into that refusal.
+        console.print(
+            "[dim]Pour ecc : ajoute le nom à filter.names dans config.toml, "
+            "puis `diapason skill sync ecc --dry-run`.[/dim]"
+        )
 
 
 @skill.command("update")

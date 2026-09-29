@@ -213,3 +213,12 @@ class TestUneCollisionEstSignaleeJamaisTue:
         (autre / ".source").write_text('source = "hermes:alpha"\n')
         texte = _lancer("sync", "ecc", "--dry-run").output
         assert "collision : « alpha » existe aussi dans la source hermes" in texte
+
+
+class TestLaRechercheNeRenvoiePasVersUnRefus:
+    def test_la_recherche_ecc_indique_la_liste_pas_install(self, banc):
+        """`install ecc:<nom>` est refusé : la recherche ne doit pas y envoyer."""
+        texte = _lancer("search", "alpha", "--source", "ecc").output
+        assert "alpha" in texte
+        assert "skill install" not in texte, texte
+        assert "filter.names" in texte
