@@ -31,10 +31,14 @@ from diapason.tools.skill_guide import DEBUT, NOM, SkillGuideTool  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
-def _reinscrire_les_outils():
-    """Le conftest racine vide ToolRegistry ; le module reste en cache."""
+def _reinscrire_les_outils(monkeypatch):
+    """Le conftest racine vide ToolRegistry ; le module reste en cache. Et
+    aucune vue de trousse ne passe d'un test à l'autre."""
+    import diapason.tools.skill_guide as guide
+
     ToolRegistry.register_value("calculator", CalculatorTool)
     ToolRegistry.register_value(NOM, SkillGuideTool)
+    monkeypatch.setattr(guide, "_VUE_DU_CHAT", None)
 
 
 @pytest.fixture

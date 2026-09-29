@@ -130,6 +130,18 @@ def methodes(tmp_path: Path) -> dict[str, Path]:
     }
 
 
+@pytest.fixture(autouse=True)
+def _trousse_de_base(monkeypatch):
+    """Le conftest racine vide ToolRegistry : les équivalents que Diapason
+    offre (web_search, web_read) y reviennent ; et aucune vue de trousse ne
+    passe d'un test à l'autre."""
+    import diapason.tools.skill_guide as guide
+
+    for nom in ("web_search", "web_read"):
+        ToolRegistry.register_value(nom, object)
+    monkeypatch.setattr(guide, "_VUE_DU_CHAT", None)
+
+
 def _lire(outil, nom, section=""):
     return outil.execute(operation="lire", nom=nom, section=section)
 
@@ -870,6 +882,93 @@ class TestLaTrousseDuChat:
         (tmp_path / "skills" / "ecc" / "research-ops").mkdir(parents=True)
         (tmp_path / "skills" / "ecc" / "research-ops" / "SKILL.md").write_text("x")
         assert NOM not in avec_le_guide([NOM], self._cfg(tmp_path, enabled=False))
+
+
+class TestLesAbsencesSeJugentSurLaTrousseOfferte:
+    """29/09/2026. entete() tenait pour disponible tout outil INSCRIT
+    (ToolRegistry), même absent de la trousse du chat (shell_exec,
+    file_write) ou fermé au téléphone (mail_send). Au téléphone, email-ops
+    était servie pas à pas — tri, brouillon, envoi, preuve dans Envoyés —
+    sans un mot sur l'absence de tout outil de courrier (§100)."""
+
+    @pytest.fixture
+    def vue(self, tmp_path):
+        d = _installer(
+            tmp_path / "skills" / "ecc",
+            "email-ops",
+            "# Email Ops\n\n## Workflow\n\nSend, then check Sent.\n",
+            outils_cites=["mail_send", "shell_exec", "web_search", "firecrawl_search"],
+        )
+        for nom in ("mail_send", "shell_exec"):
+            ToolRegistry.register_value(nom, object)
+        cfg = SimpleNamespace(
+            skills=SimpleNamespace(
+                enabled=True,
+                skills_dir=str(tmp_path / "skills"),
+                sources=[
+                    SkillSourceConfig(
+                        source="ecc", enabled=True, filter={"names": ["email-ops"]}
+                    )
+                ],
+            )
+        )
+        return d, cfg
+
+    def test_un_outil_inscrit_hors_de_la_trousse_est_dit_absent(self, vue):
+        _, cfg = vue
+        avec_le_guide(["web_search", "mail_send"], cfg)
+        avant, _, _ = _autour_du_cadre(_lire(SkillGuideTool(), "email-ops").content)
+        assert "shell_exec → aucun" in avant, (
+            "shell_exec est inscrit, mais pas dans la trousse du chat"
+        )
+        assert "mail_send" not in avant, "au bureau, mail_send est dans la trousse"
+        assert "firecrawl_search → web_search" in avant
+
+    def test_un_equivalent_absent_de_la_trousse_n_est_pas_promis(self, vue):
+        _, cfg = vue
+        avec_le_guide(["mail_send"], cfg)
+        avant, _, _ = _autour_du_cadre(_lire(SkillGuideTool(), "email-ops").content)
+        assert "→ web_search" not in avant, "web_search n'est pas dans la trousse"
+        assert "firecrawl_search" in avant and "web_search → aucun" in avant
+
+    def test_au_telephone_le_courrier_est_dit_absent(self, vue):
+        _, cfg = vue
+        avec_le_guide(["web_search", "mail_send"], cfg)
+        outil = SkillGuideTool()
+        with marquer_le_telephone():
+            r = _lire(outil, "email-ops")
+        avant, _, _ = _autour_du_cadre(r.content)
+        assert "Tu réponds au TÉLÉPHONE" in avant, avant
+        assert "mail_send → aucun" in avant, "mail_send est fermé au téléphone"
+        assert "web_search → aucun" not in avant, "web_search est permis au téléphone"
+        assert "firecrawl_search → web_search" in avant
+        au_bureau = _autour_du_cadre(_lire(outil, "email-ops").content)[0]
+        assert "TÉLÉPHONE" not in au_bureau
+
+    def test_la_configuration_servie_est_celle_de_la_trousse(self, vue, monkeypatch):
+        """/v1/config/set vide le cache de load_config : l'outil relisait
+        alors une autre configuration que celle de sa trousse, figée au
+        démarrage."""
+        import diapason.core.config as config_mod
+        import diapason.tools.skill_guide as guide
+
+        _, cfg = vue
+        avec_le_guide(["web_search"], cfg)
+        dans_la_trousse = SkillGuideTool()
+        coupee = SimpleNamespace(
+            skills=SimpleNamespace(
+                enabled=True,
+                skills_dir=cfg.skills.skills_dir,
+                sources=[SkillSourceConfig(source="ecc", enabled=False)],
+            )
+        )
+        monkeypatch.setattr(config_mod, "load_config", lambda *a, **k: coupee)
+        assert _lire(dans_la_trousse, "email-ops").success, (
+            "la trousse sert jusqu'à la relance : l'outil aussi"
+        )
+        monkeypatch.setattr(guide, "_VUE_DU_CHAT", None)
+        hors_du_chat = _lire(SkillGuideTool(), "email-ops")
+        assert not hors_du_chat.success, "sans trousse, la configuration du moment"
 
 
 class TestLeTelephoneLitLesMethodes:

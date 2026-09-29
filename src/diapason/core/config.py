@@ -1712,9 +1712,11 @@ class SkillSourceConfig:
     path: str = ""
     # 28/09/2026 : un interrupteur pour toute la source. `enabled = false`
     # retire l'outil skill_guide de la trousse du chat et lui fait refuser
-    # toute lecture, au redémarrage du service (load_config est en cache) ;
-    # les fichiers restent sur le disque. Même piège que `path` : sans le
-    # champ, la clé était perdue.
+    # toute lecture, au redémarrage du service : la trousse, et la
+    # configuration que l'outil sert, sont figées quand elle se construit
+    # (29/09/2026 : /v1/config/set vide le cache de load_config, pas la
+    # trousse). Les fichiers restent sur le disque. Même piège que `path` :
+    # sans le champ, la clé était perdue.
     enabled: bool = True
     # Pour « ecc », filter.names est une liste d'AUTORISATION de noms exacts
     # (jamais de joker) : un nom absent n'est ni importé ni servi.

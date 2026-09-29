@@ -158,7 +158,15 @@ La tête ne dit que ce qu'elle sait (29/09/2026) :
 - les outils cités sont relus dans le texte à chaque lecture, en plus du
   `.source` : la ligne des absents ne disparaît pas avec lui ;
 - une version, un commit ou une licence qui ne ressemblent pas à ce
-  qu'ils prétendent être deviennent « ? ».
+  qu'ils prétendent être deviennent « ? » ;
+- un outil cité est « absent » s'il n'est pas dans la trousse que le
+  modèle a RÉELLEMENT en main — celle du chat, vue du téléphone s'il y
+  répond —, pas seulement s'il n'est pas inscrit ; un équivalent absent de
+  la trousse n'est pas promis (`firecrawl_search → aucun`) ;
+- au téléphone, une ligne fixe : « Tu réponds au TÉLÉPHONE : ni courriel,
+  ni messages, ni fichiers, ni écran du Mac ne te sont ouverts ici ;
+  propose la méthode ou un texte, et n'annonce aucune action que tes outils
+  n'ont pas faite. » (email-ops y était servie pas à pas sans un mot.)
 
 Puis le cadre : `===== DÉBUT DU TEXTE IMPORTÉ #<jeton> … =====` et
 `===== FIN DU TEXTE IMPORTÉ #<jeton> =====`, où `<jeton>` (8 chiffres
@@ -293,10 +301,15 @@ chat garde ses autres outils).
 4. `launchctl kickstart -k gui/$(id -u)/com.diapason.serve` : la trousse est
    résolue une fois au démarrage.
 
-Couper : `enabled = false`, puis la relance du service. La configuration
-est lue une fois par processus (`load_config` est en cache) : au
-redémarrage, l'outil sort de la trousse ET refuse toute lecture ; avant, rien
-ne change. Les fichiers restent. Retirer une méthode : l'ôter de
+Couper : `enabled = false`, puis la relance du service. La trousse du chat
+se construit une fois (au préchauffage ou au premier message) et reste en
+cache ; l'outil sert la configuration qu'elle a lue à ce moment-là — pas
+celle du moment : `/v1/config/set` (dictée, mot d'éveil…) vide le cache de
+`load_config`, pas la trousse. Au redémarrage, l'outil sort de la trousse ET
+refuse toute lecture ; avant, rien ne change. (Avant le 29/09/2026, l'outil
+relisait `load_config()` à chaque appel : après un réglage de dictée, il
+restait dans la trousse mais refusait tout.) Les fichiers restent. Retirer
+une méthode : l'ôter de
 `filter.names` (elle devient « hors liste », jamais servie, au même
 redémarrage), puis `diapason skill remove <nom>` pour l'effacer du disque.
 À l'inverse, quand le guide est déjà dans la trousse, une méthode de la
