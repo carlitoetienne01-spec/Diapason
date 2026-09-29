@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -14,6 +15,35 @@ from diapason.skills.loader import discover_skills
 from diapason.skills.tool_adapter import SkillTool
 from diapason.skills.types import SkillManifest
 from diapason.tools._stubs import BaseTool, ToolExecutor
+
+LOGGER = logging.getLogger(__name__)
+
+# 28/09/2026: ECC skills reach a model through ONE tool, skill_guide, which
+# heads every reading with its provenance and says the text is a method,
+# never an order. A SkillTool per skill would hand the same text over with
+# neither — and add a schema per skill to the prefix of every agent built
+# by SystemBuilder.
+GUIDE_ONLY_SOURCES = frozenset({"ecc"})
+
+
+def _source_of(manifest: SkillManifest) -> str:
+    meta = manifest.metadata.get("diapason", {}) if manifest.metadata else {}
+    source = meta.get("source", "") if isinstance(meta, dict) else ""
+    return source if isinstance(source, str) else ""
+
+
+def _disabled_sources_from_config() -> set[str]:
+    try:
+        from diapason.core.config import load_config
+
+        sources = load_config().skills.sources
+    except Exception:  # noqa: BLE001 - discovery must not die on a config
+        return set()
+    return {
+        str(getattr(s, "source", ""))
+        for s in sources or []
+        if getattr(s, "enabled", True) is False
+    }
 
 
 class SkillManager:
@@ -38,6 +68,8 @@ class SkillManager:
         self._capability_policy = capability_policy
         self._skills: Dict[str, SkillManifest] = {}
         self._tool_executor: Optional[ToolExecutor] = None
+        # (name, kept source, ignored source) for every name seen twice.
+        self.collisions: List[tuple[str, str, str]] = []
         if overlay_dir is None:
             # Try to read from config first; fall back to the default
             # ~/.diapason/learning/skills/ if config can't be loaded.
@@ -62,7 +94,12 @@ class SkillManager:
     # Discovery
     # ------------------------------------------------------------------
 
-    def discover(self, paths: Optional[List[Path]] = None) -> None:
+    def discover(
+        self,
+        paths: Optional[List[Path]] = None,
+        *,
+        disabled_sources: Optional[set[str]] = None,
+    ) -> None:
         """Scan directories in order and register skills.
 
         First-seen name wins (workspace path listed first = highest precedence).
@@ -75,14 +112,37 @@ class SkillManager:
             Directories to scan.  If *None* or empty, no skills are loaded
             from disk — but ``_load_overlays()`` still runs (in case the
             caller had previously seeded ``self._skills`` directly).
+        disabled_sources:
+            Sources whose installed skills are skipped (``enabled = false``
+            in ``[[skills.sources]]``). Read from the config when *None*.
         """
         if paths:
+            if disabled_sources is None:
+                disabled_sources = _disabled_sources_from_config()
             for directory in paths:
                 manifests = discover_skills(directory)
                 for manifest in manifests:
-                    # First-seen wins: do not overwrite an already-registered skill
-                    if manifest.name not in self._skills:
+                    source = _source_of(manifest)
+                    if source and source in disabled_sources:
+                        continue
+                    # First-seen wins: do not overwrite an already-registered
+                    # skill. 28/09/2026: it won in silence — an ECC skill
+                    # could hide a Hermes one (or be hidden) without a word.
+                    kept = self._skills.get(manifest.name)
+                    if kept is None:
                         self._skills[manifest.name] = manifest
+                        continue
+                    collision = (
+                        manifest.name,
+                        _source_of(kept) or "local",
+                        source or "local",
+                    )
+                    self.collisions.append(collision)
+                    LOGGER.warning(
+                        "Skill name %r seen twice: the %s copy wins, "
+                        "the %s copy is ignored",
+                        *collision,
+                    )
 
             # Validate the dependency graph after loading skills
             if self._skills:
@@ -162,6 +222,8 @@ class SkillManager:
         tools: List[BaseTool] = []
 
         for manifest in self._skills.values():
+            if _source_of(manifest) in GUIDE_ONLY_SOURCES:
+                continue
             real_executor = executor or _NullToolExecutor()
             skill_exec = SkillExecutor(real_executor, bus=self._bus)
 
