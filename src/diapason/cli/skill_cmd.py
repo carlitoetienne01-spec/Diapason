@@ -332,15 +332,32 @@ def sync(
 
     # The ECC source reads its allow-list, path and switch from config.toml:
     # `sync ecc` without its [[skills.sources]] block has nothing to import.
-    if source == "ecc" or (not source and _ecc_configured(cfg)):
+    if source == "ecc":
         _sync_ecc(cfg, dry_run=dry_run, force=force, with_scripts=with_scripts)
-        if source == "ecc":
-            return
+        return
+    ecc_en_faute = False
+    if not source and _ecc_configured(cfg):
+        # 29/09/2026: every refusal of _sync_ecc raised SystemExit — a clone
+        # moved, an allow-list with a wildcard, or `--with-scripts` meant for
+        # a github source — and the other sources were never reached. Here
+        # the ecc part says its refusal, and the others still run.
+        if with_scripts:
+            console.print(
+                "[yellow]ecc : --with-scripts ne s'applique jamais à cette "
+                "source (plafond du 28/09/2026) ; ses méthodes se synchronisent "
+                "sans, les autres sources le reçoivent.[/yellow]"
+            )
+        try:
+            _sync_ecc(cfg, dry_run=dry_run, force=force, with_scripts=False)
+        except SystemExit as exc:
+            ecc_en_faute = exc.code not in (0, None)
     if dry_run:
         console.print(
             "[yellow]--dry-run n'est pris en charge que pour la source ecc : "
             "rien d'autre n'est synchronisé.[/yellow]"
         )
+        if ecc_en_faute:
+            raise SystemExit(1)
         return
 
     # Determine which sources to sync
@@ -361,6 +378,8 @@ def sync(
 
     if not source_configs:
         if _ecc_configured(cfg):
+            if ecc_en_faute:
+                raise SystemExit(1)
             return
         console.print(
             "[yellow]No sources to sync. "
@@ -425,6 +444,9 @@ def sync(
         total_installed += installed_count
 
     console.print(f"[green]Total installed: {total_installed}[/green]")
+    if ecc_en_faute:
+        console.print("[red]La source ecc est en faute (voir plus haut).[/red]")
+        raise SystemExit(1)
 
 
 # ---------------------------------------------------------------------------

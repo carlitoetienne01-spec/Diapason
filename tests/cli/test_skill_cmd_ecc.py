@@ -270,6 +270,71 @@ class TestUneCollisionEstSignaleeJamaisTue:
         assert "collision : « alpha » existe aussi dans la source hermes" in texte
 
 
+class TestUneFauteDEccNeBloquePasLesAutresSources:
+    """29/09/2026 : `diapason skill sync` sans nom de source passait d'abord
+    par _sync_ecc, dont chaque refus levait SystemExit (clone déplacé, joker
+    dans la liste, --with-scripts voulu pour une source github) : les autres
+    sources n'étaient jamais atteintes."""
+
+    @pytest.fixture
+    def deux_sources(self, banc, tmp_path, monkeypatch):
+        from diapason.cli import skill_cmd
+
+        depot, skills, _ = banc
+        config = tmp_path / "deux.toml"
+
+        def ecrire(chemin_ecc: Path) -> None:
+            config.write_text(
+                "[skills]\n"
+                f'skills_dir = "{skills}"\n'
+                "[[skills.sources]]\n"
+                'source = "ecc"\n'
+                f'path = "{chemin_ecc}"\n'
+                "[skills.sources.filter]\n"
+                'names = ["alpha"]\n'
+                "[[skills.sources]]\n"
+                'source = "hermes"\n',
+                encoding="utf-8",
+            )
+
+        monkeypatch.setenv("DIAPASON_CONFIG", str(config))
+        vus: list[str] = []
+
+        class Hermes:
+            def sync(self):
+                vus.append("sync")
+
+            def list_skills(self):
+                return []
+
+        vrai = skill_cmd._get_resolver
+        monkeypatch.setattr(
+            skill_cmd,
+            "_get_resolver",
+            lambda src, url="", path="": Hermes() if src == "hermes" else vrai(src),
+        )
+        return depot, skills, ecrire, vus
+
+    def test_un_clone_absent_n_empeche_pas_hermes(self, deux_sources, tmp_path):
+        _, _, ecrire, vus = deux_sources
+        ecrire(tmp_path / "nulle-part")
+        sortie = _lancer("sync")
+        assert vus == ["sync"], f"hermes n'a pas été synchronisée : {sortie.output}"
+        assert "Pas de dossier skills/" in sortie.output, "la faute ecc se dit"
+        assert sortie.exit_code == 1, "la faute ecc reste visible dans le code"
+
+    def test_with_scripts_pour_les_autres_n_arrete_pas_ecc(self, deux_sources):
+        depot, skills, ecrire, vus = deux_sources
+        ecrire(depot)
+        sortie = _lancer("sync", "--with-scripts")
+        assert sortie.exit_code == 0, sortie.output
+        assert vus == ["sync"]
+        assert (skills / "ecc" / "alpha" / "SKILL.md").exists()
+        assert not (skills / "ecc" / "alpha" / "scripts").exists(), (
+            "--with-scripts n'atteint jamais ecc"
+        )
+
+
 class TestLaRechercheNeRenvoiePasVersUnRefus:
     def test_la_recherche_ecc_indique_la_liste_pas_install(self, banc):
         """`install ecc:<nom>` est refusé : la recherche ne doit pas y envoyer."""
