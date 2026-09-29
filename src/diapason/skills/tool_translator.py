@@ -43,7 +43,13 @@ class ToolTranslator:
         self,
         translation_table: Dict[str, str] | None = None,
     ) -> None:
-        self._table = dict(translation_table or TOOL_TRANSLATION)
+        # 28/09/2026: `translation_table or TOOL_TRANSLATION` read an empty
+        # table as "no table given" — ToolTranslator({}) still rewrote
+        # "Write a failing test" into "file_write a failing test". An empty
+        # table is the only way to ask for no translation at all.
+        if translation_table is None:
+            translation_table = TOOL_TRANSLATION
+        self._table = dict(translation_table)
         # Word-boundary pattern matching any external name
         names = sorted(self._table.keys(), key=len, reverse=True)
         if names:

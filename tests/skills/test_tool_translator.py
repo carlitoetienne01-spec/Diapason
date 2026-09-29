@@ -79,3 +79,31 @@ class TestAllowedToolsTranslation:
         translator = ToolTranslator()
         new_field, untranslated = translator.translate_allowed_tools("Bash UnknownTool")
         assert "UnknownTool" in untranslated
+
+
+class TestUneTableVideNeTraduitRien:
+    """28/09/2026 : ``ToolTranslator({})`` retombait sur la table complète
+    (``translation_table or TOOL_TRANSLATION``). Mesuré sur les SKILL.md
+    d'ECC : « Write a failing test » devenait « file_write a failing test »,
+    ``public async Task<User?>`` devenait ``public async
+    delegate_agent<User?>`` et ``Write-Host`` devenait ``file_write-Host``.
+    Une table vide est le seul moyen de demander « aucune traduction »."""
+
+    def test_la_prose_et_le_code_restent_intacts(self):
+        corps = (
+            "RED: Write a failing test.\n"
+            "public async Task<User?> Get() {}\n"
+            "Write-Host 'ok'\n"
+            "| Task | Command |\n"
+        )
+        nouveau, non_traduits = ToolTranslator({}).translate_markdown(corps)
+        assert nouveau == corps, "une table vide ne doit réécrire aucun mot"
+        assert non_traduits == [], "sans table, aucun outil n'est réputé manquant"
+
+    def test_le_champ_allowed_tools_reste_intact(self):
+        champ, _ = ToolTranslator({}).translate_allowed_tools("Bash Read")
+        assert champ == "Bash Read", "une table vide ne traduit pas allowed-tools"
+
+    def test_sans_argument_la_table_complete_s_applique_encore(self):
+        nouveau, _ = ToolTranslator().translate_markdown("Use the Bash tool.")
+        assert "shell_exec" in nouveau, "le défaut des autres sources ne change pas"
