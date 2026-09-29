@@ -1701,10 +1701,22 @@ class CompressionConfig:
 
 @dataclass(slots=True)
 class SkillSourceConfig:
-    """Configuration for a single skill source (Hermes, OpenClaw, GitHub)."""
+    """Configuration for a single skill source (Hermes, OpenClaw, GitHub, ECC)."""
 
-    source: str = ""  # "hermes", "openclaw", or "github"
+    source: str = ""  # "hermes", "openclaw", "github" or "ecc"
     url: str = ""  # required when source = "github"
+    # 28/09/2026 : le clone LOCAL d'une source lue sans réseau (« ecc »,
+    # skills/sources/ecc.py). Sans ce champ, _apply_toml_section jetait la
+    # clé `path` en silence (test hasattr) : la source retombait sur son
+    # chemin par défaut sans que rien ne le dise.
+    path: str = ""
+    # 28/09/2026 : un interrupteur pour toute la source. `enabled = false`
+    # retire l'outil skill_guide de la trousse du chat au redémarrage et
+    # ferme la lecture tout de suite ; les fichiers restent sur le disque.
+    # Même piège que `path` : sans le champ, la clé était perdue.
+    enabled: bool = True
+    # Pour « ecc », filter.names est une liste d'AUTORISATION de noms exacts
+    # (jamais de joker) : un nom absent n'est ni importé ni servi.
     filter: Dict[str, Any] = field(default_factory=dict)
     auto_update: bool = False
 

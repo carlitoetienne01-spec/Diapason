@@ -76,3 +76,37 @@ class TestSkillsConfigWithSources:
                 auto_update=True,
             ),
         ]
+
+
+class TestLaSourceEccGardeSesClesAuChargement:
+    """28/09/2026 : _apply_toml_section ignore EN SILENCE une clé que le
+    dataclass ne porte pas (test hasattr). `path` et `enabled` d'une source
+    locale étaient donc perdus : la source retombait sur ses défauts sans
+    un mot, et `enabled = false` ne coupait rien (§5)."""
+
+    def test_path_enabled_et_filter_names_survivent_au_chargement(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        monkeypatch.setenv("DIAPASON_HOME", str(tmp_path / "home"))
+        toml_file = tmp_path / "config.toml"
+        toml_file.write_text(
+            "[[skills.sources]]\n"
+            'source = "ecc"\n'
+            'path = "~/Projets/ECC"\n'
+            "enabled = false\n"
+            "[skills.sources.filter]\n"
+            'names = ["research-ops", "literature-review"]\n'
+        )
+
+        load_config.cache_clear()
+        try:
+            cfg = load_config(toml_file)
+        finally:
+            load_config.cache_clear()
+
+        (src,) = cfg.skills.sources
+        assert src.path == "~/Projets/ECC", "la clé path a été jetée en silence"
+        assert src.enabled is False, "la clé enabled a été jetée en silence"
+        assert src.filter == {"names": ["research-ops", "literature-review"]}, (
+            "la liste d'autorisation doit arriver telle quelle"
+        )
