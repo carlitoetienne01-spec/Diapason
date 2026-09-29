@@ -167,6 +167,32 @@ class TestUneMethodeImporteeAtteintLeModeleDuChat:
             "le texte de la méthode n'a pas atteint le modèle"
         )
 
+    def test_importer_apres_la_trousse_ne_se_dit_pas_atteint(
+        self, configuration, tmp_path
+    ):
+        """29/09/2026 : la trousse est figée à sa construction. Construite
+        avec un dossier de méthodes vide, puis les méthodes importées : la
+        route disait reachedBy « skill_guide » alors que le chat n'avait pas
+        l'outil jusqu'à la relance (§100)."""
+        from diapason.server.routes import _chat_tooling
+
+        methode = tmp_path / "skills" / "ecc" / "article-writing"
+        cachee = tmp_path / "article-writing.cachee"
+        methode.rename(cachee)
+        config = configuration()
+        app = create_app(_moteur([]), "test-model", config=config)
+        outils, _ = _chat_tooling(app.state, config)
+        assert NOM not in [o.spec.name for o in outils], "rien à lire au démarrage"
+
+        cachee.rename(methode)  # l'import, après la construction de la trousse
+        reponse = TestClient(app).get("/v1/skills").json()
+        entree = {s["name"]: s for s in reponse["skills"]}["article-writing"]
+        assert entree["active"] is True, "la méthode est sur le disque et autorisée"
+        assert entree["reachedBy"] is None, (
+            "la trousse vivante n'a pas skill_guide : la route ne le prétend pas"
+        )
+        assert entree["pendingRestart"] is True
+
     def test_source_coupee_l_outil_n_est_plus_propose(self, configuration):
         appels: list = []
         _demander(configuration(enabled=False), appels)

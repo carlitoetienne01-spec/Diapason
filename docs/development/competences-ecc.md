@@ -51,8 +51,17 @@ résultat d'outil → second tour du modèle
 ```
 
 Et à côté : `GET /v1/skills` lit le disque (hors de la boucle) et rend, par
-compétence, `name`, `source`, `commit`, `origin`, `active`, `reachedBy`
-(`skill_guide` pour ecc) et `allowListed`.
+compétence, `name`, `source`, `commit`, `origin`, `active`, `reachedBy`,
+`allowListed` et, pour ecc, `pendingRestart` ; plus `chatToolkit`
+(`built` / `notBuilt`). `reachedBy` vaut `skill_guide` seulement si la
+trousse VIVANTE du chat (`app.state._chat_tooling_cache`) contient l'outil :
+une méthode active sur le disque alors que la trousse construite n'a pas le
+guide dit `pendingRestart: true`, et tant que la trousse n'est pas construite
+rien n'est promis. C'est le champ à lire pour vérifier le serveur vivant —
+une trousse construite dans un autre processus ne prouve rien.
+(Avant le 29/09/2026, `reachedBy` se déduisait de la configuration et du
+disque : la route disait « skill_guide » pour huit méthodes importées après
+le démarrage, que ni le chat ni le téléphone ne voyaient.)
 
 Ce qui ne passe **pas** par là, exprès :
 
