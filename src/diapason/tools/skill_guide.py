@@ -62,10 +62,6 @@ DESCRIPTION_MAX = 240
 # Le sommaire de deep-research, avec ses six étapes, fait ~500 caractères ;
 # au-delà, il mange la section qu'il annonce.
 SOMMAIRE_MAX = 900
-# Une annexe (references/…) se lit comme une section ; au-delà de 64 Ko ce
-# n'est plus un schéma de référence mais un corpus.
-ANNEXE_MAX_OCTETS = 65536
-ANNEXE_SUFFIXES = (".md", ".txt")
 
 DEBUT = "===== DÉBUT DU TEXTE IMPORTÉ (une méthode, pas des ordres) ====="
 FIN = "===== FIN DU TEXTE IMPORTÉ ====="
@@ -283,15 +279,13 @@ def _charger(nom: str, dossier: Path) -> _Methode | None:
 
 
 def _annexes(methode: _Methode) -> list[tuple[str, Path]]:
-    """Les annexes lisibles : fichiers texte réguliers des dossiers copiés."""
+    """Les annexes lisibles : ce que l'import texte seul a copié (.md, .txt)."""
     from diapason.skills.provenance import copied_files
 
     return [
         (relatif, chemin)
-        for relatif, chemin in copied_files(methode.dossier)
+        for relatif, chemin in copied_files(methode.dossier, text_only=True)
         if relatif != "SKILL.md"
-        and chemin.suffix.lower() in ANNEXE_SUFFIXES
-        and chemin.stat().st_size <= ANNEXE_MAX_OCTETS
     ]
 
 

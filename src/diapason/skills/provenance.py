@@ -23,6 +23,15 @@ from pathlib import Path
 # --with-scripts). The fingerprint covers exactly what is copied.
 COPIED_SUBDIRS = ("references", "assets", "templates")
 
+# 29/09/2026: for a source imported "without its scripts" (ECC), the ceiling
+# only named scripts/. references/, assets/ and templates/ were copied
+# whole, exec bits included — ECC 5064474 already ships
+# skills/manim-video/assets/network_graph_scene.py. From such a source only
+# these text files are copied (and served as annexes); the rest is listed
+# as absent. 64 KiB: past that, an annex is a corpus, not a reference sheet.
+TEXT_ANNEX_SUFFIXES = (".md", ".txt")
+TEXT_ANNEX_MAX_BYTES = 65536
+
 
 def main_file(skill_dir: Path) -> Path | None:
     """The skill's markdown file, if it is a regular file (never a symlink)."""
@@ -33,12 +42,24 @@ def main_file(skill_dir: Path) -> Path | None:
     return None
 
 
-def copied_files(skill_dir: Path) -> list[tuple[str, Path]]:
+def is_text_annex(path: Path) -> bool:
+    """A small .md or .txt file: what a text-only source may copy."""
+    try:
+        return (
+            path.suffix.lower() in TEXT_ANNEX_SUFFIXES
+            and path.stat().st_size <= TEXT_ANNEX_MAX_BYTES
+        )
+    except OSError:
+        return False
+
+
+def copied_files(skill_dir: Path, *, text_only: bool = False) -> list[tuple[str, Path]]:
     """(relative posix path, file) for SKILL.md and the always-copied subdirs.
 
     Symlinks are left out, file or directory: a link in ``references/``
     pointing at ``~/.ssh`` would otherwise be copied as its target's
-    content, then served to the model as an annex.
+    content, then served to the model as an annex. With *text_only*, only
+    :func:`is_text_annex` files of the subdirectories count.
     """
     out: list[tuple[str, Path]] = []
     main = main_file(skill_dir)
@@ -54,19 +75,22 @@ def copied_files(skill_dir: Path) -> list[tuple[str, Path]]:
                 path = Path(current) / name
                 if path.is_symlink() or not path.is_file():
                     continue
+                if text_only and not is_text_annex(path):
+                    continue
                 out.append((path.relative_to(skill_dir).as_posix(), path))
     out.sort(key=lambda item: item[0])
     return out
 
 
-def fingerprint(skill_dir: Path) -> str:
+def fingerprint(skill_dir: Path, *, text_only: bool = False) -> str:
     """sha256 over SKILL.md and the copied subdirectories, path by path.
 
     The same function reads the upstream directory and the imported copy:
     equal fingerprints mean equal content, whatever the file dates say.
+    Both sides must pass the same *text_only*.
     """
     digest = hashlib.sha256()
-    for relative, path in copied_files(skill_dir):
+    for relative, path in copied_files(skill_dir, text_only=text_only):
         digest.update(relative.encode("utf-8"))
         digest.update(b"\0")
         digest.update(hashlib.sha256(path.read_bytes()).digest())
@@ -126,8 +150,11 @@ def render_toml(fields: Mapping[str, object]) -> str:
 
 __all__ = [
     "COPIED_SUBDIRS",
+    "TEXT_ANNEX_MAX_BYTES",
+    "TEXT_ANNEX_SUFFIXES",
     "copied_files",
     "fingerprint",
+    "is_text_annex",
     "main_file",
     "render_toml",
     "toml_string",

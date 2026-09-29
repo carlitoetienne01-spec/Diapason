@@ -83,6 +83,17 @@ Ce qui ne passe **pas** par là, exprès :
   que Diapason n'a pas. Le `SKILL.md` est copié à l'octet.
 - **Scripts refusés.** `--with-scripts` est refusé pour ecc, par la CLI et
   par l'importeur : un plafond, pas un défaut.
+- **Annexes : du texte seulement.** Dans `references/`, `assets/` et
+  `templates/`, seuls les fichiers `.md` et `.txt` de 64 Kio au plus sont
+  copiés, sans bit d'exécution ; le reste (`assets/setup.sh`, une image, un
+  `.py`) est listé dans `ressources_absentes`. Avant le 29/09/2026, le
+  plafond ne visait que `scripts/` : un `assets/setup.sh` exécutable aurait
+  été copié pendant que le `.source` disait `scripts_imported = false`.
+- **Un fichier ignoré par git se dit.** L'import copie l'arbre de travail du
+  clone ; `git status` y est lu avec `--ignored`, et un fichier ignoré dans
+  le dossier d'une compétence (hors `.DS_Store`) la rend « modifiée
+  localement ». Sans cela, un `references/logs/notes.md` ignoré aurait été
+  servi sous « commit <HEAD> ».
 - Liens symboliques jamais copiés ; nom de compétence limité à un segment de
   chemin (un `name: ..` aurait fait de `rmtree` un désastre).
 - `.source` en TOML échappé : dépôt, chemin, commit, dépôt modifié, version,

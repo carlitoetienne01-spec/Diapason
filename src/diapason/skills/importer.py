@@ -9,7 +9,8 @@ Steps performed by ``import_skill``:
    outright for sources listed in ``NO_SCRIPT_SOURCES``).
 4. Write to disk at <target_root>/<source>/<name>/:
    - SKILL.md (translated, or verbatim)
-   - references/, assets/, templates/ (always copied, symlinks left out)
+   - references/, assets/, templates/ (always copied, symlinks left out;
+     only small .md/.txt files, without exec bits, for NO_SCRIPT_SOURCES)
    - scripts/ (only if approved)
    - .source provenance file (escaped TOML)
 5. Return ImportResult with status, warnings, translated/missing tools.
@@ -30,6 +31,7 @@ from diapason.core.paths import get_config_dir
 from diapason.skills.parser import SkillParser
 from diapason.skills.provenance import (
     COPIED_SUBDIRS,
+    copied_files,
     fingerprint,
     main_file,
     render_toml,
@@ -54,7 +56,13 @@ VERBATIM_SOURCES = frozenset({"ecc"})
 # whoever asks (CLI flag, config, a future route). Carlito's decision of
 # 28/09/2026: ECC is tied to Diapason without its scripts. "Restrict, never
 # widen" — a restriction a caller can lift is decorative.
+# 29/09/2026: the ceiling only named scripts/ — assets/setup.sh, exec bit
+# and `curl … | sh` included, was copied whole while .source said
+# scripts_imported = false. From these sources only small .md/.txt files
+# are copied, without exec bits (provenance.copied_files, text_only).
 NO_SCRIPT_SOURCES = frozenset({"ecc"})
+# rw-r--r--: what a copied text file gets, whatever its upstream mode.
+_TEXT_MODE = 0o644
 
 # Keys the importer owns in .source; a resolver's provenance cannot set them.
 _RESERVED_KEYS = frozenset(
@@ -237,11 +245,23 @@ class SkillImporter:
             new_md = self._render_skill_md(frontmatter, translated_body)
             (target_dir / "SKILL.md").write_text(new_md, encoding="utf-8")
 
-        # 3b. Always-copied subdirs
-        for subdir in COPIED_SUBDIRS:
-            src_sub = resolved.path / subdir
-            if src_sub.is_dir() and not src_sub.is_symlink():
-                shutil.copytree(src_sub, target_dir / subdir, ignore=_ignore_symlinks)
+        # 3b. Always-copied subdirs — text files only for a no-script source
+        if resolved.source in NO_SCRIPT_SOURCES:
+            os.chmod(target_dir / "SKILL.md", _TEXT_MODE)
+            for relative, path in copied_files(resolved.path, text_only=True):
+                if relative == "SKILL.md":
+                    continue
+                destination = target_dir / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(path, destination)
+                os.chmod(destination, _TEXT_MODE)
+        else:
+            for subdir in COPIED_SUBDIRS:
+                src_sub = resolved.path / subdir
+                if src_sub.is_dir() and not src_sub.is_symlink():
+                    shutil.copytree(
+                        src_sub, target_dir / subdir, ignore=_ignore_symlinks
+                    )
 
         # 3c. Scripts (gated by with_scripts)
         scripts_src = resolved.path / "scripts"
@@ -321,10 +341,11 @@ class SkillImporter:
                     value, (str, bool, int, list, tuple, type(None))
                 ):
                     fields[str(key)] = value
+        text_only = resolved.source in NO_SCRIPT_SOURCES
         fields.update(
             {
-                "sha256_source": fingerprint(resolved.path),
-                "sha256_importe": fingerprint(target_dir),
+                "sha256_source": fingerprint(resolved.path, text_only=text_only),
+                "sha256_importe": fingerprint(target_dir, text_only=text_only),
                 "installed_at": installed_at,
                 "traduit": translated,
                 "translated_tools": list(result.translated_tools),

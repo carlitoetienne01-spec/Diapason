@@ -476,7 +476,7 @@ def _ecc_status(upstream, installed_dir: Path | None) -> str:
         return "nouvelle"
     prov = _read_dot_source(installed_dir)
     parts = []
-    if fingerprint(installed_dir) != prov.get("sha256_importe"):
+    if fingerprint(installed_dir, text_only=True) != prov.get("sha256_importe"):
         parts.append("copie altérée")
     if upstream.sidecar_data.get("fingerprint") != prov.get("sha256_source"):
         parts.append(

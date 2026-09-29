@@ -38,7 +38,12 @@ from typing import Any
 
 import yaml
 
-from diapason.skills.provenance import COPIED_SUBDIRS, fingerprint, main_file
+from diapason.skills.provenance import (
+    COPIED_SUBDIRS,
+    copied_files,
+    fingerprint,
+    main_file,
+)
 from diapason.skills.sources.base import ResolvedSkill, SourceResolver
 
 LOGGER = logging.getLogger(__name__)
@@ -118,13 +123,24 @@ class RepoState:
     # Paths (relative to the repo) that `git status` reports; None when git
     # could not be asked.
     dirty: frozenset[str] | None = None
+    # Paths git IGNORES (.gitignore). 29/09/2026: the import copies the
+    # working tree, and `git status` without --ignored never saw an ignored
+    # file — references/logs/notes.md was copied, then served under
+    # « commit <HEAD> » with depot_modifie = false.
+    ignored: frozenset[str] = frozenset()
     git_error: str = ""
 
     def skill_dirty(self, dir_name: str) -> bool | None:
         if self.dirty is None:
             return None
         prefix = f"skills/{dir_name}/"
-        return any(p.startswith(prefix) for p in self.dirty)
+        if any(p.startswith(prefix) for p in self.dirty):
+            return True
+        # Finder's .DS_Store is ignored AND never copied: it changes nothing.
+        return any(
+            p.startswith(prefix) and p.rstrip("/").rsplit("/", 1)[-1] != ".DS_Store"
+            for p in self.ignored
+        )
 
     def dirty_outside_skills(self) -> int:
         if self.dirty is None:
@@ -207,6 +223,7 @@ class EccResolver(SourceResolver):
                 "competences_citees": cited_skills(entry.body, known - entry.names),
                 "ressources_absentes": absent_resources(entry.path),
             }
+            annexes = annex_texts(entry.path)
             results.append(
                 ResolvedSkill(
                     name=name,
@@ -220,8 +237,8 @@ class EccResolver(SourceResolver):
                         "dir": entry.dir_name,
                         "tokens": estimated_tokens(entry.raw),
                         "sections": count_sections(entry.body),
-                        "flags": dependency_flags(entry.body),
-                        "fingerprint": fingerprint(entry.path),
+                        "flags": dependency_flags("\n".join([entry.body, *annexes])),
+                        "fingerprint": fingerprint(entry.path, text_only=True),
                     },
                 )
             )
@@ -281,9 +298,15 @@ class EccResolver(SourceResolver):
         try:
             state.head = self._git("rev-parse", "HEAD").strip()
             porcelain = self._git(
-                "status", "--porcelain=v1", "-z", "--untracked-files=all"
+                "status",
+                "--porcelain=v1",
+                "-z",
+                "--untracked-files=all",
+                "--ignored=matching",
             )
-            state.dirty = frozenset(_parse_porcelain_z(porcelain))
+            entries = _parse_porcelain_z(porcelain)
+            state.dirty = frozenset(p for code, p in entries if code != "!!")
+            state.ignored = frozenset(p for code, p in entries if code == "!!")
         except (OSError, subprocess.SubprocessError) as exc:
             state.git_error = type(exc).__name__
             LOGGER.warning("ECC clone %s: git unavailable (%s)", self._repo, exc)
@@ -466,16 +489,46 @@ def dependency_flags(body: str) -> list[str]:
 
 
 def absent_resources(skill_dir: Path) -> list[str]:
-    """What the skill directory holds and the import will NOT copy."""
+    """What the skill directory holds and the import will NOT copy.
+
+    ECC is imported text-only: inside references/, assets/ and templates/,
+    a script, an image or a link is listed here too (« assets/setup.sh »),
+    so the dry run and .source say what stayed behind.
+    """
+    copied = {rel for rel, _ in copied_files(skill_dir, text_only=True)}
     out = []
     for child in sorted(skill_dir.iterdir()):
         if child.name == ".DS_Store":
             continue
-        if child.name in ("SKILL.md", "skill.md") or child.name in COPIED_SUBDIRS:
-            if not child.is_symlink():
-                continue
+        if child.name in ("SKILL.md", "skill.md") and not child.is_symlink():
+            continue
+        if child.name in COPIED_SUBDIRS and child.is_dir() and not child.is_symlink():
+            for current, dirs, files in os.walk(child, followlinks=False):
+                liens = [d for d in dirs if _is_link(current, d)]
+                for name in sorted([*files, *liens]):
+                    rel = (Path(current) / name).relative_to(skill_dir).as_posix()
+                    if name != ".DS_Store" and rel not in copied:
+                        out.append(rel)
+            continue
         out.append(child.name + ("/" if child.is_dir() else ""))
     return out
+
+
+def _is_link(directory: str, name: str) -> bool:
+    return os.path.islink(os.path.join(directory, name))
+
+
+def annex_texts(skill_dir: Path) -> list[str]:
+    """The text of the annexes a text-only import copies (and serves)."""
+    texts = []
+    for relative, path in copied_files(skill_dir, text_only=True):
+        if relative == "SKILL.md":
+            continue
+        try:
+            texts.append(path.read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            continue
+    return texts
 
 
 # ----------------------------------------------------------------------
@@ -635,9 +688,10 @@ def _license_of(repo: Path) -> str:
     return "non reconnue"
 
 
-def _parse_porcelain_z(out: str) -> list[str]:
+def _parse_porcelain_z(out: str) -> list[tuple[str, str]]:
+    """(two-letter status, path) for every entry of ``status --porcelain -z``."""
     records = out.split("\0")
-    paths: list[str] = []
+    paths: list[tuple[str, str]] = []
     index = 0
     while index < len(records):
         record = records[index]
@@ -645,11 +699,11 @@ def _parse_porcelain_z(out: str) -> list[str]:
         if len(record) < 4:
             continue
         status, path = record[:2], record[3:]
-        paths.append(path)
+        paths.append((status, path))
         # A rename or copy is followed by its original path.
         if "R" in status or "C" in status:
             if index < len(records) and records[index]:
-                paths.append(records[index])
+                paths.append((status, records[index]))
             index += 1
     return paths
 
@@ -663,6 +717,7 @@ __all__ = [
     "SOURCE_NAME",
     "absent_resources",
     "allowed_names",
+    "annex_texts",
     "cited_skills",
     "cited_tools",
     "count_sections",
