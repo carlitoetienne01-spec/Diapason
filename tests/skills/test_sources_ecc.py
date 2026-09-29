@@ -51,10 +51,14 @@ def _git(depot: Path, *args: str) -> None:
     )
 
 
-@pytest.fixture
-def depot(tmp_path: Path) -> Path:
-    """Un faux clone ECC : canoniques sous skills/, copies ailleurs."""
-    depot = tmp_path / "ECC"
+@pytest.fixture(scope="module")
+def _depot_modele(tmp_path_factory) -> Path:
+    """Un faux clone ECC : canoniques sous skills/, copies ailleurs.
+
+    Construit UNE fois par module puis copié pour chaque test : trois
+    processus git par test, sous `-n auto`, suffisaient à retarder les tests
+    de réactivité des autres ouvriers (délais de 2 s)."""
+    depot = tmp_path_factory.mktemp("modele") / "ECC"
     skills = depot / "skills"
     _skill(
         skills,
@@ -95,6 +99,13 @@ def depot(tmp_path: Path) -> Path:
     _git(depot, "add", ".")
     _git(depot, "commit", "-qm", "init")
     return depot
+
+
+@pytest.fixture
+def depot(tmp_path: Path, _depot_modele: Path) -> Path:
+    copie = tmp_path / "ECC"
+    shutil.copytree(_depot_modele, copie, symlinks=True)
+    return copie
 
 
 class TestLaSourceEccNeLitQueLesCanoniques:

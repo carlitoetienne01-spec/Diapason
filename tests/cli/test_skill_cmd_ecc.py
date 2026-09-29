@@ -40,9 +40,12 @@ def _ecrire(depot: Path, dossier: str, nom: str, corps: str) -> None:
     )
 
 
-@pytest.fixture
-def banc(tmp_path: Path, monkeypatch):
-    depot = tmp_path / "ECC"
+@pytest.fixture(scope="module")
+def _depot_modele(tmp_path_factory) -> Path:
+    """Le dépôt git est construit UNE fois par module, puis copié : trois
+    processus git par test, sous `-n auto`, suffisaient à retarder les tests
+    de réactivité des autres ouvriers (délais de 2 s)."""
+    depot = tmp_path_factory.mktemp("modele") / "ECC"
     _ecrire(
         depot,
         "alpha",
@@ -58,6 +61,13 @@ def banc(tmp_path: Path, monkeypatch):
     _git(depot, "init", "-q")
     _git(depot, "add", ".")
     _git(depot, "commit", "-qm", "init")
+    return depot
+
+
+@pytest.fixture
+def banc(tmp_path: Path, monkeypatch, _depot_modele: Path):
+    depot = tmp_path / "ECC"
+    shutil.copytree(_depot_modele, depot, symlinks=True)
 
     skills = tmp_path / "skills"
     config = tmp_path / "config.toml"
