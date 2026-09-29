@@ -20,6 +20,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import re
 import secrets
 import sqlite3
 import time
@@ -125,6 +126,28 @@ def _clean(value: Any, *, field: str, maximum: int, required: bool = True) -> st
     if len(text) > maximum:
         raise MeshError(f"{field} est trop long.")
     return text
+
+
+# What a device id may be made of. Until 28/09/2026 enrolment only capped the
+# length (120), so `redeem_pairing(device_id="dev\nERROR forged line")` was
+# accepted and `find()` handed the newline back: every log line naming that
+# device (the tailnet gateway's session-closed WARNING, among others) forged
+# a second one. Both formats in the wild fit this set: `dev_<24 hex>`, the
+# key fingerprint minted by `mesh/identity.py` and by the Dart client
+# (`MeshIdentity.fingerprint`), and the legacy `mac-<16 hex>` Succès stamped
+# in vie_meta, which a Mac keeps for continuity. The dot and the colon are
+# spare room, not a format anyone writes today.
+_DEVICE_ID_RE = re.compile(r"[A-Za-z0-9_.:-]{1,120}")
+
+
+def _clean_device_id(value: Any) -> str:
+    device_id = _clean(value, field="L'identifiant d'appareil", maximum=120)
+    if not _DEVICE_ID_RE.fullmatch(device_id):
+        raise MeshError(
+            "L'identifiant d'appareil ne peut contenir que des lettres sans "
+            "accent, des chiffres et les signes _ . : -"
+        )
+    return device_id
 
 
 class DeviceRegistry:
@@ -240,7 +263,7 @@ class DeviceRegistry:
         """
         if not token.startswith("diapason_mesh_"):
             raise MeshError("Ce code d'appairage est invalide.")
-        device_id = _clean(device_id, field="L'identifiant d'appareil", maximum=120)
+        device_id = _clean_device_id(device_id)
         name = _clean(name, field="Le nom de l'appareil", maximum=80)
         platform = _clean(platform, field="La plateforme", maximum=40).upper()
         device_type = (device_type or "DESKTOP").strip().upper()
@@ -370,7 +393,7 @@ class DeviceRegistry:
         # succes_meta) au lieu du « dev_… » dérivé de sa clé. Exiger le
         # préfixe ici rejetait la machine de développement elle-même — un
         # test avec un identifiant fabriqué ne l'aurait jamais montré.
-        device_id = _clean(device_id, field="L'identifiant d'appareil", maximum=120)
+        device_id = _clean_device_id(device_id)
         stamp = now_ms()
         with self._connect() as conn:
             existing = conn.execute(
