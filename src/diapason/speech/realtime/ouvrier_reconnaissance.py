@@ -16,6 +16,18 @@ from pathlib import Path
 # (~0,6 s) ; au-delà on laisse la place à la phrase entière. Ce budget
 # coopératif ne peut pas interrompre un noyau Metal déjà lancé.
 BUDGET_BROUILLON_S = 1.0
+_INVITE_MAX = 240
+
+
+def options_de_requete(requete: dict, *, provisoire: bool, limite: int) -> dict:
+    """Options Whisper. L'amorce kreyòl passe, une chaîne trop longue non."""
+    options = {"temperature": 0.0, "sample_len": limite} if provisoire else {}
+    invite = requete.get("prompt")
+    if isinstance(invite, str):
+        invite = invite.strip()
+        if invite and len(invite) <= _INVITE_MAX:
+            options["initial_prompt"] = invite
+    return options
 
 
 class BrouillonTropLent(Exception):
@@ -102,7 +114,7 @@ def principal() -> None:
             # RIEN et on ne déclare surtout pas la phrase complète.
             provisoire = requete.get("partial") is True
             limite = min(448, 16 + math.ceil(len(audio) / 16000 * 16))
-            options = {"temperature": 0.0, "sample_len": limite} if provisoire else {}
+            options = options_de_requete(requete, provisoire=provisoire, limite=limite)
             try:
                 with borner_brouillon(provisoire):
                     resultat = transcribe(

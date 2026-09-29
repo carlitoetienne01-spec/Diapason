@@ -63,6 +63,9 @@ def test_le_transport_garde_la_langue_et_refuse_le_faux_merci(monkeypatch):
         assert oreille.transcrire(b"\0\0") == "Diapason, dis-moi trois phrases."
         trame = json.loads(entree.getvalue())
         assert trame["language"] == "fr"
+        assert "mwen" in trame["prompt"].lower(), (
+            "l'oreille doit pouvoir écrire le kreyòl"
+        )
         assert trame["partial"] is False, "la finale garde le décodage complet"
         assert base64.b64decode(trame["audio"]) == b"\0" * 4
         oreille.transcrire(b"\0\0", provisoire=True)

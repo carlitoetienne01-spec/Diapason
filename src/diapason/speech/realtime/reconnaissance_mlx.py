@@ -15,6 +15,7 @@ from pathlib import Path
 
 from diapason.core.paths import get_config_dir
 from diapason.speech.faster_whisper import est_hallucination
+from diapason.speech.langues import INVITE_OREILLE
 
 
 def dossier_moteur() -> Path:
@@ -161,6 +162,9 @@ class ReconnaissanceMLX:
                     "audio": base64.b64encode(audio).decode(),
                     "language": self.langue,
                     "partial": provisoire,
+                    # 29/09/2026 : language="fr" écrivait « mwen » en français.
+                    # L'amorce rend les graphies kreyòl disponibles.
+                    "prompt": INVITE_OREILLE,
                 }
                 self._processus.stdin.write((json.dumps(trame) + "\n").encode())
                 self._processus.stdin.flush()
