@@ -1587,7 +1587,9 @@ class TestUnFluxHttpEstCoupeAussi:
         assert duree < 2, f"la coupure a pris {duree:.2f} s"
 
 
-def _app_d_un_flux_long(requete: str | None = "requete-du-flux-long"):
+def _app_d_un_flux_long(
+    requete: str | None = "requete-du-flux-long", chemin: str = "/v1/models"
+):
     """Un SSE du chat qui dure 4 s, pour être coupé en route."""
     import asyncio
 
@@ -1595,7 +1597,7 @@ def _app_d_un_flux_long(requete: str | None = "requete-du-flux-long"):
 
     app = FastAPI()
 
-    @app.get("/v1/models")
+    @app.get(chemin)
     async def _flux():
         async def morceaux():
             debut = time.monotonic()
@@ -1618,7 +1620,7 @@ class TestLaFermetureSeLitDansLeJournal:
 
     _JOURNAL = "diapason.server.passerelle_tailnet"
 
-    def _couper_en_route(self, monde, caplog, agir, app=None) -> list:
+    def _couper_en_route(self, monde, caplog, agir, app=None, portee=None) -> list:
         caplog.set_level(logging.INFO, logger=self._JOURNAL)
         passerelle = monde.passerelle(app or _app_d_un_flux_long(), intervalle_s=0.05)
         client = TestClient(passerelle, base_url=ICI)
@@ -1626,11 +1628,20 @@ class TestLaFermetureSeLitDansLeJournal:
         preparer = agir(jeton)
         corps, _ = _pilote_asgi(
             passerelle,
-            _portee_http("/v1/models", jeton),
+            (portee or (lambda j: _portee_http("/v1/models", j)))(jeton),
             apres_premier_morceau=preparer,
         )
+        assert b"tic" in corps, "la route devait servir le flux avant la coupure"
         assert b"FIN-NATURELLE" not in corps, "le flux devait être coupé en route"
         return [r for r in caplog.records if r.name == self._JOURNAL]
+
+    @staticmethod
+    def _lignes_de_serve_err(enregistrements) -> list[str]:
+        """Ce que serve.err.log recevrait : le vrai formateur, ligne à ligne."""
+        from diapason.cli.log_config import SanitizingFormatter
+
+        formateur = SanitizingFormatter("%(levelname)s %(name)s: %(message)s")
+        return "\n".join(formateur.format(r) for r in enregistrements).splitlines()
 
     def test_une_revocation_se_dit_en_warning_avec_son_motif(self, monde, caplog):
         lignes = self._couper_en_route(
@@ -1658,6 +1669,78 @@ class TestLaFermetureSeLitDansLeJournal:
         )
         texte = lignes[0].getMessage()
         assert "requête" not in texte and texte.endswith(PHONE), texte
+
+    # Ce qu'uvicorn reçoit sur le fil (h11 n'admet que l'ASCII visible dans
+    # la cible) et ce qu'il pose dans scope["path"] : unquote(raw_path).
+    _CHEMIN_FORGE = "/v1/vie/notes/x%0AERROR%20diapason.server.app:%20cle%20fuitee"
+
+    def _portee_forgee(self, avec_raw_path: bool):
+        from urllib.parse import unquote
+
+        def portee(jeton):
+            scope = _portee_http(unquote(self._CHEMIN_FORGE), jeton)
+            if avec_raw_path:
+                scope["raw_path"] = self._CHEMIN_FORGE.encode("ascii")
+            else:
+                del scope["raw_path"]  # optionnel en ASGI
+            return scope
+
+        return portee
+
+    @pytest.mark.parametrize(
+        ("avec_raw_path", "attendu"),
+        [(True, "x%0AERROR%20diapason"), (False, "x\\nERROR diapason")],
+        ids=["raw_path", "repli_sur_path"],
+    )
+    def test_un_saut_de_ligne_dans_le_chemin_ne_forge_pas_de_ligne(
+        self, monde, caplog, avec_raw_path, attendu
+    ):
+        """Revue du 28/09/2026 : la ligne recopiait scope["path"], déjà
+        décodé. GET /v1/vie/notes/x%0AERROR… — une route de session —
+        écrivait dans serve.err.log une ligne WARNING tronquée suivie d'une
+        ligne « ERROR diapason.server.app: … » que rien n'avait émise."""
+        lignes = self._lignes_de_serve_err(
+            self._couper_en_route(
+                monde,
+                caplog,
+                lambda _jeton: lambda: monde.registry.revoke(PHONE),
+                app=_app_d_un_flux_long(chemin="/v1/vie/notes/{note_id}"),
+                portee=self._portee_forgee(avec_raw_path),
+            )
+        )
+        assert len(lignes) == 1, f"une fermeture doit tenir sur une ligne : {lignes}"
+        assert lignes[0].startswith("WARNING "), lignes
+        assert attendu in lignes[0], (
+            f"le chemin doit se lire tel qu'il est arrivé, échappé : {lignes[0]}"
+        )
+
+    def test_un_identifiant_forge_ne_forge_pas_de_ligne(self, monde, caplog):
+        """Le registre acceptait tout identifiant de 120 signes : un appareil
+        appairé avant son bornage garde le sien — saut de ligne, ESC (qui
+        remonte d'une ligne dans un tail -f) ou U+001E (une fin de ligne pour
+        str.splitlines) compris. L'identifiant de requête vient de l'en-tête
+        d'une réponse de l'application : il passe par le même échappement."""
+        forge = "dev_x\nERROR diapason.server.app: faux\x1b[1A\x1e"
+        vraie = monde.sessions.verify_session
+
+        def verification(jeton):
+            session = vraie(jeton)
+            return {**session, "deviceId": forge} if session else None
+
+        def agir(_jeton):
+            monde.sessions.verify_session = verification
+            return lambda: monde.registry.revoke(PHONE)
+
+        lignes = self._lignes_de_serve_err(
+            self._couper_en_route(
+                monde, caplog, agir, app=_app_d_un_flux_long(requete="req\x85faux")
+            )
+        )
+        assert len(lignes) == 1, f"une fermeture doit tenir sur une ligne : {lignes}"
+        assert lignes[0].isprintable(), f"un caractère de contrôle a passé : {lignes!r}"
+        assert "appareil dev_x\\nERROR" in lignes[0], lignes[0]
+        assert "\\x1b[1A\\x1e" in lignes[0], lignes[0]
+        assert lignes[0].endswith(", requête req\\x85faux"), lignes[0]
 
     def test_fermer_les_sessions_ne_se_dit_pas_revoquer(self, monde, caplog):
         lignes = self._couper_en_route(

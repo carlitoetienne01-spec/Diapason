@@ -537,9 +537,9 @@ class PasserelleTailnet:
                         "appareil %s%s",
                         motif,
                         scope.get("type"),
-                        scope.get("path"),
-                        appareil,
-                        f", requête {requete[0]}" if requete else "",
+                        _pour_le_journal(_chemin_recu(scope)),
+                        _pour_le_journal(appareil),
+                        f", requête {_pour_le_journal(requete[0])}" if requete else "",
                     )
                     await couper()
                     return
@@ -875,6 +875,40 @@ def _csp(hote: str | None) -> str:
         f"connect-src {connexions}; object-src 'none'; "
         "base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
     )
+
+
+def _chemin_recu(scope: dict) -> str:
+    """Le chemin tel qu'il est arrivé sur le fil, encore encodé.
+
+    ``scope["path"]`` est déjà décodé par uvicorn (``unquote(raw_path)``) :
+    un ``%0A`` y est un vrai saut de ligne. ``raw_path`` garde ce que le
+    client a envoyé — celui que le journal d'accès d'uvicorn montre aussi.
+    """
+    brut = scope.get("raw_path")
+    if isinstance(brut, (bytes, bytearray)):
+        return bytes(brut).decode("latin-1")
+    return str(scope.get("path") or "")
+
+
+def _pour_le_journal(valeur: object) -> str:
+    """*valeur* sur une seule ligne, tout caractère de contrôle échappé.
+
+    Revue du 28/09/2026 : la ligne WARNING de fermeture recopiait
+    ``scope["path"]`` décodé. ``PATCH /v1/vie/notes/x%0AERROR …`` (une
+    route de session) y écrivait un vrai saut de ligne, et serve.err.log
+    montrait une seconde ligne « ERROR diapason.server.app: … » que rien
+    n'avait émise — dans le journal que Carlito relit pour savoir qui a
+    coupé. ``raw_path`` garde le ``%0A`` encodé (h11 0.16 n'admet dans la
+    cible que l'ASCII visible), mais il est optionnel en ASGI et le repli
+    sur ``path`` le redevient ; et l'identifiant d'un appareil, que le
+    registre acceptait jusqu'ici sur 120 signes quelconques, peut porter
+    un saut de ligne, un ESC (``\\x1b[1A`` remonte d'une ligne dans un
+    ``tail -f``) ou un U+001E (fin de ligne pour ``str.splitlines``).
+    ``repr`` échappe tout ce qui ne s'imprime pas ; on lui retire ses
+    guillemets.
+    """
+    texte = str(valeur)
+    return texte if texte.isprintable() else repr(texte)[1:-1]
 
 
 def _deconnexion(websocket: bool) -> dict:
