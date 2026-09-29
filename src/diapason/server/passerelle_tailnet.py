@@ -521,6 +521,13 @@ class PasserelleTailnet:
                 await asyncio.sleep(min(self._intervalle_s, reste_s))
                 verdict = await asyncio.to_thread(sessions.verify_session, jeton)
                 if verdict is None:
+                    # Couper D'ABORD. Revue du 28/09/2026 : le motif (qui ne
+                    # sert qu'au journal) se lisait avant la coupure, dans
+                    # mesh.db (busy_timeout 5 000 ms). Un registre tenu par
+                    # un autre écrivain laissait la réponse du chat couler
+                    # vers le téléphone révoqué : 98 morceaux en 2,06 s au
+                    # banc, contre 3 en 0,06 s, pour une lecture de 2 s.
+                    await couper()
                     # 28/09/2026 : cette ligne était en INFO, sous le niveau
                     # WARNING du logger diapason (cli/log_config.py) : elle
                     # n'atteignait jamais serve.err.log. Le 26/09 à 19:44, une
@@ -537,11 +544,10 @@ class PasserelleTailnet:
                         "appareil %s%s",
                         motif,
                         scope.get("type"),
-                        scope.get("path"),
-                        appareil,
-                        f", requête {requete[0]}" if requete else "",
+                        _pour_le_journal(_chemin_recu(scope)),
+                        _pour_le_journal(appareil),
+                        f", requête {_pour_le_journal(requete[0])}" if requete else "",
                     )
-                    await couper()
                     return
                 echeance_ms = int(verdict["expiresAtMs"])
 
@@ -556,9 +562,19 @@ class PasserelleTailnet:
             if not coupure.faite:
                 raise
         finally:
-            garde.cancel()
             if attente_recue is not None and not attente_recue.done():
                 attente_recue.cancel()
+            if coupure.faite:
+                # La surveillance a coupé et lit encore le motif de sa ligne
+                # de journal : l'annuler ici perdrait la ligne, la seule
+                # trace de QUI a coupé. Plus rien ne part vers le téléphone
+                # (envoyer lève) ; seule la fermeture de la connexion attend
+                # cette lecture — quelques millisecondes, 5 s au pire d'un
+                # mesh.db verrouillé. shield : une annulation venue du
+                # serveur n'emporte pas la ligne avec elle.
+                await asyncio.shield(garde)
+            else:
+                garde.cancel()
 
     # ── les deux portes d'appareil ───────────────────────────────────────
 
@@ -875,6 +891,40 @@ def _csp(hote: str | None) -> str:
         f"connect-src {connexions}; object-src 'none'; "
         "base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
     )
+
+
+def _chemin_recu(scope: dict) -> str:
+    """Le chemin tel qu'il est arrivé sur le fil, encore encodé.
+
+    ``scope["path"]`` est déjà décodé par uvicorn (``unquote(raw_path)``) :
+    un ``%0A`` y est un vrai saut de ligne. ``raw_path`` garde ce que le
+    client a envoyé — celui que le journal d'accès d'uvicorn montre aussi.
+    """
+    brut = scope.get("raw_path")
+    if isinstance(brut, (bytes, bytearray)):
+        return bytes(brut).decode("latin-1")
+    return str(scope.get("path") or "")
+
+
+def _pour_le_journal(valeur: object) -> str:
+    """*valeur* sur une seule ligne, tout caractère de contrôle échappé.
+
+    Revue du 28/09/2026 : la ligne WARNING de fermeture recopiait
+    ``scope["path"]`` décodé. ``PATCH /v1/vie/notes/x%0AERROR …`` (une
+    route de session) y écrivait un vrai saut de ligne, et serve.err.log
+    montrait une seconde ligne « ERROR diapason.server.app: … » que rien
+    n'avait émise — dans le journal que Carlito relit pour savoir qui a
+    coupé. ``raw_path`` garde le ``%0A`` encodé (h11 0.16 n'admet dans la
+    cible que l'ASCII visible), mais il est optionnel en ASGI et le repli
+    sur ``path`` le redevient ; et l'identifiant d'un appareil, que le
+    registre acceptait jusqu'ici sur 120 signes quelconques, peut porter
+    un saut de ligne, un ESC (``\\x1b[1A`` remonte d'une ligne dans un
+    ``tail -f``) ou un U+001E (fin de ligne pour ``str.splitlines``).
+    ``repr`` échappe tout ce qui ne s'imprime pas ; on lui retire ses
+    guillemets.
+    """
+    texte = str(valeur)
+    return texte if texte.isprintable() else repr(texte)[1:-1]
 
 
 def _deconnexion(websocket: bool) -> dict:

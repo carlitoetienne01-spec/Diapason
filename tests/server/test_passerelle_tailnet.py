@@ -1495,11 +1495,12 @@ class TestLIntervalleDeProduction:
         assert passerelle._intervalle_s == INTERVALLE_DE_CONTROLE_S
 
 
-def _pilote_asgi(passerelle, scope: dict, *, apres_premier_morceau=None):
+def _pilote_asgi(passerelle, scope: dict, *, apres_premier_morceau=None, instants=None):
     """Pilote la passerelle en ASGI direct et rend (morceaux, durée).
 
     TestClient met toute la réponse en tampon : un flux coupé ou non s'y lit
-    pareil. Ici, chaque ``http.response.body`` arrive à son heure."""
+    pareil. Ici, chaque ``http.response.body`` arrive à son heure — notée
+    dans *instants* si le test en veut la trace."""
     import asyncio
 
     async def scenario():
@@ -1518,6 +1519,8 @@ def _pilote_asgi(passerelle, scope: dict, *, apres_premier_morceau=None):
         async def envoyer(message):
             if message["type"] == "http.response.body":
                 morceaux.append(message.get("body", b""))
+                if instants is not None:
+                    instants.append(time.monotonic())
                 if len(morceaux) == 1 and apres_premier_morceau:
                     apres_premier_morceau()
                 if not message.get("more_body"):
@@ -1587,7 +1590,133 @@ class TestUnFluxHttpEstCoupeAussi:
         assert duree < 2, f"la coupure a pris {duree:.2f} s"
 
 
-def _app_d_un_flux_long(requete: str | None = "requete-du-flux-long"):
+# Une lecture du motif qui traîne (mesh.db tenu par un autre écrivain :
+# busy_timeout 5 000 ms). Une seconde la distingue nettement d'une coupure
+# faite à l'intervalle de 50 ms (0,06 s au banc) ; les 5 s du pire cas
+# allongeraient la suite sans rien prouver de plus.
+_MOTIF_LENT_S = 1.0
+
+
+class TestLaCoupureNAttendPasLeJournal:
+    def test_une_lecture_lente_du_motif_ne_retarde_pas_la_coupure(self, monde, caplog):
+        """Revue du 28/09/2026 : la surveillance lisait le motif de la
+        fermeture — qui ne sert qu'au journal — AVANT de couper. Au banc, une
+        lecture de 2 s laissait 98 morceaux partir vers le téléphone révoqué,
+        contre 3 : la borne « révocation qui coupe en 30 s au plus » dépendait
+        d'une ligne de journal."""
+        caplog.set_level(logging.INFO, logger="diapason.server.passerelle_tailnet")
+        passerelle = monde.passerelle(_app_d_un_flux_long(), intervalle_s=0.05)
+        jeton = _ouvrir_une_session(TestClient(passerelle, base_url=ICI), monde)
+        trouver = monde.registry.find
+
+        def trouver_lentement(appareil):
+            # Seule la lecture du motif passe par find : verify_session, qui
+            # décide la coupure, garde sa vitesse.
+            time.sleep(_MOTIF_LENT_S)
+            return trouver(appareil)
+
+        monde.registry.find = trouver_lentement
+        revocation: list[float] = []
+        instants: list[float] = []
+
+        def revoquer():
+            revocation.append(time.monotonic())
+            monde.registry.revoke(PHONE)
+
+        corps, _ = _pilote_asgi(
+            passerelle,
+            _portee_http("/v1/models", jeton),
+            apres_premier_morceau=revoquer,
+            instants=instants,
+        )
+        assert b"FIN-NATURELLE" not in corps, "le flux a survécu à la révocation"
+        encore = instants[-1] - revocation[0]
+        assert encore < _MOTIF_LENT_S / 2, (
+            f"le flux a coulé {encore:.2f} s de plus vers le téléphone révoqué "
+            f"({corps.count(b'tic')} morceaux) : la coupure attendait le motif"
+        )
+        lignes = [
+            r.getMessage()
+            for r in caplog.records
+            if r.name == "diapason.server.passerelle_tailnet"
+        ]
+        assert len(lignes) == 1 and "appareil révoqué depuis le Mac" in lignes[0], (
+            f"couper d'abord ne doit pas perdre la ligne ni son motif : {lignes}"
+        )
+
+    def test_une_annulation_du_serveur_n_emporte_pas_la_ligne(self, monde, caplog):
+        """Couper d'abord laisse la lecture du motif APRÈS la coupure : la
+        passerelle l'attend avant de rendre la main. Si le serveur annule la
+        requête pendant cette attente (arrêt d'uvicorn), la ligne — seule
+        trace de qui a coupé — doit s'écrire quand même."""
+        import asyncio
+        import contextlib
+        import threading
+
+        caplog.set_level(logging.INFO, logger="diapason.server.passerelle_tailnet")
+        passerelle = monde.passerelle(_app_d_un_flux_long(), intervalle_s=0.05)
+        jeton = _ouvrir_une_session(TestClient(passerelle, base_url=ICI), monde)
+        trouver = monde.registry.find
+        lecture_commencee = threading.Event()
+
+        def trouver_lentement(appareil):
+            lecture_commencee.set()
+            time.sleep(0.5)
+            return trouver(appareil)
+
+        monde.registry.find = trouver_lentement
+
+        def lignes():
+            return [
+                r.getMessage()
+                for r in caplog.records
+                if r.name == "diapason.server.passerelle_tailnet"
+            ]
+
+        async def scenario():
+            fin = asyncio.Event()
+            demande_lue = False
+            revoque = False
+
+            async def recevoir():
+                nonlocal demande_lue
+                if not demande_lue:
+                    demande_lue = True
+                    return {"type": "http.request", "body": b"", "more_body": False}
+                await fin.wait()
+                return {"type": "http.disconnect"}
+
+            async def envoyer(message):
+                nonlocal revoque
+                if message["type"] == "http.response.body" and not revoque:
+                    revoque = True
+                    monde.registry.revoke(PHONE)
+
+            tache = asyncio.ensure_future(
+                passerelle(_portee_http("/v1/models", jeton), recevoir, envoyer)
+            )
+            while not lecture_commencee.is_set():
+                await asyncio.sleep(0.01)
+            # Le flux est déjà coupé (envoyer lève) : la passerelle attend le
+            # motif dans son finally. C'est là que tombe l'annulation.
+            await asyncio.sleep(0.15)
+            tache.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await tache
+            limite = time.monotonic() + 3
+            while not lignes() and time.monotonic() < limite:
+                await asyncio.sleep(0.02)
+            fin.set()
+
+        asyncio.run(scenario())
+        assert len(lignes()) == 1 and "appareil révoqué" in lignes()[0], (
+            f"l'annulation a emporté la ligne de fermeture : {lignes()}"
+        )
+
+
+def _app_d_un_flux_long(
+    requete: str | None = "requete-du-flux-long", chemin: str = "/v1/models"
+):
     """Un SSE du chat qui dure 4 s, pour être coupé en route."""
     import asyncio
 
@@ -1595,7 +1724,7 @@ def _app_d_un_flux_long(requete: str | None = "requete-du-flux-long"):
 
     app = FastAPI()
 
-    @app.get("/v1/models")
+    @app.get(chemin)
     async def _flux():
         async def morceaux():
             debut = time.monotonic()
@@ -1618,7 +1747,7 @@ class TestLaFermetureSeLitDansLeJournal:
 
     _JOURNAL = "diapason.server.passerelle_tailnet"
 
-    def _couper_en_route(self, monde, caplog, agir, app=None) -> list:
+    def _couper_en_route(self, monde, caplog, agir, app=None, portee=None) -> list:
         caplog.set_level(logging.INFO, logger=self._JOURNAL)
         passerelle = monde.passerelle(app or _app_d_un_flux_long(), intervalle_s=0.05)
         client = TestClient(passerelle, base_url=ICI)
@@ -1626,11 +1755,20 @@ class TestLaFermetureSeLitDansLeJournal:
         preparer = agir(jeton)
         corps, _ = _pilote_asgi(
             passerelle,
-            _portee_http("/v1/models", jeton),
+            (portee or (lambda j: _portee_http("/v1/models", j)))(jeton),
             apres_premier_morceau=preparer,
         )
+        assert b"tic" in corps, "la route devait servir le flux avant la coupure"
         assert b"FIN-NATURELLE" not in corps, "le flux devait être coupé en route"
         return [r for r in caplog.records if r.name == self._JOURNAL]
+
+    @staticmethod
+    def _lignes_de_serve_err(enregistrements) -> list[str]:
+        """Ce que serve.err.log recevrait : le vrai formateur, ligne à ligne."""
+        from diapason.cli.log_config import SanitizingFormatter
+
+        formateur = SanitizingFormatter("%(levelname)s %(name)s: %(message)s")
+        return "\n".join(formateur.format(r) for r in enregistrements).splitlines()
 
     def test_une_revocation_se_dit_en_warning_avec_son_motif(self, monde, caplog):
         lignes = self._couper_en_route(
@@ -1658,6 +1796,78 @@ class TestLaFermetureSeLitDansLeJournal:
         )
         texte = lignes[0].getMessage()
         assert "requête" not in texte and texte.endswith(PHONE), texte
+
+    # Ce qu'uvicorn reçoit sur le fil (h11 n'admet que l'ASCII visible dans
+    # la cible) et ce qu'il pose dans scope["path"] : unquote(raw_path).
+    _CHEMIN_FORGE = "/v1/vie/notes/x%0AERROR%20diapason.server.app:%20cle%20fuitee"
+
+    def _portee_forgee(self, avec_raw_path: bool):
+        from urllib.parse import unquote
+
+        def portee(jeton):
+            scope = _portee_http(unquote(self._CHEMIN_FORGE), jeton)
+            if avec_raw_path:
+                scope["raw_path"] = self._CHEMIN_FORGE.encode("ascii")
+            else:
+                del scope["raw_path"]  # optionnel en ASGI
+            return scope
+
+        return portee
+
+    @pytest.mark.parametrize(
+        ("avec_raw_path", "attendu"),
+        [(True, "x%0AERROR%20diapason"), (False, "x\\nERROR diapason")],
+        ids=["raw_path", "repli_sur_path"],
+    )
+    def test_un_saut_de_ligne_dans_le_chemin_ne_forge_pas_de_ligne(
+        self, monde, caplog, avec_raw_path, attendu
+    ):
+        """Revue du 28/09/2026 : la ligne recopiait scope["path"], déjà
+        décodé. GET /v1/vie/notes/x%0AERROR… — une route de session —
+        écrivait dans serve.err.log une ligne WARNING tronquée suivie d'une
+        ligne « ERROR diapason.server.app: … » que rien n'avait émise."""
+        lignes = self._lignes_de_serve_err(
+            self._couper_en_route(
+                monde,
+                caplog,
+                lambda _jeton: lambda: monde.registry.revoke(PHONE),
+                app=_app_d_un_flux_long(chemin="/v1/vie/notes/{note_id}"),
+                portee=self._portee_forgee(avec_raw_path),
+            )
+        )
+        assert len(lignes) == 1, f"une fermeture doit tenir sur une ligne : {lignes}"
+        assert lignes[0].startswith("WARNING "), lignes
+        assert attendu in lignes[0], (
+            f"le chemin doit se lire tel qu'il est arrivé, échappé : {lignes[0]}"
+        )
+
+    def test_un_identifiant_forge_ne_forge_pas_de_ligne(self, monde, caplog):
+        """Le registre acceptait tout identifiant de 120 signes : un appareil
+        appairé avant son bornage garde le sien — saut de ligne, ESC (qui
+        remonte d'une ligne dans un tail -f) ou U+001E (une fin de ligne pour
+        str.splitlines) compris. L'identifiant de requête vient de l'en-tête
+        d'une réponse de l'application : il passe par le même échappement."""
+        forge = "dev_x\nERROR diapason.server.app: faux\x1b[1A\x1e"
+        vraie = monde.sessions.verify_session
+
+        def verification(jeton):
+            session = vraie(jeton)
+            return {**session, "deviceId": forge} if session else None
+
+        def agir(_jeton):
+            monde.sessions.verify_session = verification
+            return lambda: monde.registry.revoke(PHONE)
+
+        lignes = self._lignes_de_serve_err(
+            self._couper_en_route(
+                monde, caplog, agir, app=_app_d_un_flux_long(requete="req\x85faux")
+            )
+        )
+        assert len(lignes) == 1, f"une fermeture doit tenir sur une ligne : {lignes}"
+        assert lignes[0].isprintable(), f"un caractère de contrôle a passé : {lignes!r}"
+        assert "appareil dev_x\\nERROR" in lignes[0], lignes[0]
+        assert "\\x1b[1A\\x1e" in lignes[0], lignes[0]
+        assert lignes[0].endswith(", requête req\\x85faux"), lignes[0]
 
     def test_fermer_les_sessions_ne_se_dit_pas_revoquer(self, monde, caplog):
         lignes = self._couper_en_route(

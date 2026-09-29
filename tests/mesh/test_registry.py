@@ -198,6 +198,83 @@ class TestPairing:
                 )
 
 
+class TestLIdentifiantDAppareilEstBorne:
+    """Revue du 28/09/2026 : l'inscription ne bornait que la longueur (120).
+    ``redeem_pairing(device_id="dev\\nERROR forged line")`` passait, ``find``
+    rendait le saut de ligne, et chaque ligne de journal qui nomme
+    l'appareil — le WARNING de fermeture de la passerelle du tailnet — en
+    forgeait une seconde. Les deux portes d'appairage bornent pareil."""
+
+    @pytest.mark.parametrize(
+        "forge",
+        [
+            # Au milieu : _clean retire les blancs (\r, U+001E, U+2028 en
+            # sont pour str.strip) aux deux bouts avant de juger.
+            "dev\nERROR forged line",
+            "dev\rx",
+            "dev_x\x1b[1A",
+            "dev\x1ex",
+            "dev\u2028x",
+            "dev x",
+            "dev_téléphone",
+        ],
+        ids=["saut", "retour", "esc", "u001e", "u2028", "espace", "accent"],
+    )
+    def test_un_identifiant_hors_du_jeu_est_refuse_aux_deux_portes(
+        self, registry, forge
+    ):
+        with pytest.raises(MeshError, match="identifiant d'appareil"):
+            enrol(registry, device_id=forge)
+        with pytest.raises(MeshError, match="identifiant d'appareil"):
+            registry.enrol_host(device_id=forge, public_key_b64=a_key(), name="Hôte")
+        assert registry.list_devices() == [], "rien ne doit être inscrit"
+
+    def test_le_refus_ne_depense_pas_l_invitation(self, registry):
+        """Refusé AVANT de réclamer l'invitation : l'appareil corrigé la
+        réutilise au lieu d'en demander une autre au Mac."""
+        invitation = registry.create_pairing("iPhone")
+        with pytest.raises(MeshError):
+            registry.redeem_pairing(
+                invitation["pairingToken"],
+                device_id="dev\nx",
+                public_key_b64=a_key(),
+                name="iPhone",
+                platform="IOS",
+            )
+        registry.redeem_pairing(
+            invitation["pairingToken"],
+            device_id="dev_phone",
+            public_key_b64=a_key(),
+            name="iPhone",
+            platform="IOS",
+        )
+        assert registry.find("dev_phone") is not None
+
+    def test_les_formats_en_service_passent_toujours(self, registry):
+        """CLAUDE.md §4 : rien qui casse le client mobile. L'empreinte
+        « dev_<24 hex> » (mesh/identity.py, et MeshIdentity.fingerprint côté
+        Dart) et l'ancien « mac-<16 hex> » de Succès (vie/store.py), qu'un
+        Mac garde par continuité, restent acceptés aux deux portes."""
+        import secrets
+
+        from diapason.mesh.identity import _fingerprint
+
+        cles = generate_keypair()
+        empreinte = _fingerprint(cles.public_key)
+        assert len(empreinte) == len("dev_") + 24, empreinte
+        enrol(
+            registry,
+            device_id=empreinte,
+            key=base64.b64encode(cles.public_key).decode("ascii"),
+        )
+        heritage = f"mac-{secrets.token_hex(8)}"
+        registry.enrol_host(device_id=heritage, public_key_b64=a_key(), name="Hôte")
+        assert {d["deviceId"] for d in registry.list_devices()} == {
+            empreinte,
+            heritage,
+        }, "les deux formats réels doivent s'inscrire"
+
+
 class TestCapabilityGrants:
     """Acceptance TEST I — a claim is not a grant."""
 

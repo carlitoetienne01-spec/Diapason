@@ -434,32 +434,73 @@ class TestLeDebitDesImages:
         ]
         assert not refus, f"refusé dès l'image {refus[0] + 1} sur vingt-quatre"
 
-    def test_un_refus_reste_lisible_par_celui_qu_il_refuse(self):
+    def test_un_refus_reste_lisible_par_celui_qu_il_refuse(self, monkeypatch):
         """Un 429 sans en-tête CORS est un refus muet : le navigateur ne
-        peut pas le lire et affiche un échec réseau générique."""
-        from starlette.requests import Request
+        peut pas le lire et affiche un échec réseau générique.
 
+        28/09/2026 : ce test épinglait la réflexion de l'Origin par
+        _too_many, qui ouvrait aussi le refus à toute origine étrangère,
+        avec les cookies. Depuis que CORSMiddleware est le plus extérieur
+        (server/app.py), c'est lui qui rend l'image refusée lisible à la
+        fenêtre, et à elle seule : l'application réelle le prouve ici."""
+        from diapason.core.config import DiapasonConfig
+        from diapason.server import auth_middleware
+        from diapason.server.app import create_app
+
+        class _SeauDesGestesVide:
+            """Le seau des gestes déjà vide. Le vrai se vide en ~70 images à
+            6 ms, mais en rend vingt par seconde : sur un runner chargé à
+            50 ms l'image, il ne se viderait jamais."""
+
+            def __init__(self, _config=None) -> None:
+                pass
+
+            def check(self, cle: str) -> tuple[bool, float]:
+                return (not cle.endswith(":gestures"), 2.0)
+
+        monkeypatch.setattr(auth_middleware, "RateLimiter", _SeauDesGestesVide)
+        cle = "oj_sk_cle_du_test_des_images_refusees"
+        moteur = MagicMock()
+        moteur.list_models.return_value = ["test-model"]
+        config = DiapasonConfig()
+        config.analytics.enabled = False
+        config.traces.enabled = False
+        client = TestClient(
+            create_app(moteur, "test-model", api_key=cle, config=config)
+        )
+
+        def image(origine: str):
+            return client.post(
+                "/v1/gestures/frame",
+                json={},
+                headers={"Authorization": f"Bearer {cle}", "Origin": origine},
+            )
+
+        fenetre = image("tauri://localhost")
+        assert fenetre.status_code == 429, fenetre.text
+        assert (
+            fenetre.headers.get("access-control-allow-origin") == "tauri://localhost"
+        ), "sans cet en-tête, la fenêtre lit « Load failed » au lieu de 429"
+        assert fenetre.headers["Retry-After"] == "2"
+
+        etrangere = image("https://evil.example")
+        assert etrangere.status_code == 429
+        assert "access-control-allow-origin" not in etrangere.headers, (
+            "la liste des origines de CORS reste la seule autorité, 429 compris"
+        )
+
+    def test_le_refus_ne_pose_lui_meme_aucun_en_tete_cors(self):
+        """Une requête en ligne de commande n'a pas d'origine, une page
+        tierce en a une : le refus ne donne ni un en-tête vide ou faux à
+        l'une, ni une porte ouverte à l'autre. Il dit combien attendre."""
         from diapason.server.auth_middleware import _too_many
 
-        portee = {
-            "type": "http",
-            "headers": [(b"origin", b"tauri://localhost")],
-        }
-        reponse = _too_many(2.0, Request(portee))
+        reponse = _too_many(1.0)
         assert reponse.status_code == 429
-        assert reponse.headers["access-control-allow-origin"] == "tauri://localhost"
-        assert reponse.headers["Retry-After"] == "2"
-
-    def test_sans_origine_le_refus_reste_valide(self):
-        """Une requête en ligne de commande n'a pas d'origine : elle ne doit
-        pas pour autant recevoir un en-tête vide ou faux."""
-        from starlette.requests import Request
-
-        from diapason.server.auth_middleware import _too_many
-
-        reponse = _too_many(1.0, Request({"type": "http", "headers": []}))
-        assert reponse.status_code == 429
-        assert "access-control-allow-origin" not in reponse.headers
+        assert reponse.headers["Retry-After"] == "1"
+        assert not [
+            nom for nom in reponse.headers if nom.startswith("access-control-")
+        ], f"en-têtes CORS posés par le limiteur : {dict(reponse.headers)}"
 
 
 class TestLesChiffresQuiPermettentDeJuger:
