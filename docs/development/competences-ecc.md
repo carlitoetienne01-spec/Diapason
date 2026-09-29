@@ -108,9 +108,23 @@ jamais ce qu'il annonce. Deux opérations :
 - `chercher` (requete) — score lexical en code, avec un petit lexique
   français → anglais générique ; aucun appel à Ollama ni au réseau ; trois
   résultats, ou la liste complète quand rien ne correspond ;
-- `lire` (nom, section facultative) — provenance, sommaire, puis les
-  sections `##` entières qui tiennent ; ou une section, une sous-section
-  `###`, une annexe (`references/…`) par son titre.
+- `lire` (nom, section facultative) — provenance, sommaire numéroté, puis
+  les parties `##` ENTIÈRES qui tiennent, choisies par nature : d'abord la
+  méthode (Workflow, Guardrails, Rules, Rubric, Untrusted…, Pitfalls,
+  Verification), puis le reste, et en dernier l'applicabilité (When to
+  Use/Activate, Skill Stack, MCP Requirements, Examples), qui répète la
+  description. Ce qui manque est dit par numéros : « [MÉTHODE INCOMPLÈTE :
+  n° 4 (2378 car., à lire par ses sous-parties 5 à 10) … Lis-les avec
+  section=<n°> AVANT d'appliquer la méthode] ». `section` prend un numéro
+  du sommaire, un titre ou une annexe ; une partie trop longue rend ses
+  sous-parties `###` entières depuis le début et nomme la suivante.
+
+  Avant le 29/09/2026, la première lecture prenait les `##` depuis le haut
+  tant qu'elles se suivaient : email-ops ne montrait pas ses Guardrails
+  (écartés à 91 caractères près par une réserve forfaitaire), deep-research
+  servait « MCP Requirements » mais ni « Untrusted Sources » ni
+  « Workflow », et la description promettait « une ou deux lectures
+  suffisent ».
 
 En tête de **chaque** lecture :
 
@@ -166,19 +180,22 @@ U+200B en tête ou des `＝` passaient, et les titres `##` sortaient du cadre
 |---|---|---|
 | Fenêtre du 9b | `num_ctx = 32 768` | `~/.diapason/config.toml` |
 | Préfixe du chat sans le guide | ~10 112 jetons (identité + 45 schémas) | mesure du 20/09/2026, `trousse_chat.py` |
-| Schéma de `skill_guide` | 1 120 caractères, ~280 jetons, une fois | fixe, quelle que soit la sélection |
+| Schéma de `skill_guide` | 1 140 caractères, ~285 jetons, une fois | fixe, quelle que soit la sélection |
 | Coupe d'un résultat d'outil | 4 000 caractères | `MAX_TOOL_RESULT_CHARS`, `agentic_stream.py` |
 | Borne d'une lecture du guide | 3 600 caractères (~900 jetons) | `LIMITE_CARACTERES` : la coupe est la nôtre |
 | Borne de l'en-tête | 1 000 caractères, 8 éléments par liste | `ENTETE_MAX`, `LISTE_MAX` : les huit tiennent en 430 à 790 |
-| Première lecture des 8 méthodes | 2 077 à 3 114 caractères | mesuré sur les vraies copies |
+| Première lecture des 8 méthodes | 3 036 à 3 591 caractères | mesuré sur les vraies copies le 29/09/2026 |
 | Tours d'outils par question | 12 au plus | `DEFAULT_MAX_TOOL_TURNS` |
 
 Le guide n'entre dans la trousse qu'avec au moins une méthode à lire : sans
 source ecc, le préfixe ne change pas d'un octet. Avec, il change une fois
 (au redémarrage) et reste stable : le cache du préfixe d'Ollama (`-np 1`,
 9 à 24 s à froid contre 2,9 s à chaud) n'est pas invalidé par un changement
-de sélection. La description conseille une ou deux lectures par question ;
-rien ne l'impose (voir « ce qui n'est pas fait »).
+de sélection. La description demande de lire toute la méthode avant de
+l'appliquer ; la note de suite dit quoi lire. Mesuré sur les huit : la
+méthode entière dès la première lecture pour research-ops, article-writing
+et brand-voice ; une ou deux lectures de plus pour les autres (deep-research
+et literature-review : leur Workflow se lit par sous-parties).
 
 Pourquoi pas un outil par compétence : ~+150 jetons de préfixe par nom, un
 choix d'outil dilué pour le 9b, une invalidation du cache à chaque
@@ -283,9 +300,9 @@ méthode installée au démarrage, l'outil n'était pas dans la trousse.
 
 - **La voix** n'a pas `skill_guide` (hors de la décision ; son prompt
   oral et `DEFAULT_VOICE_TOOL_IDS` n'en savent rien).
-- **« Une ou deux lectures par question »** est conseillé par la
-  description, pas imposé : l'outil est partagé entre les requêtes et ne
-  compte pas les lectures d'un tour.
+- **Le nombre de lectures** n'est borné que par `DEFAULT_MAX_TOOL_TURNS`
+  (12) : l'outil est partagé entre les requêtes et ne compte pas les
+  lectures d'un tour.
 - **Le mode adaptatif** de la trousse (`[agent] trousse_adaptative`) n'a pas
   d'indice de préchargement pour le guide dans `_GROUPES` : il reste
   atteignable par le catalogue.

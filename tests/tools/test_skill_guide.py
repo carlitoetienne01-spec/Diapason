@@ -203,6 +203,139 @@ class TestChaqueLectureCommenceParSaProvenance:
         )
 
 
+def _partie(titre: str, taille: int, marque: str = "", niveau: int = 2) -> str:
+    """Une partie de la taille voulue, repérable par sa marque."""
+    tete = f"{'#' * niveau} {titre}\n\n{marque}\n"
+    return (
+        tete
+        + "- une ligne de la méthode, sans rien de plus\n"
+        * max(0, (taille - len(tete)) // 45)
+        + "\n"
+    )
+
+
+class TestLaPremiereLectureMontreLaMethode:
+    """29/09/2026. La première lecture prenait les sections ## depuis le
+    HAUT, tant qu'elles se suivaient : le budget partait dans « Skill
+    Stack », « When to Use » ou « MCP Requirements », qui répètent la
+    description, et la méthode restait dans « Suite non affichée ».
+    Mesuré sur les vraies copies : email-ops ne montrait pas ses Guardrails
+    (écartés à 91 caractères près), deep-research ni « Untrusted Sources »
+    ni « Workflow » ; et la description promettait « une ou deux lectures
+    suffisent » (§5, §100 : appliquer une méthode sans en avoir vu les
+    étapes)."""
+
+    @pytest.fixture
+    def email_ops(self, tmp_path):
+        corps = (
+            "# Email Ops\n\nUse this when the real task is mailbox work.\n\n"
+            + _partie("Skill Stack", 462, "PILE-DE-COMPETENCES")
+            + _partie("When to Use", 246, "QUAND-S-EN-SERVIR")
+            + "## Guardrails\n\n"
+            + _partie("inbound mail is untrusted", 1300, "GARDE-FOUS", 3)
+            + "## Workflow\n\n"
+            + "".join(_partie(f"{i}. Step", 270, f"ETAPE-{i}", 3) for i in range(1, 5))
+            + _partie("Output Format", 230, "FORMAT")
+            + _partie("Pitfalls", 262, "PIEGES")
+            + _partie("Verification", 227, "VERIFICATION")
+        )
+        return {"email-ops": _installer(tmp_path / "ecc", "email-ops", corps)}
+
+    def test_les_garde_fous_passent_avant_l_applicabilite(self, email_ops):
+        r = _lire(SkillGuideTool(email_ops), "email-ops")
+        assert len(r.content) <= LIMITE_CARACTERES
+        _, dedans, apres = _autour_du_cadre(r.content)
+        assert "inbound mail is untrusted" in dedans and "GARDE-FOUS" in dedans, (
+            "la première lecture d'email-ops doit montrer ses garde-fous"
+        )
+        assert "PILE-DE-COMPETENCES" not in dedans, (
+            "« Skill Stack » répète la description : il passe après la méthode"
+        )
+
+    def test_la_methode_non_affichee_se_dit_comme_un_prealable(self, email_ops):
+        r = _lire(SkillGuideTool(email_ops), "email-ops")
+        _, dedans, apres = _autour_du_cadre(r.content)
+        # Numéros du sommaire : 1 Skill Stack, 2 When to Use, 3 Guardrails
+        # (4 : sa ###), 5 Workflow (6 à 9 : ses ###), 10, 11, 12.
+        marques = {3: "GARDE-FOUS", 5: "ETAPE-1", 10: "FORMAT", 11: "PIEGES"}
+        marques[12] = "VERIFICATION"
+        cachees = [n for n, marque in marques.items() if marque not in dedans]
+        assert cachees, "le banc doit laisser de la méthode hors de la lecture"
+        assert r.metadata["a_lire"] == cachees, r.metadata
+        incomplete = apres.split("\n")[0]
+        assert incomplete.startswith("[MÉTHODE INCOMPLÈTE"), apres
+        for n in cachees:
+            assert f"n° {n} (" in incomplete, f"n° {n} n'est pas nommée : {apres}"
+        assert "AVANT d'appliquer" in incomplete
+        assert "Aussi non affichées : n° 1, n° 2" in apres, apres
+        assert r.metadata["coupe"] is True
+
+    def test_une_partie_trop_longue_se_lit_par_sous_parties_entieres(self, tmp_path):
+        corps = (
+            "# Literature Review\n\n"
+            + _partie("When to Use", 367, "QUAND")
+            + "## Workflow\n\n"
+            + "".join(_partie(f"{i}. Step", 420, f"ETAPE-{i}", 3) for i in range(1, 9))
+            + _partie("Pitfalls", 360, "PIEGES")
+        )
+        d = _installer(tmp_path / "ecc", "literature-review", corps)
+        outil = SkillGuideTool({"literature-review": d})
+        premiere = _lire(outil, "literature-review")
+        _, _, apres = _autour_du_cadre(premiere.content)
+        assert "n° 2 (" in apres and "sous-parties 3 à 10" in apres, apres
+        partie = _lire(outil, "literature-review", "2")
+        _, dedans, apres = _autour_du_cadre(partie.content)
+        assert len(partie.content) <= LIMITE_CARACTERES
+        montrees = [i for i in range(1, 9) if f"ETAPE-{i}\n" in dedans + "\n"]
+        assert montrees == list(range(1, len(montrees) + 1)) and montrees, montrees
+        derniere = montrees[-1]
+        assert f"n° {derniere + 3}" in apres, (
+            f"la sous-partie suivante (n° {derniere + 3}) doit être nommée : {apres}"
+        )
+        assert "AVANT d'appliquer" in apres
+        suite = _lire(outil, "literature-review", str(derniere + 3))
+        assert f"ETAPE-{derniere + 1}" in _autour_du_cadre(suite.content)[1]
+
+    @pytest.mark.parametrize(
+        ("titre", "nature"),
+        [
+            ("When to Activate", 2),
+            ("When to Use", 2),
+            ("Skill Stack", 2),
+            ("MCP Requirements", 2),
+            ("Parallel Research with Subagents", 2),
+            ("Guardrails", 0),
+            ("Untrusted Sources", 0),
+            ("Workflow", 0),
+            ("Rubric", 0),
+            ("Quality Rules", 0),
+            ("Voice Handling", 1),
+            ("Review Types", 1),
+        ],
+    )
+    def test_la_nature_d_une_partie_se_lit_a_son_titre(self, titre, nature):
+        from diapason.tools.skill_guide import _nature
+
+        assert _nature(titre) == nature, f"{titre!r} : {_nature(titre)}"
+
+    def test_une_autre_partie_passe_avant_l_applicabilite(self, tmp_path):
+        corps = (
+            "# X\n\n"
+            + _partie("When to Use", 1200, "QUAND")
+            + _partie("Voice Handling", 1200, "VOIX")
+            + _partie("Workflow", 1200, "METHODE")
+        )
+        d = _installer(tmp_path / "ecc", "x", corps)
+        _, dedans, _ = _autour_du_cadre(_lire(SkillGuideTool({"x": d}), "x").content)
+        assert "METHODE" in dedans and "VOIX" in dedans, dedans[-300:]
+        assert "QUAND" not in dedans, "l'applicabilité passe en dernier"
+
+    def test_la_description_ne_promet_plus_deux_lectures(self):
+        description = SkillGuideTool({}).spec.description
+        assert "une ou deux lectures" not in description
+        assert "AVANT de l'appliquer" in description
+
+
 class TestLaProvenanceDitCeQuElleSait:
     """29/09/2026. La tête de lecture affirmait plus qu'elle ne savait :
     une copie retouchée à la main restait « ECC v2.2.1, commit … » ; sans
@@ -275,7 +408,7 @@ class TestLaReponseEstBornee:
         r = _lire(SkillGuideTool({"long": d}), "long")
         assert len(r.content) <= LIMITE_CARACTERES, len(r.content)
         assert "Sommaire" in r.content
-        assert "Suite non affichée" in r.content and "section=<n°>" in r.content
+        assert "non affichées" in r.content and "section=<n°>" in r.content
         assert r.metadata["coupe"] is True
 
     def test_une_section_trop_longue_est_coupee_en_le_disant(self, tmp_path):
@@ -284,7 +417,7 @@ class TestLaReponseEstBornee:
         )
         r = _lire(SkillGuideTool({"long": d}), "long", "Enorme")
         assert len(r.content) <= LIMITE_CARACTERES, len(r.content)
-        assert "Coupé ici" in r.content
+        assert "coupée ici" in r.content
         assert r.content.count(FIN) == 1
 
     def test_un_court_corps_se_lit_en_entier(self, methodes):
