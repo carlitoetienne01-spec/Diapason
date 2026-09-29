@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from typing import List
 
 import click
@@ -157,8 +158,12 @@ def _parse_source_query(query: str) -> tuple[str, str]:
     return source, name
 
 
-def _get_resolver(source: str, url: str = ""):
+def _get_resolver(source: str, url: str = "", path: str = ""):
     """Return a resolver instance for the given source name."""
+    if source == "ecc":
+        from diapason.skills.sources.ecc import EccResolver, repo_path
+
+        return EccResolver(repo_path(SimpleNamespace(path=path)))
     if source == "hermes":
         from diapason.skills.sources.hermes import HermesResolver
 
@@ -215,6 +220,17 @@ def install(query: str, with_scripts: bool, force: bool, url: str, yes_dangerous
     """
     console = Console()
     source, name = _parse_source_query(query)
+    if source == "ecc":
+        # 28/09/2026: the ECC selection is an allow-list in config.toml; an
+        # install by name would bypass it (and the guide would not serve
+        # the result anyway — an import that changes nothing, §5).
+        console.print(
+            "[red]Pour ecc, la sélection vit dans config.toml "
+            "(\\[skills.sources.filter] names) : ajoute le nom, puis lance "
+            "`diapason skill sync ecc --dry-run` et `diapason skill sync ecc`."
+            "[/red]"
+        )
+        raise SystemExit(1)
 
     resolver = _get_resolver(source, url=url)
     try:
@@ -293,6 +309,12 @@ def install(query: str, with_scripts: bool, force: bool, url: str, yes_dangerous
         "capabilities (shell/network-listen/filesystem-write)."
     ),
 )
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    default=False,
+    help="Show what would be imported, and each skill's state, writing nothing.",
+)
 def sync(
     source: str,
     category: str,
@@ -301,11 +323,25 @@ def sync(
     with_scripts: bool,
     force: bool,
     yes_dangerous: bool,
+    dry_run: bool,
 ):
     """Bulk install + update from a source (or all configured sources)."""
     console = Console()
 
     cfg = load_config()
+
+    # The ECC source reads its allow-list, path and switch from config.toml:
+    # `sync ecc` without its [[skills.sources]] block has nothing to import.
+    if source == "ecc" or (not source and _ecc_configured(cfg)):
+        _sync_ecc(cfg, dry_run=dry_run, force=force, with_scripts=with_scripts)
+        if source == "ecc":
+            return
+    if dry_run:
+        console.print(
+            "[yellow]--dry-run n'est pris en charge que pour la source ecc : "
+            "rien d'autre n'est synchronisé.[/yellow]"
+        )
+        return
 
     # Determine which sources to sync
     source_configs: list = []
@@ -313,6 +349,8 @@ def sync(
         source_configs.append({"source": source, "filter": {}, "url": ""})
     else:
         for src_cfg in cfg.skills.sources:
+            if src_cfg.source == "ecc":
+                continue
             source_configs.append(
                 {
                     "source": src_cfg.source,
@@ -322,6 +360,8 @@ def sync(
             )
 
     if not source_configs:
+        if _ecc_configured(cfg):
+            return
         console.print(
             "[yellow]No sources to sync. "
             "Add sources to [skills.sources] in config.toml "
@@ -387,6 +427,260 @@ def sync(
     console.print(f"[green]Total installed: {total_installed}[/green]")
 
 
+# ---------------------------------------------------------------------------
+# The ECC source (28/09/2026): an allow-list, a dry run, and statuses
+# ---------------------------------------------------------------------------
+
+_RELANCE = "launchctl kickstart -k gui/$(id -u)/com.diapason.serve"
+
+_BLOC_ECC = """[[skills.sources]]
+source = "ecc"
+path = "~/Projets/ECC"
+enabled = true
+[skills.sources.filter]
+names = ["research-ops", "article-writing"]"""
+
+
+def _ecc_configured(cfg) -> bool:
+    from diapason.skills.sources.ecc import ecc_source_config
+
+    return ecc_source_config(cfg) is not None
+
+
+def _short(commit: str) -> str:
+    return (commit or "?")[:7]
+
+
+def _read_dot_source(skill_dir: Path) -> dict:
+    try:
+        import tomllib
+
+        with open(skill_dir / ".source", "rb") as fh:
+            data = tomllib.load(fh)
+        return data if isinstance(data, dict) else {}
+    except Exception:  # noqa: BLE001 - an unreadable .source is a status
+        return {}
+
+
+def _ecc_status(upstream, installed_dir: Path | None) -> str:
+    """nouvelle / à jour / changée en amont / retirée en amont / copie altérée.
+
+    Compares the .source written at import time with HEAD's files (was it
+    changed upstream?) and with the files on disk (was the copy edited?).
+    """
+    from diapason.skills.provenance import fingerprint
+
+    if upstream is None:
+        return "retirée en amont" if installed_dir else "introuvable en amont"
+    if installed_dir is None:
+        return "nouvelle"
+    prov = _read_dot_source(installed_dir)
+    parts = []
+    if fingerprint(installed_dir) != prov.get("sha256_importe"):
+        parts.append("copie altérée")
+    if upstream.sidecar_data.get("fingerprint") != prov.get("sha256_source"):
+        parts.append(
+            f"changée en amont ({_short(str(prov.get('commit', '')))} → "
+            f"{_short(upstream.commit)})"
+        )
+    return ", ".join(parts) or "à jour"
+
+
+def _other_sources_by_name() -> dict[str, list[str]]:
+    """Installed skills from any source but ecc, by manifest name."""
+    from diapason.skills.loader import discover_skills
+
+    others: dict[str, list[str]] = {}
+    for root in _get_skill_paths():
+        for manifest in discover_skills(root):
+            meta = (manifest.metadata or {}).get("diapason") or {}
+            src = meta.get("source") or "local"
+            if src != "ecc":
+                others.setdefault(manifest.name, []).append(str(src))
+    return others
+
+
+def _sync_ecc(cfg, *, dry_run: bool, force: bool, with_scripts: bool) -> None:
+    """Show the ECC selection (always), then import it (unless --dry-run).
+
+    Only names written in filter.names are imported: the allow-list is
+    Carlito's, never widened here. A name colliding with another source is
+    said, never hidden. Nothing ever touches the clone.
+    """
+    from rich.markup import escape
+
+    from diapason.skills.importer import SkillImporter
+    from diapason.skills.parser import SkillParser
+    from diapason.skills.sources.ecc import (
+        AllowListError,
+        EccResolver,
+        allowed_names,
+        ecc_source_config,
+        installed_root,
+        repo_path,
+    )
+    from diapason.skills.tool_translator import ToolTranslator
+
+    # soft_wrap: a status must stay on its line, whatever the terminal width.
+    console = Console(soft_wrap=True, highlight=False)
+    src_cfg = ecc_source_config(cfg)
+    if src_cfg is None:
+        console.print(
+            "[red]Aucune source ecc dans config.toml. Ajoute ce bloc (les noms "
+            "sont une liste d'autorisation, sans joker) :[/red]"
+        )
+        console.print(escape(_BLOC_ECC))
+        raise SystemExit(1)
+    if with_scripts:
+        console.print(
+            "[red]Refus : les scripts d'ECC ne s'importent jamais (plafond "
+            "décidé le 28/09/2026).[/red]"
+        )
+        raise SystemExit(1)
+    try:
+        names = allowed_names(src_cfg)
+    except AllowListError as exc:
+        console.print(f"[red]{escape(str(exc))}[/red]")
+        raise SystemExit(1)
+
+    root = installed_root(cfg)
+    if root is None:
+        console.print("[red]skills_dir illisible dans [skills] : rien à faire.[/red]")
+        raise SystemExit(1)
+    resolver = EccResolver(repo_path(src_cfg))
+    try:
+        resolver.sync()
+    except FileNotFoundError as exc:
+        console.print(f"[red]{escape(str(exc))}[/red]")
+        raise SystemExit(1)
+    state = resolver.state
+    upstream = resolver.list_skills()
+    by_name = {s.name: s for s in upstream}
+    by_dir = {s.sidecar_data.get("dir"): s for s in upstream}
+    installed: dict[str, Path] = {}
+    if root.is_dir():
+        for child in sorted(root.iterdir()):
+            if child.is_dir() and (child / "SKILL.md").is_file():
+                installed[child.name] = child
+    others = _other_sources_by_name()
+
+    etat_git = (
+        f"HEAD {_short(state.head)}"
+        if not state.git_error
+        else f"git illisible ({state.git_error})"
+    )
+    console.print(
+        f"[bold]Source ecc[/bold] : {escape(str(resolver.cache_dir()))} — "
+        f"{etat_git}, version {escape(state.version or '?')}, "
+        f"{len(upstream)} compétences en amont"
+    )
+    hors = state.dirty_outside_skills()
+    if hors:
+        console.print(f"  dépôt modifié hors skills/ : {hors} fichier(s)")
+    if getattr(src_cfg, "enabled", True) is not True:
+        console.print(
+            "  [yellow]source coupée (enabled = false) : rien n'est servi au "
+            "modèle, rien ne sera importé.[/yellow]"
+        )
+    if not names:
+        console.print(
+            "  [yellow]liste d'autorisation vide (filter.names) : rien à "
+            "importer.[/yellow]"
+        )
+    console.print(f"  liste d'autorisation : {len(names)} nom(s)")
+
+    statuses: dict[str, str] = {}
+    for name in names:
+        up = by_name.get(name)
+        status = _ecc_status(up, installed.get(name))
+        statuses[name] = status
+        if up is None:
+            console.print(f"- {escape(name)} — {status}")
+            if name in by_dir:
+                console.print(
+                    f"    c'est un DOSSIER d'ECC ; son nom est "
+                    f"« {escape(by_dir[name].name)} » : c'est ce nom qu'il faut "
+                    "écrire dans filter.names."
+                )
+            continue
+        prov = up.sidecar_data.get("provenance", {})
+        console.print(
+            f"- {escape(name)} — origine {escape(prov.get('origine') or '?')}, "
+            f"≈{up.sidecar_data.get('tokens', 0)} jetons, "
+            f"{up.sidecar_data.get('sections', 0)} sections — {status}"
+        )
+        outils = ", ".join(prov.get("outils_cites") or []) or "aucun"
+        citees = ", ".join(prov.get("competences_citees") or []) or "aucune"
+        absentes = ", ".join(prov.get("ressources_absentes") or []) or "aucune"
+        renvois = ", ".join(up.sidecar_data.get("flags") or []) or "aucun"
+        console.print(f"    licence : {escape(prov.get('licence') or '?')}")
+        console.print(f"    outils cités : {escape(outils)}")
+        console.print(f"    compétences ECC citées : {escape(citees)}")
+        console.print(
+            f"    ressources absentes (jamais importées) : {escape(absentes)}"
+        )
+        console.print(f"    renvois à MCP / npx / ~/.claude : {escape(renvois)}")
+        if prov.get("depot_modifie"):
+            console.print("    [yellow]modifiée localement dans le clone[/yellow]")
+        for other in others.get(name, []):
+            console.print(
+                f"    [yellow]collision : « {escape(name)} » existe aussi dans la "
+                f"source {escape(other)} ; les deux restent sur le disque, le "
+                "guide ne lit que la copie ecc.[/yellow]"
+            )
+    for name in sorted(set(installed) - set(names)):
+        console.print(
+            f"- {escape(name)} — hors liste : installée, jamais servie au modèle "
+            f"(`diapason skill remove {escape(name)}` pour l'enlever)"
+        )
+
+    if dry_run:
+        console.print("[yellow]--dry-run : rien n'a été écrit.[/yellow]")
+        return
+    if getattr(src_cfg, "enabled", True) is not True:
+        return
+
+    importer = SkillImporter(
+        parser=SkillParser(),
+        tool_translator=ToolTranslator({}),
+        target_root=root.parent,
+    )
+    imported = 0
+    for name in names:
+        up = by_name.get(name)
+        status = statuses[name]
+        if up is None:
+            if status == "retirée en amont":
+                console.print(
+                    f"  [yellow]{escape(name)} : retirée en amont — la copie "
+                    "reste, rien n'est effacé.[/yellow]"
+                )
+            continue
+        if status == "à jour":
+            continue
+        if status != "nouvelle" and not force:
+            console.print(
+                f"  [yellow]{escape(name)} : {status} — relance avec --force "
+                "pour réimporter.[/yellow]"
+            )
+            continue
+        result = importer.import_skill(up, force=True)
+        if result.success and not result.skipped:
+            imported += 1
+            console.print(f"  [green]importée[/green] : {escape(name)}")
+        else:
+            console.print(
+                f"  [red]{escape(name)} : "
+                f"{escape('; '.join(result.warnings) or 'échec')}[/red]"
+            )
+    console.print(f"[green]{imported} compétence(s) importée(s).[/green]")
+    if imported:
+        console.print(
+            "Le chat lit sa trousse au démarrage : relance le service pour "
+            f"qu'il voie l'outil skill_guide — {_RELANCE}"
+        )
+
+
 @skill.command("sources")
 def sources():
     """List configured skill sources."""
@@ -403,15 +697,17 @@ def sources():
 
     table = Table(title="Configured Skill Sources")
     table.add_column("Source", style="cyan")
-    table.add_column("URL")
+    table.add_column("URL / path")
     table.add_column("Filter")
+    table.add_column("Enabled")
     table.add_column("Auto-update")
     for s in cfg.skills.sources:
         filt = ", ".join(f"{k}={v}" for k, v in (s.filter or {}).items()) or "—"
         table.add_row(
             s.source,
-            s.url or "(default)",
+            s.url or getattr(s, "path", "") or "(default)",
             filt,
+            "yes" if getattr(s, "enabled", True) else "no",
             "yes" if s.auto_update else "no",
         )
     console.print(table)
@@ -492,7 +788,9 @@ def search(query: str, source: str):
     rows: list[tuple[str, str, str, str]] = []  # source, name, category, description
     for src_cfg in sources_to_search:
         try:
-            resolver = _get_resolver(src_cfg.source, url=src_cfg.url)
+            resolver = _get_resolver(
+                src_cfg.source, url=src_cfg.url, path=getattr(src_cfg, "path", "")
+            )
             resolver.sync()
         except Exception as exc:
             console.print(f"[yellow]Skipped {src_cfg.source}: {exc}[/yellow]")
@@ -545,6 +843,14 @@ def update():
         return
 
     for src in cfg.skills.sources:
+        if src.source == "ecc":
+            # Diapason never touches the clone: pulling it is Carlito's act.
+            console.print(
+                "[cyan]ecc[/cyan] : lecture locale, rien à tirer. Le `git pull` "
+                "du clone reste ton geste, puis `diapason skill sync ecc "
+                "--dry-run`."
+            )
+            continue
         console.print(f"[cyan]Updating {src.source}...[/cyan]")
         try:
             resolver = _get_resolver(src.source, url=src.url)
