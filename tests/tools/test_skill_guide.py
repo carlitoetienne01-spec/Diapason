@@ -276,9 +276,7 @@ class TestRienHorsDeLaListe:
         assert not refus.success, "deep-research est sur le disque mais hors liste"
         assert "Firecrawl" not in refus.content and DEBUT not in refus.content
 
-    def test_source_coupee_ferme_la_lecture_tout_de_suite(
-        self, methodes, tmp_path, monkeypatch
-    ):
+    def test_une_source_coupee_ne_sert_plus_rien(self, methodes, tmp_path, monkeypatch):
         import diapason.core.config as config_mod
 
         cfg = self._cfg(tmp_path, ["research-ops"], enabled=False)

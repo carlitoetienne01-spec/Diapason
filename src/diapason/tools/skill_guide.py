@@ -495,9 +495,10 @@ class SkillGuideTool(BaseTool):
     is_local = True
 
     def __init__(self, servies: dict[str, Path] | None = None) -> None:
-        # Injecté par les tests ; sinon relu de la configuration à chaque
-        # appel : `enabled = false` ferme la lecture sans attendre la
-        # relance qui retire l'outil de la trousse.
+        # Injecté par les tests ; sinon recalculé à chaque appel depuis la
+        # configuration du processus (load_config, en cache : la même que
+        # celle de la trousse, qui ne change qu'au redémarrage) et depuis le
+        # disque — une méthode importée par `sync ecc` se lit sans relance.
         self._servies_injectees = servies
 
     @property
