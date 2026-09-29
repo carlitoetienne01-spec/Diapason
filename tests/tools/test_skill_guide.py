@@ -338,6 +338,26 @@ class TestChercherSansOllama:
         for nom in methodes:
             assert nom in r.content
 
+    def test_les_donnees_jointes_ne_contredisent_pas_le_texte(self, methodes):
+        """29/09/2026 : observation() joint les métadonnées au texte lu par le
+        modèle. Sans correspondance, « trouvees » listait les huit méthodes
+        sous « Aucune méthode ne correspond » ; et la requête revenait en
+        écho entière (§5)."""
+        from diapason.server.agentic_stream import observation
+
+        r = SkillGuideTool(methodes).execute(operation="chercher", requete="zzz")
+        assert r.metadata["trouvees"] == [], "aucune correspondance, aucune trouvée"
+        assert r.metadata["liste_complete"] is True
+        colle = "bonjour madame, " * 200
+        long = SkillGuideTool(methodes).execute(operation="chercher", requete=colle)
+        assert len(long.metadata["requete"]) <= 120, "la requête revient bornée"
+        assert observation(long).count("bonjour madame") <= 16, (
+            "un courriel collé ne doit pas revenir en écho au modèle"
+        )
+        lue = _lire(SkillGuideTool(methodes), "deep-research", "3" + " " * 300)
+        assert lue.success, lue.content
+        assert len(lue.metadata["section"]) <= 80, "la section revient bornée"
+
 
 class TestRienHorsDeLaListe:
     def _cfg(self, tmp_path, noms, enabled=True):

@@ -702,8 +702,14 @@ class SkillGuideTool(BaseTool):
             apres = f"… et {reste} autre(s). " + apres
         return self._resultat(
             _encadrer(cadre, tete, [_neutraliser("\n".join(lignes))], apres),
-            trouvees=[m.nom for m in retenues],
-            requete=requete,
+            # 29/09/2026 : sans correspondance, « trouvees » listait les huit
+            # méthodes pendant que le texte disait « aucune ne correspond » —
+            # et observation() joint ces données à ce que lit le modèle. La
+            # requête y était aussi recopiée entière : un courriel collé
+            # revenait en écho (3 200 caractères dans un contexte de 32 k).
+            trouvees=[m.nom for m in retenues] if scores else [],
+            liste_complete=not scores,
+            requete=_une_ligne(requete, 120),
         )
 
     def _lire(self, nom: str, section: str, servies: dict[str, Path]) -> ToolResult:
@@ -778,7 +784,7 @@ class SkillGuideTool(BaseTool):
             return self._resultat(
                 _encadrer(cadre, tete, [entree, texte], apres, titre),
                 methode=cle,
-                section=section,
+                section=_une_ligne(section, 80),
                 coupe=coupe,
                 commit=commit,
             )
