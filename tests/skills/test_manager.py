@@ -607,6 +607,37 @@ class TestLesSourcesSeDisentALaDecouverte:
         assert mgr.skill_names() == ["notes"], "enabled = false coupe la source"
 
 
+class TestLaCliEtSystemBuilderLisentLInterrupteur:
+    """29/09/2026 : les tests passaient toujours ``disabled_sources`` ; le
+    seul chemin des vrais appelants (``_get_manager`` de la CLI,
+    SystemBuilder) — la lecture de config.toml — n'était éprouvé par
+    personne. Remplacer sa garde par ``if False`` laissait 1 256 tests
+    verts."""
+
+    def test_enabled_false_dans_config_toml_coupe_la_source(
+        self, tmp_path, monkeypatch
+    ):
+        from diapason.core.config import load_config
+
+        _installee(tmp_path / "skills", "ecc", "article-writing")
+        _installee(tmp_path / "skills", "hermes", "notes")
+        config = tmp_path / "config.toml"
+        config.write_text(
+            '[[skills.sources]]\nsource = "ecc"\nenabled = false\n',
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("DIAPASON_CONFIG", str(config))
+        load_config.cache_clear()
+        try:
+            mgr = SkillManager(bus=EventBus(), overlay_dir=tmp_path / "ov")
+            mgr.discover(paths=[tmp_path / "skills"])
+        finally:
+            load_config.cache_clear()
+        assert mgr.skill_names() == ["notes"], (
+            f"enabled = false n'a pas coupé ecc pour la CLI : {mgr.skill_names()}"
+        )
+
+
 class TestUneMethodeEccNeDevientPasUnOutil:
     """Une méthode ECC n'atteint un modèle que par skill_guide, qui la fait
     précéder de sa provenance et de l'avertissement « méthode, pas ordre ».

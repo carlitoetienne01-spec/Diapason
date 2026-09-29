@@ -368,6 +368,15 @@ class TestLaListeDAutorisationNeSeDevinePas:
             "beta est sur le disque mais hors liste : elle ne doit pas être servie"
         )
 
+    def test_une_copie_installee_en_lien_n_est_pas_servie(self, tmp_path: Path):
+        """Un ~/.diapason/skills/ecc/<nom> qui pointe n'importe où sur le
+        disque ne se sert pas : la garde existait, rien ne l'éprouvait."""
+        dehors = _skill(tmp_path / "ailleurs", "alpha", "alpha", "# secret\n")
+        (tmp_path / "skills" / "ecc").mkdir(parents=True)
+        (tmp_path / "skills" / "ecc" / "alpha").symlink_to(dehors)
+        cfg = _cfg(tmp_path, filter={"names": ["alpha"]})
+        assert served_skills(cfg) == {}, "une copie en lien a été servie"
+
     def test_source_coupee_ou_competences_coupees_ne_servent_rien(self, tmp_path):
         _skill(tmp_path / "skills" / "ecc", "alpha", "alpha", "# x\n")
         coupee = _cfg(tmp_path, enabled=False, filter={"names": ["alpha"]})

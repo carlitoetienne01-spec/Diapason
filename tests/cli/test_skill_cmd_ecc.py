@@ -251,6 +251,20 @@ class TestLesStatutsDisentLEtatDeLaCopie:
         assert "retirée en amont" in texte
         assert copie.exists(), "une compétence retirée en amont n'est pas effacée"
 
+    def test_un_second_sync_n_importe_rien_et_ne_demande_pas_de_relance(self, banc):
+        """Chaque `sync ecc` réimportait tout, annonçait « 8 compétence(s)
+        importée(s) » et demandait une relance inutile — la garde « à jour »
+        n'était éprouvée par aucun test."""
+        _, skills, _ = banc
+        premier = _lancer("sync", "ecc")
+        assert "1 compétence(s) importée(s)" in premier.output, premier.output
+        copie = skills / "ecc" / "alpha" / ".source"
+        avant = copie.read_bytes()
+        second = _lancer("sync", "ecc", "--force")
+        assert "0 compétence(s) importée(s)" in second.output, second.output
+        assert "kickstart" not in second.output, "aucune relance n'est utile"
+        assert copie.read_bytes() == avant, "une copie à jour a été réécrite"
+
     def test_hors_liste_se_dit(self, banc):
         _, _, configurer = banc
         _lancer("sync", "ecc")
