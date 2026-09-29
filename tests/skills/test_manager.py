@@ -567,3 +567,87 @@ class TestSkillManagerRemove:
         mgr = SkillManager(bus=EventBus())
         with pytest.raises(FileNotFoundError):
             mgr.remove("ghost", roots=[tmp_path])
+
+
+# ---------------------------------------------------------------------------
+# Sources : collisions dites, source coupée, ECC hors des SkillTool
+# ---------------------------------------------------------------------------
+
+
+def _installee(root: Path, source: str, name: str) -> None:
+    d = root / source / name
+    d.mkdir(parents=True)
+    (d / "SKILL.md").write_text(
+        f"---\nname: {name}\ndescription: {source} {name}\n---\nCorps\n"
+    )
+    (d / ".source").write_text(f'source = "{source}:{name}"\ncommit = "abc"\n')
+
+
+class TestLesSourcesSeDisentALaDecouverte:
+    """28/09/2026 : SkillManager.discover gardait le premier nom vu, dans
+    l'ordre alphabétique des sources, sans rien dire (§5)."""
+
+    def test_une_collision_entre_sources_est_signalee(self, tmp_path, caplog):
+        _installee(tmp_path, "ecc", "research")
+        _installee(tmp_path, "hermes", "research")
+        mgr = SkillManager(bus=EventBus(), overlay_dir=tmp_path / "ov")
+        with caplog.at_level("WARNING", logger="diapason.skills.manager"):
+            mgr.discover(paths=[tmp_path], disabled_sources=set())
+        assert mgr.collisions == [("research", "ecc", "hermes")]
+        assert "seen twice" in caplog.text, "la collision doit se lire au journal"
+        assert mgr.resolve("research").description == "ecc research", (
+            "signaler n'est pas trancher autrement : le premier vu gagne encore"
+        )
+
+    def test_une_source_coupee_n_est_pas_chargee(self, tmp_path):
+        _installee(tmp_path, "ecc", "article-writing")
+        _installee(tmp_path, "hermes", "notes")
+        mgr = SkillManager(bus=EventBus(), overlay_dir=tmp_path / "ov")
+        mgr.discover(paths=[tmp_path], disabled_sources={"ecc"})
+        assert mgr.skill_names() == ["notes"], "enabled = false coupe la source"
+
+
+class TestLaCliEtSystemBuilderLisentLInterrupteur:
+    """29/09/2026 : les tests passaient toujours ``disabled_sources`` ; le
+    seul chemin des vrais appelants (``_get_manager`` de la CLI,
+    SystemBuilder) — la lecture de config.toml — n'était éprouvé par
+    personne. Remplacer sa garde par ``if False`` laissait 1 256 tests
+    verts."""
+
+    def test_enabled_false_dans_config_toml_coupe_la_source(
+        self, tmp_path, monkeypatch
+    ):
+        from diapason.core.config import load_config
+
+        _installee(tmp_path / "skills", "ecc", "article-writing")
+        _installee(tmp_path / "skills", "hermes", "notes")
+        config = tmp_path / "config.toml"
+        config.write_text(
+            '[[skills.sources]]\nsource = "ecc"\nenabled = false\n',
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("DIAPASON_CONFIG", str(config))
+        load_config.cache_clear()
+        try:
+            mgr = SkillManager(bus=EventBus(), overlay_dir=tmp_path / "ov")
+            mgr.discover(paths=[tmp_path / "skills"])
+        finally:
+            load_config.cache_clear()
+        assert mgr.skill_names() == ["notes"], (
+            f"enabled = false n'a pas coupé ecc pour la CLI : {mgr.skill_names()}"
+        )
+
+
+class TestUneMethodeEccNeDevientPasUnOutil:
+    """Une méthode ECC n'atteint un modèle que par skill_guide, qui la fait
+    précéder de sa provenance et de l'avertissement « méthode, pas ordre ».
+    En SkillTool, SystemBuilder la rendrait telle quelle aux agents de la
+    CLI, sans l'un ni l'autre."""
+
+    def test_get_skill_tools_ecarte_la_source_ecc(self, tmp_path):
+        _installee(tmp_path, "ecc", "deep-research")
+        _installee(tmp_path, "hermes", "notes")
+        mgr = SkillManager(bus=EventBus(), overlay_dir=tmp_path / "ov")
+        mgr.discover(paths=[tmp_path], disabled_sources=set())
+        noms = sorted(t.spec.name for t in mgr.get_skill_tools())
+        assert noms == ["skill_notes"], f"une méthode ECC est devenue un outil : {noms}"

@@ -87,6 +87,10 @@ OUTILS_DU_TELEPHONE: frozenset[str] = frozenset(
         "knowledge_get_document",
         "web_search",
         "web_read",
+        # 28/09/2026, décision de Carlito : les méthodes ECC importées, en
+        # LECTURE seule — skill_guide ne lit que des fichiers texte de
+        # ~/.diapason/skills/ecc, rien de l'écran ni de l'état du Mac.
+        "skill_guide",
     }
 )
 

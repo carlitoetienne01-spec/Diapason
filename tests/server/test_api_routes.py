@@ -1,12 +1,16 @@
 """Tests for extended API routes."""
 
+from types import SimpleNamespace
+
 import pytest
 
 fastapi = pytest.importorskip("fastapi")
 from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
+from diapason.core.config import load_config as _load_config_reel  # noqa: E402
 from diapason.server.api_routes import include_all_routes  # noqa: E402
+from diapason.skills.inventory import GUIDE  # noqa: E402
 
 
 def _make_app():
@@ -147,3 +151,126 @@ class TestTraceRoutes:
         client = TestClient(_make_app())
         resp = client.get("/v1/traces")
         assert resp.status_code == 200
+
+
+class _Outil:
+    """Un outil de la trousse du chat, réduit à son nom."""
+
+    def __init__(self, nom: str) -> None:
+        self.spec = SimpleNamespace(name=nom)
+
+
+class TestLaListeDesCompetencesLitLeDisque:
+    """28/09/2026 : GET /v1/skills rendait SkillRegistry.keys(), un registre
+    que rien ne remplit — toujours {"skills": []}, même avec huit méthodes
+    ECC importées (§5 : la route disait « rien » quand le disque disait
+    « huit »). Et la lecture du disque se fait hors de la boucle : une
+    route async qui lit en ligne fige la voix et le chat."""
+
+    @pytest.fixture
+    def disque(self, tmp_path, monkeypatch):
+        # Le vrai load_config (lru_cache) : tests/server/conftest.py
+        # l'enveloppe pour chaque test, et l'enveloppe n'a pas cache_clear.
+        load_config = _load_config_reel
+
+        skills = tmp_path / "skills"
+        for source, nom in (
+            ("ecc", "research-ops"),
+            ("ecc", "growth-log"),
+            ("hermes", "notes"),
+        ):
+            d = skills / source / nom
+            d.mkdir(parents=True)
+            (d / "SKILL.md").write_text(f"---\nname: {nom}\ndescription: x\n---\nx\n")
+            (d / ".source").write_text(
+                f'source = "{source}:{nom}"\ncommit = "5064474abc"\norigine = "ECC"\n'
+            )
+        config = tmp_path / "config.toml"
+        config.write_text(
+            "[skills]\n"
+            f'skills_dir = "{skills}"\n'
+            "[[skills.sources]]\n"
+            'source = "ecc"\n'
+            "[skills.sources.filter]\n"
+            'names = ["research-ops"]\n'
+        )
+        monkeypatch.setenv("DIAPASON_HOME", str(tmp_path / "home"))
+        monkeypatch.setenv("DIAPASON_CONFIG", str(config))
+        load_config.cache_clear()
+        yield
+        load_config.cache_clear()
+
+    def test_les_competences_installees_sont_rendues(self, disque):
+        app = _make_app()
+        app.state._chat_tooling_cache = ([_Outil("calculator"), _Outil(GUIDE)], None)
+        client = TestClient(app)
+        reponse = client.get("/v1/skills").json()
+        assert reponse["chatToolkit"] == "built"
+        par_nom = {s["name"]: s for s in reponse["skills"]}
+        assert set(par_nom) == {"research-ops", "growth-log", "notes"}, par_nom
+        assert par_nom["research-ops"] == {
+            "name": "research-ops",
+            "source": "ecc",
+            "commit": "5064474abc",
+            "origin": "ECC",
+            "active": True,
+            "reachedBy": "skill_guide",
+            "allowListed": True,
+            "pendingRestart": False,
+        }
+        assert par_nom["growth-log"]["active"] is False, (
+            "installée mais hors liste : jamais servie, et la route le dit"
+        )
+        assert par_nom["growth-log"]["reachedBy"] is None
+        assert par_nom["notes"]["reachedBy"] == "cli-agents", (
+            "une compétence hors ecc n'atteint pas le chat : la route ne le prétend pas"
+        )
+        assert "path" not in str(par_nom), "aucun chemin du disque ne part au téléphone"
+
+    def test_la_lecture_du_disque_se_fait_hors_de_la_boucle(self, monkeypatch):
+        import asyncio as _asyncio
+
+        from diapason.server import api_routes
+
+        vus: list[bool] = []
+
+        def espion(*_args):
+            try:
+                _asyncio.get_running_loop()
+                vus.append(True)
+            except RuntimeError:
+                vus.append(False)
+            return []
+
+        monkeypatch.setattr(api_routes, "_installed_skills", espion)
+        TestClient(_make_app()).get("/v1/skills")
+        assert vus == [False], (
+            "la lecture du disque a tourné sur la boucle d'événements"
+        )
+
+    def test_reached_by_se_lit_dans_la_trousse_vivante(self, disque):
+        """29/09/2026 : reachedBy se calculait sur la configuration et le
+        disque, alors que la trousse du chat est figée à sa construction.
+        Configurer, relancer AVANT l'import, puis importer : la route disait
+        « skill_guide » pour les huit, et ni le chat ni le téléphone n'avaient
+        l'outil jusqu'à la relance suivante (§100)."""
+        app = _make_app()
+        client = TestClient(app)
+
+        pas_encore = client.get("/v1/skills").json()
+        assert pas_encore["chatToolkit"] == "notBuilt"
+        ecc = {s["name"]: s for s in pas_encore["skills"]}["research-ops"]
+        assert ecc["active"] is True and ecc["reachedBy"] is None, (
+            "sans trousse construite, rien ne se promet"
+        )
+
+        app.state._chat_tooling_cache = ([_Outil("calculator")], None)
+        sans_guide = {s["name"]: s for s in client.get("/v1/skills").json()["skills"]}
+        assert sans_guide["research-ops"]["reachedBy"] is None, (
+            "la trousse n'a pas skill_guide : aucun modèle ne lit la méthode"
+        )
+        assert sans_guide["research-ops"]["pendingRestart"] is True
+
+        app.state._chat_tooling_cache = None
+        vide = {s["name"]: s for s in client.get("/v1/skills").json()["skills"]}
+        assert vide["research-ops"]["reachedBy"] is None

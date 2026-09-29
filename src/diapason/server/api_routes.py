@@ -512,19 +512,42 @@ async def telemetry_energy(request: Request):
 skills_router = APIRouter(prefix="/v1/skills", tags=["skills"])
 
 
+def _installed_skills(config: Any = None, toolkit: Any = None) -> list:
+    """Read from disk — called through asyncio.to_thread, never on the loop."""
+    from diapason.core.config import load_config
+    from diapason.skills.inventory import installed_skills
+
+    return installed_skills(config if config is not None else load_config(), toolkit)
+
+
 @skills_router.get("")
 async def list_skills(request: Request):
-    """List installed skills."""
-    try:
-        from diapason.core.registry import SkillRegistry
+    """List installed skills, from disk: name, source, commit, active.
 
-        skills = []
-        for key in sorted(SkillRegistry.keys()):
-            skills.append({"name": key})
-        return {"skills": skills}
+    28/09/2026: it listed SkillRegistry, which nothing fills — always
+    {"skills": []}, imported ECC skills included. The walk reads files and
+    hashes nothing, but a disk read inline in an ``async`` route freezes the
+    voice WebSocket and the chat stream (CLAUDE.md §5): it runs in a thread.
+
+    29/09/2026: ``reachedBy`` is read from the LIVE chat toolkit (and the
+    config it was built with), never predicted from the disk;
+    ``chatToolkit`` says whether that toolkit exists yet.
+    """
+    from diapason.skills.inventory import live_toolkit
+
+    state = request.app.state
+    toolkit = live_toolkit(state)
+    try:
+        skills = await asyncio.to_thread(
+            _installed_skills, getattr(state, "config", None), toolkit
+        )
     except Exception as exc:
         logger.warning("Failed to list skills: %s", exc)
-        return {"skills": []}
+        skills = []
+    return {
+        "skills": skills,
+        "chatToolkit": "notBuilt" if toolkit is None else "built",
+    }
 
 
 @skills_router.post("")

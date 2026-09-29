@@ -235,4 +235,9 @@ import diapason.tools.gestes  # noqa: E402,F401
 import diapason.tools.gmail_live  # noqa: E402,F401
 import diapason.tools.imessage_tools  # noqa: E402,F401
 
+# 28/09/2026 : le guide des méthodes ECC, seul chemin d'une compétence
+# importée vers le modèle (la trousse du chat ne lit que ce registre). Il
+# n'importe que la stdlib, yaml et le paquet skills : pas de garde.
+import diapason.tools.skill_guide  # noqa: E402,F401
+
 __all__ = ["BaseTool", "ToolExecutor", "ToolSpec"]

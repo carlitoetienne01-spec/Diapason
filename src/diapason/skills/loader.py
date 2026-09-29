@@ -257,6 +257,12 @@ def load_skill_directory(path: str | Path) -> SkillManifest:
             new_metadata = dict(manifest.metadata) if manifest.metadata else {}
             oj = dict(new_metadata.get("diapason", {}) or {})
             oj["source"] = source_name
+            # 28/09/2026: only the source prefix was promoted; the commit
+            # was written to .source and read by nobody.
+            for key in ("commit", "origine"):
+                value = source_data.get(key)
+                if isinstance(value, str) and value:
+                    oj[key] = value
             new_metadata["diapason"] = oj
             manifest.metadata = new_metadata
 
