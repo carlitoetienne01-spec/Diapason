@@ -156,3 +156,6 @@ frontend/.overlay-build/
 # l'historique.
 docs/api-reference/
 docs/install.sh
+
+# ECC Cursor adapter: état local (chemins absolus)
+.cursor/ecc-install-state.json
