@@ -186,6 +186,7 @@ def _chat_tooling(app_state: Any, config: Any) -> Optional[tuple[list, Any]]:
         from diapason.core.registry import ToolRegistry
         from diapason.server.approval_bridge import tool_confirm_callback
         from diapason.tools._stubs import BaseTool, ToolExecutor
+        from diapason.tools.skill_guide import avec_le_guide
 
         configures = getattr(getattr(config, "agent", None), "tools", "") or ""
         if isinstance(configures, str):
@@ -195,6 +196,10 @@ def _chat_tooling(app_state: Any, config: Any) -> Optional[tuple[list, Any]]:
         # config.toml peut encore citer succes_tasks (25/09/2026) : traduit
         # avant la recherche, sinon l'outil manquait au chat sans un mot.
         noms = noms_canoniques(voulus) or list(_TROUSSE_ASSISTANT)
+        # 28/09/2026 : une méthode ECC importée n'atteignait aucun modèle. Le
+        # guide entre en dernier si la source ecc a quoi lire (lecture du
+        # disque : on est dans un fil, voir _chat_tooling_async).
+        noms = avec_le_guide(noms, config)
 
         outils = []
         for nom in noms:
