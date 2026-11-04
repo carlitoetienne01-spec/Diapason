@@ -24,6 +24,9 @@ permissions:
 
 jobs:
   publish:
+    # 04/11/2026 : release:published reçoit aussi les bêtas Windows ; leur
+    # publication de binaires ne doit pas démarrer un upload Python.
+    if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'v')
     runs-on: ubuntu-latest
     environment: pypi
     steps:
