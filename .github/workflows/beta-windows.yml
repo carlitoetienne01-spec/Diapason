@@ -1,0 +1,328 @@
+name: Bêta Windows depuis une snapshot
+
+on:
+  workflow_dispatch:
+    inputs:
+      snapshot_tag:
+        description: 'Tag snapshot-windows-* de la release BROUILLON contenant snapshot-windows.tar.gz'
+        required: true
+        type: string
+      snapshot_sha256:
+        description: 'SHA-256 local de snapshot-windows.tar.gz (64 caractères hexadécimaux)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: beta-windows-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, windows-local]
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "& '{0}'"
+    env:
+      SNAPSHOT_TAG: ${{ inputs.snapshot_tag }}
+      SNAPSHOT_SHA256: ${{ inputs.snapshot_sha256 }}
+
+    steps:
+      # Le runner a déjà choisi le bash de System32/WSL au lieu de Git Bash.
+      - name: Git Bash pour les actions composites
+        shell: cmd
+        run: echo C:\Program Files\Git\bin>>"%GITHUB_PATH%"
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Dossier jetable et Python CP313
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $nom = 'diapason-beta-{0}-{1}' -f $env:GITHUB_RUN_ID, $env:GITHUB_RUN_ATTEMPT
+          $racine = Join-Path $env:RUNNER_TEMP $nom
+          if (Test-Path $racine) { throw 'Le dossier de ce run existe deja' }
+          New-Item -ItemType Directory -Path $racine | Out-Null
+          $outils = Join-Path $racine 'outils'
+          New-Item -ItemType Directory -Path $outils | Out-Null
+          Invoke-WebRequest 'https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-windows-msvc.zip' -OutFile "$outils\uv.zip"
+          Expand-Archive "$outils\uv.zip" -DestinationPath $outils
+          & "$outils\uv.exe" python install 3.13
+          if ($LASTEXITCODE -ne 0) { throw 'Installation Python 3.13 refusee' }
+          $python = & "$outils\uv.exe" python find --managed-python 3.13
+          if ($LASTEXITCODE -ne 0) { throw 'Python 3.13 introuvable' }
+          $outils | Out-File $env:GITHUB_PATH -Append -Encoding utf8
+          "BETA_WORKDIR=$racine" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "BETA_PYTHON=$python" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "BETA_SOURCE=$racine\payload\diapason-beta" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "BETA_OUTPUT=$racine\artefact" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Télécharger le brouillon authentifié et extraire sans liens
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $programme = @'
+          # BEGIN_BOOTSTRAP
+          import hashlib
+          import json
+          import os
+          import re
+          import tarfile
+          import urllib.parse
+          import urllib.request
+          from pathlib import Path
+
+          def extraire_snapshot(archive, destination):
+              vus, membres, total = set(), [], 0
+              reserves = {'con', 'prn', 'aux', 'nul'} | {f'{p}{n}' for p in ('com', 'lpt') for n in range(1, 10)}
+              with tarfile.open(archive, 'r:gz') as tar:
+                  for membre in tar:
+                      parties = membre.name.split('/')
+                      if (len(parties) < 2 or parties[0] != 'diapason-beta' or not membre.isfile()
+                          or any(not p or p in ('.', '..') or p.endswith(('.', ' '))
+                              or any(ord(c) < 32 or c in '\\:<>"|?*' for c in p)
+                              or p.split('.')[0].casefold() in reserves for p in parties)):
+                          raise ValueError('Chemin ou type tar refuse')
+                      total += membre.size
+                      if (membre.name.casefold() in vus or not 0 <= membre.size <= 64 * 1024**2
+                          or total > 1024**3 or len(membres) >= 50000):
+                          raise ValueError('Collision ou limite tar depassee')
+                      vus.add(membre.name.casefold())
+                      membres.append(membre)
+                  destination.mkdir(parents=True, exist_ok=False)
+                  for membre in membres:
+                      cible = destination.joinpath(*membre.name.split('/'))
+                      cible.parent.mkdir(parents=True, exist_ok=True)
+                      with cible.open('xb') as sortie, tar.extractfile(membre) as entree:
+                          sortie.write(entree.read())
+              return destination / 'diapason-beta'
+
+          class RedirectionSansJeton(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  cible = urllib.parse.urlsplit(newurl)
+                  if cible.scheme != 'https' or not (cible.hostname == 'api.github.com' or (cible.hostname or '').endswith('.githubusercontent.com')):
+                      raise ValueError('Redirection asset inattendue')
+                  suivant = super().redirect_request(req, fp, code, msg, headers, newurl)
+                  if cible.hostname != 'api.github.com':
+                      suivant.remove_header('Authorization')
+                  return suivant
+
+          def recevoir():
+              tag = os.environ['SNAPSHOT_TAG']
+              attendu = os.environ['SNAPSHOT_SHA256'].lower()
+              depot = os.environ['GITHUB_REPOSITORY']
+              if not re.fullmatch(r'snapshot-windows-[A-Za-z0-9][A-Za-z0-9._-]{0,95}', tag):
+                  raise ValueError('Tag de brouillon snapshot-windows-* requis')
+              if not re.fullmatch(r'[0-9a-f]{64}', attendu):
+                  raise ValueError('SHA-256 invalide')
+              api = f'https://api.github.com/repos/{depot}'
+              ouvrir = urllib.request.build_opener(RedirectionSansJeton()).open
+              def requete(url, binaire=False):
+                  # Le jeton reste sur api.github.com : le gestionnaire
+                  # ci-dessus le retire du saut vers le stockage des assets.
+                  return urllib.request.Request(url, headers={
+                      'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                      'Accept': 'application/octet-stream' if binaire else 'application/vnd.github+json',
+                      'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'Diapason-beta-windows'})
+              release = None
+              # /releases/tags ne convient pas aux brouillons ; lire la liste
+              # authentifiee. Dix pages bornent a 1 000 releases la recherche.
+              for page in range(1, 11):
+                  with ouvrir(requete(f'{api}/releases?per_page=100&page={page}'), timeout=60) as flux:
+                      lot = json.load(flux)
+                  release = next((r for r in lot if r['tag_name'] == tag), None)
+                  if release or len(lot) < 100:
+                      break
+              if release is None or release.get('draft') is not True:
+                  raise ValueError('La release snapshot doit exister et rester brouillon')
+              assets = [a for a in release['assets'] if a['name'] == 'snapshot-windows.tar.gz']
+              if len(assets) != 1 or not 0 < assets[0]['size'] <= 512 * 1024**2:
+                  raise ValueError('Asset absent, ambigu ou trop volumineux')
+              racine = Path(os.environ['BETA_WORKDIR'])
+              archive = racine / 'snapshot-windows.tar.gz'
+              digest, taille = hashlib.sha256(), 0
+              with ouvrir(requete(f"{api}/releases/assets/{assets[0]['id']}", True), timeout=60) as entree, archive.open('xb') as sortie:
+                  while morceau := entree.read(1024**2):
+                      taille += len(morceau)
+                      if taille > 512 * 1024**2:
+                          raise ValueError('Telechargement trop gros')
+                      digest.update(morceau)
+                      sortie.write(morceau)
+              if digest.hexdigest() != attendu or taille != assets[0]['size']:
+                  raise ValueError('SHA-256 ou taille de snapshot divergent')
+              extraire_snapshot(archive, racine / 'payload')
+              preuve = {'snapshotReleaseId': release['id'], 'snapshotTag': tag,
+                  'snapshotAssetId': assets[0]['id'], 'snapshotSha256': attendu,
+                  'workflowCommit': os.environ['GITHUB_SHA'], 'runId': os.environ['GITHUB_RUN_ID']}
+              (racine / 'download-provenance.json').write_text(json.dumps(preuve, indent=2), encoding='utf-8')
+
+          if __name__ == '__main__':
+              recevoir()
+          # END_BOOTSTRAP
+          '@
+          # PowerShell 5.1 retire des guillemets d'un programme multiligne
+          # transmis en argument natif ; un fichier conserve ses octets.
+          $fichier = Join-Path $env:BETA_WORKDIR 'recevoir_snapshot.py'
+          [System.IO.File]::WriteAllText($fichier, $programme, (New-Object System.Text.UTF8Encoding($false)))
+          & $env:BETA_PYTHON $fichier
+          if ($LASTEXITCODE -ne 0) { throw 'Reception de la snapshot refusee' }
+
+      - name: Vérifier chaque fichier et isoler les URL de la bêta
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & $env:BETA_PYTHON "$env:BETA_SOURCE\scripts\preparer_beta_windows.py" prepare `
+            --root "$env:BETA_SOURCE" --repository "$env:GITHUB_REPOSITORY" `
+            --snapshot-sha256 "$($env:SNAPSHOT_SHA256.ToLower())" `
+            --windows-gestion --target x86_64-pc-windows-msvc
+          if ($LASTEXITCODE -ne 0) { throw 'Preparation de la copie refusee' }
+          $preuve = Get-Content "$env:BETA_SOURCE\beta-build.json" -Raw | ConvertFrom-Json
+          "BETA_RELEASES_URL=$($preuve.buildEnvironment.DIAPASON_BACKEND_RELEASES_URL)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "BETA_RELEASE_TAG=$($preuve.buildEnvironment.DIAPASON_BACKEND_RELEASE_TAG)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          New-Item -ItemType Directory -Path $env:BETA_OUTPUT | Out-Null
+          Copy-Item "$env:BETA_WORKDIR\download-provenance.json" $env:BETA_OUTPUT
+
+      - name: Wheel Windows CP313 de la snapshot
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-Location $env:BETA_SOURCE
+          uv venv --python $env:BETA_PYTHON .venv-assets
+          if ($LASTEXITCODE -ne 0) { throw 'Venv de build refuse' }
+          uv pip install --python .venv-assets maturin==1.14.1
+          if ($LASTEXITCODE -ne 0) { throw 'Installation maturin refusee' }
+          & .venv-assets\Scripts\maturin.exe build --release `
+            --manifest-path rust\crates\diapason-python\Cargo.toml `
+            --interpreter (Resolve-Path .venv-assets\Scripts\python.exe).Path --out $env:BETA_OUTPUT
+          if ($LASTEXITCODE -ne 0) { throw 'Construction de la wheel refusee' }
+
+      - name: Profil de production verrouillé dans la copie jetable
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-Location $env:BETA_SOURCE
+          uv lock --check --python $env:BETA_PYTHON
+          if ($LASTEXITCODE -ne 0) { throw 'Overlay et verrou incoherents' }
+          uv sync --locked --no-dev --python $env:BETA_PYTHON `
+            --extra desktop --extra dictation --extra inference-cloud --extra inference-google
+          if ($LASTEXITCODE -ne 0) { throw 'Installation du profil verrouille refusee' }
+          $roues = @(Get-ChildItem "$env:BETA_OUTPUT\diapason_rust-*-cp313-cp313-win_amd64.whl")
+          if ($roues.Count -ne 1) { throw 'Wheel CP313 absente ou ambigue' }
+          uv pip install --python .venv --no-deps $roues[0].FullName
+          if ($LASTEXITCODE -ne 0) { throw 'Installation de la wheel native refusee' }
+          & .venv\Scripts\python.exe -c "import diapason_rust; import faster_whisper; import diapason.server.app; import runpy; runpy.run_path('deploy/windows/beta_backend.py', run_name='beta_import')"
+          if ($LASTEXITCODE -ne 0) { throw 'Imports du backend Windows refuses' }
+
+      - name: Bundle web Python depuis les sources courantes
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-Location "$env:BETA_SOURCE\frontend"
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw 'npm ci refuse' }
+          npm run build
+          if ($LASTEXITCODE -ne 0) { throw 'Bundle web refuse' }
+
+      - name: Premier démarrage du backend dans un profil Windows jetable
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-Location $env:BETA_SOURCE
+          $programme = @'
+          # BEGIN_SMOKE
+          import json
+          import os
+          import socket
+          import subprocess
+          import sys
+          import tempfile
+          import time
+          import urllib.error
+          import urllib.request
+          from pathlib import Path
+
+          source = Path(os.environ['BETA_SOURCE'])
+          with tempfile.TemporaryDirectory(prefix='diapason-beta-smoke-') as temporaire:
+              profil = Path(temporaire)
+              env = dict(os.environ, DIAPASON_HOME=str(profil / 'profil'),
+                  HF_HOME=str(profil / 'huggingface'), HUGGINGFACE_HUB_CACHE=str(profil / 'huggingface' / 'hub'))
+              with socket.socket() as reservation:
+                  reservation.bind(('127.0.0.1', 0))
+                  port = reservation.getsockname()[1]
+              ouvrir = urllib.request.build_opener(urllib.request.ProxyHandler({})).open
+              def lire(chemin, cle=None):
+                  headers = {'Authorization': 'Bearer ' + cle} if cle else {}
+                  requete = urllib.request.Request(f'http://127.0.0.1:{port}' + chemin, headers=headers)
+                  with ouvrir(requete, timeout=3) as reponse:
+                      return json.load(reponse)
+              with (profil / 'backend.log').open('wb') as journal:
+                  processus = subprocess.Popen([sys.executable, '-u', str(source / 'deploy/windows/beta_backend.py'),
+                      '--port', str(port)], cwd=source, env=env, stdout=journal, stderr=subprocess.STDOUT)
+                  try:
+                      limite = time.monotonic() + 60
+                      while True:
+                          if processus.poll() is not None:
+                              raise RuntimeError('Le backend Windows a quitte avant sa sante')
+                          try:
+                              sante = lire('/health')
+                              break
+                          except (OSError, urllib.error.URLError):
+                              if time.monotonic() >= limite:
+                                  raise RuntimeError('Le backend Windows ne devient pas joignable')
+                              time.sleep(.2)
+                      assert sante['mode'] == 'windows-beta-gestion' and sante['inferenceAvailable'] is False
+                      cle = (profil / 'profil/auth/local_api_key').read_text().strip()
+                      assert lire('/v1/models', cle)['data'] == []
+                      assert isinstance(lire('/v1/vie/projects', cle), (list, dict))
+                      assert isinstance(lire('/v1/collaboration/status', cle), dict)
+                      assert lire('/v1/voice/live/health', cle)['available'] is False
+                      dictee = lire('/v1/speech/health', cle)
+                      assert dictee['available'] is False and 'speechModelNotPrepared' in dictee.get('reason', '')
+                      print('Backend Windows : gestion accessible, compte isole, aucun modele IA ou poids Whisper telecharge.')
+                  finally:
+                      processus.terminate()
+                      try:
+                          processus.wait(timeout=10)
+                      except subprocess.TimeoutExpired:
+                          processus.kill()
+                          processus.wait(timeout=10)
+          # END_SMOKE
+          '@
+          $fichier = Join-Path $env:BETA_WORKDIR 'verifier_premier_demarrage.py'
+          [System.IO.File]::WriteAllText($fichier, $programme, (New-Object System.Text.UTF8Encoding($false)))
+          & .venv\Scripts\python.exe $fichier
+          if ($LASTEXITCODE -ne 0) { throw 'Premier demarrage Windows refuse' }
+
+      - name: Installateur NSIS et signature updater
+        env:
+          DIAPASON_BACKEND_RELEASES_URL: ${{ env.BETA_RELEASES_URL }}
+          DIAPASON_BACKEND_RELEASE_TAG: ${{ env.BETA_RELEASE_TAG }}
+          DIAPASON_WINDOWS_BETA_GESTION: '1'
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:TAURI_SIGNING_PRIVATE_KEY) { throw 'Cle updater absente' }
+          Set-Location "$env:BETA_SOURCE\frontend"
+          npx tauri build --verbose --config src-tauri\tauri.windows.conf.json
+          if ($LASTEXITCODE -ne 0) { throw 'Construction NSIS refusee' }
+
+      - name: Source construite, backend et empreintes
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & $env:BETA_PYTHON "$env:BETA_SOURCE\scripts\preparer_beta_windows.py" assemble `
+            --root "$env:BETA_SOURCE" --output "$env:BETA_OUTPUT"
+          if ($LASTEXITCODE -ne 0) { throw 'Assemblage incomplet' }
+
+      - name: Garder le livrable complet, sans publication
+        uses: actions/upload-artifact@v4
+        with:
+          name: beta-windows-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.BETA_OUTPUT }}/*
+          if-no-files-found: error
+          # 14 jours laissent la revue humaine avant publication ; ce n'est
+          # pas un stockage durable ni une release disponible pour l'ami.
+          retention-days: 14
