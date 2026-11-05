@@ -14,6 +14,27 @@ def lire():
 
 
 class TestWorkflowPariteWindows:
+    def test_le_driver_recoit_ses_chemins_qa_et_garde_les_wav_sur_echec(self):
+        """§100 : le driver refusait profil et rapport placés hors de son essai."""
+        etape = next(
+            s
+            for s in lire()["jobs"]["build"]["steps"]
+            if s.get("id") == "preuve_native"
+        )
+        script = etape["run"]
+        assert "$env:DIAPASON_HOME = Join-Path $essai 'profil'" in script
+        assert '--output "$essai\\rapport.json" --workdir "$essai"' in script
+        assert "'.diapason-backend'" in script, (
+            "le driver refuse les sources non gérées"
+        )
+        assert script.index("$codePreuve = $LASTEXITCODE") < script.index("Copy-Item")
+        assert script.index("Copy-Item") < script.index("if ($codePreuve -ne 0)")
+        assert "Get-ChildItem" not in script, "aucune collecte de tout le profil"
+        assert (
+            "@('fr-tts.wav','fr-narration.wav','en-tts.wav','en-narration.wav')"
+            in script
+        )
+
     def test_seule_une_demande_manuelle_lance_le_pc(self):
         """§5 : ne pas lancer des modèles lourds sur un push de routine."""
         w = lire()
@@ -92,7 +113,8 @@ class TestWorkflowPariteWindows:
         assert preuve < signature, (
             "aucun installateur ne doit précéder sa preuve native"
         )
-        assert "if ($LASTEXITCODE -ne 0)" in etapes[preuve]["run"], (
+        assert "$codePreuve = $LASTEXITCODE" in etapes[preuve]["run"]
+        assert "if ($codePreuve -ne 0)" in etapes[preuve]["run"], (
             "une erreur doit bloquer la livraison"
         )
         assert etapes[signature]["env"]["DIAPASON_WINDOWS_COMPLET"] == "1", (
