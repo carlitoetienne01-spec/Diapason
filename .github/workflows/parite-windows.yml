@@ -371,11 +371,30 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           Set-Location $env:BETA_SOURCE
+          # Le backend testé reste hors du dossier neuf de données QA.
+          $essai = Join-Path $env:BETA_WORKDIR 'preuve-native'
+          $env:DIAPASON_HOME = Join-Path $essai 'profil'
+          $temoin = Join-Path $env:BETA_SOURCE '.diapason-backend'
+          if (Test-Path -LiteralPath $temoin) { throw 'Temoin source QA deja present' }
+          [System.IO.File]::WriteAllText($temoin, 'managed', (New-Object System.Text.UTF8Encoding($false)))
           & .venv\Scripts\python.exe scripts\verifier_parite_windows.py `
             --root "$env:BETA_SOURCE" --uv "$env:BETA_UV" `
-            --output "$env:BETA_OUTPUT\parite-windows.json" `
-            --workdir "$env:BETA_WORKDIR\preuve-native"
-          if ($LASTEXITCODE -ne 0) { throw 'Preuve native Windows refusee : aucun installateur livrable' }
+            --output "$essai\rapport.json" --workdir "$essai"
+          $codePreuve = $LASTEXITCODE
+          $rapport = Join-Path $essai 'rapport.json'
+          if (Test-Path -LiteralPath $rapport) {
+            Copy-Item -LiteralPath $rapport -Destination "$env:BETA_OUTPUT\parite-windows.json"
+          }
+          # Seulement les quatre WAV du corpus public ; ni DB ni cache du profil.
+          foreach ($nom in @('fr-tts.wav','fr-narration.wav','en-tts.wav','en-narration.wav')) {
+            $wav = Join-Path (Join-Path $essai 'wav') $nom
+            if (Test-Path -LiteralPath $wav) {
+              $destination = Join-Path $env:BETA_OUTPUT 'wav'
+              New-Item -ItemType Directory -Force -Path $destination | Out-Null
+              Copy-Item -LiteralPath $wav -Destination $destination
+            }
+          }
+          if ($codePreuve -ne 0) { throw 'Preuve native Windows refusee : aucun installateur livrable' }
 
       - name: Installateur NSIS et signature updater
         id: nsis
