@@ -22,6 +22,11 @@ concurrency:
 jobs:
   build:
     if: github.event_name == 'workflow_dispatch'
+    # 05/11/2026 : GitHub masque les brouillons au jeton en lecture seule.
+    # Le jeton n'est fourni qu'à la réception des sources choisies par SHA-256 ;
+    # cette permission permet leur lecture, le workflow ne publie rien.
+    permissions:
+      contents: write
     runs-on: [self-hosted, windows-local]
     timeout-minutes: 120
     defaults:
