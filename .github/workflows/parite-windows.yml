@@ -1,0 +1,478 @@
+name: Parité Windows complète depuis une snapshot
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Diagnostic matériel seul, ou validation complète de la snapshot choisie'
+        required: true
+        type: choice
+        default: diagnostic
+        options: [diagnostic, complet]
+      snapshot_tag:
+        description: 'Mode complet seulement : tag snapshot-windows-* du brouillon de sources'
+        required: false
+        type: string
+      snapshot_sha256:
+        description: 'Mode complet seulement : SHA-256 de la snapshot vérifiée'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: parite-windows-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  diagnostic:
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'diagnostic'
+    runs-on: [self-hosted, windows-local]
+    timeout-minutes: 5
+    steps:
+      - name: Capacités matérielles sans données personnelles
+        id: diagnostic
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "& '{0}'"
+        env:
+          RAPPORT_DOSSIER: ${{ runner.temp }}/diapason-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $echoue = $false
+          try {
+            $memoire = Get-CimInstance Win32_ComputerSystem | Select-Object -ExpandProperty TotalPhysicalMemory
+            $processeurs = @(Get-CimInstance Win32_Processor | Select-Object Name,NumberOfCores,NumberOfLogicalProcessors)
+            $systeme = Get-CimInstance Win32_OperatingSystem | Select-Object BuildNumber,OSArchitecture
+            $cartes = @(Get-CimInstance Win32_VideoController | Select-Object Name,DriverVersion)
+            $racineDisque = [System.IO.Path]::GetPathRoot($env:RUNNER_TEMP)
+            $volume = New-Object System.IO.DriveInfo -ArgumentList $racineDisque
+            $preuve = [ordered]@{
+              schemaVersion = 1
+              mode = 'diagnostic'
+              status = 'success'
+              memoryBytes = [uint64]$memoire
+              processors = $processeurs
+              windows = $systeme
+              displayAdapters = $cartes
+              availableDiskBytes = [uint64]$volume.AvailableFreeSpace
+              personalFilesRead = $false
+              sensorsActivated = $false
+              inferenceExecuted = $false
+            }
+          } catch {
+            $echoue = $true
+            # 05/11/2026 : conserver une panne CIM sans sérialiser son erreur,
+            # ses propriétés non choisies ou des informations de compte.
+            $preuve = [ordered]@{
+              schemaVersion = 1
+              mode = 'diagnostic'
+              status = 'failure'
+              reason = 'diagnosticUnavailable'
+              personalFilesRead = $false
+              sensorsActivated = $false
+              inferenceExecuted = $false
+            }
+          } finally {
+            New-Item -ItemType Directory -Force -Path $env:RAPPORT_DOSSIER | Out-Null
+            $rapport = Join-Path $env:RAPPORT_DOSSIER 'diagnostic.json'
+            $preuve | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $rapport -Encoding utf8
+            $preuve | ConvertTo-Json -Depth 6
+          }
+          if ($echoue) { throw 'Diagnostic matériel indisponible. Voir le rapport.' }
+
+      - name: Garder le diagnostic seulement
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostic-parite-windows-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/diapason-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}/diagnostic.json
+          if-no-files-found: error
+          retention-days: 14
+
+  build:
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'complet'
+    # 05/11/2026 : GitHub masque les brouillons au jeton en lecture seule.
+    # Le jeton n'est fourni qu'à la réception des sources choisies par SHA-256 ;
+    # cette permission permet leur lecture, le workflow ne publie rien.
+    permissions:
+      contents: write
+    runs-on: [self-hosted, windows-local]
+    timeout-minutes: 180
+    defaults:
+      run:
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "& '{0}'"
+    env:
+      SNAPSHOT_TAG: ${{ inputs.snapshot_tag }}
+      SNAPSHOT_SHA256: ${{ inputs.snapshot_sha256 }}
+
+    steps:
+      # Le runner a déjà choisi le bash de System32/WSL au lieu de Git Bash.
+      - name: Git Bash pour les actions composites
+        id: git_bash
+        shell: cmd
+        run: echo C:\Program Files\Git\bin>>"%GITHUB_PATH%"
+
+      - id: node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - id: rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Dossier jetable et Python CP313
+        id: initialisation
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $nom = 'diapason-beta-{0}-{1}' -f $env:GITHUB_RUN_ID, $env:GITHUB_RUN_ATTEMPT
+          $racine = Join-Path $env:RUNNER_TEMP $nom
+          if (Test-Path $racine) { throw 'Le dossier de ce run existe deja' }
+          New-Item -ItemType Directory -Path $racine | Out-Null
+          $outils = Join-Path $racine 'outils'
+          New-Item -ItemType Directory -Path $outils | Out-Null
+          $pythonDir = Join-Path $outils 'python'
+          $cache = Join-Path $outils 'cache'
+          $temporaire = Join-Path $outils 'tmp'
+          foreach ($dossier in @($pythonDir, $cache, $temporaire)) {
+            New-Item -ItemType Directory -Path $dossier | Out-Null
+          }
+          $env:UV_PYTHON_INSTALL_DIR = $pythonDir
+          $env:UV_CACHE_DIR = $cache
+          $env:TEMP = $temporaire
+          $env:TMP = $temporaire
+          "UV_PYTHON_INSTALL_DIR=$pythonDir" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "UV_CACHE_DIR=$cache" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "TEMP=$temporaire" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "TMP=$temporaire" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          # 05/11/2026 : latest non vérifié pouvait exécuter d'autres octets ;
+          # python install enregistrait aussi le runtime dans le compte du runner.
+          $uvVersion = '0.13.7'
+          $uvSha256 = '0cdc5b38fe5a8168ed6a25814f5ba43c21d313dd3187314fccb37b7cec46e021'
+          $uvUrl = "https://github.com/astral-sh/uv/releases/download/$uvVersion/uv-x86_64-pc-windows-msvc.zip"
+          Invoke-WebRequest -UseBasicParsing $uvUrl -OutFile "$outils\uv.zip"
+          $uvRecu = (Get-FileHash -Algorithm SHA256 -LiteralPath "$outils\uv.zip").Hash.ToLowerInvariant()
+          if ($uvRecu -ne $uvSha256) { throw 'SHA-256 uv divergent' }
+          Expand-Archive "$outils\uv.zip" -DestinationPath $outils
+          $uv = Join-Path $outils 'uv.exe'
+          Push-Location $outils
+          try {
+            & $uv python install 3.13 --no-config --no-bin --no-registry --install-dir "$pythonDir"
+            if ($LASTEXITCODE -ne 0) { throw 'Installation Python 3.13 refusee' }
+            $python = & $uv python find --no-config --no-project --managed-python --no-python-downloads 3.13
+            if ($LASTEXITCODE -ne 0) { throw 'Python 3.13 prive introuvable' }
+            $python = [System.IO.Path]::GetFullPath(([string]$python).Trim())
+            $installation = [System.IO.Path]::GetFullPath($pythonDir + '\')
+            if (-not $python.StartsWith($installation, [System.StringComparison]::OrdinalIgnoreCase)) {
+              throw 'Le Python trouve sort de l installation privee'
+            }
+          } finally {
+            Pop-Location
+          }
+          "BETA_UV=$uv" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          $outils | Out-File $env:GITHUB_PATH -Append -Encoding utf8
+          "BETA_WORKDIR=$racine" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "BETA_PYTHON=$python" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "BETA_SOURCE=$racine\profil\src" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "BETA_OUTPUT=$racine\artefact" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "DIAPASON_HOME=$racine\profil" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "HF_HOME=$racine\profil\hf-cache" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Télécharger le brouillon authentifié et extraire sans liens
+        id: reception
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $programme = @'
+          # BEGIN_BOOTSTRAP
+          import hashlib
+          import json
+          import os
+          import re
+          import tarfile
+          import urllib.parse
+          import urllib.request
+          from pathlib import Path
+
+          def extraire_snapshot(archive, destination):
+              vus, membres, total = set(), [], 0
+              reserves = {'con', 'prn', 'aux', 'nul'} | {f'{p}{n}' for p in ('com', 'lpt') for n in range(1, 10)}
+              with tarfile.open(archive, 'r:gz') as tar:
+                  for membre in tar:
+                      parties = membre.name.split('/')
+                      if (len(parties) < 2 or parties[0] != 'diapason-beta' or not membre.isfile()
+                          or any(not p or p in ('.', '..') or p.endswith(('.', ' '))
+                              or any(ord(c) < 32 or c in '\\:<>"|?*' for c in p)
+                              or p.split('.')[0].casefold() in reserves for p in parties)):
+                          raise ValueError('Chemin ou type tar refuse')
+                      total += membre.size
+                      if (membre.name.casefold() in vus or not 0 <= membre.size <= 64 * 1024**2
+                          or total > 1024**3 or len(membres) >= 50000):
+                          raise ValueError('Collision ou limite tar depassee')
+                      vus.add(membre.name.casefold())
+                      membres.append(membre)
+                  destination.mkdir(parents=True, exist_ok=False)
+                  for membre in membres:
+                      cible = destination.joinpath(*membre.name.split('/'))
+                      cible.parent.mkdir(parents=True, exist_ok=True)
+                      with cible.open('xb') as sortie, tar.extractfile(membre) as entree:
+                          sortie.write(entree.read())
+              return destination / 'diapason-beta'
+
+          class RedirectionSansJeton(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  cible = urllib.parse.urlsplit(newurl)
+                  if cible.scheme != 'https' or not (cible.hostname == 'api.github.com' or (cible.hostname or '').endswith('.githubusercontent.com')):
+                      raise ValueError('Redirection asset inattendue')
+                  suivant = super().redirect_request(req, fp, code, msg, headers, newurl)
+                  if cible.hostname != 'api.github.com':
+                      suivant.remove_header('Authorization')
+                  return suivant
+
+          def recevoir():
+              tag = os.environ['SNAPSHOT_TAG']
+              attendu = os.environ['SNAPSHOT_SHA256'].lower()
+              depot = os.environ['GITHUB_REPOSITORY']
+              if not re.fullmatch(r'snapshot-windows-[A-Za-z0-9][A-Za-z0-9._-]{0,95}', tag):
+                  raise ValueError('Tag de brouillon snapshot-windows-* requis')
+              if not re.fullmatch(r'[0-9a-f]{64}', attendu):
+                  raise ValueError('SHA-256 invalide')
+              api = f'https://api.github.com/repos/{depot}'
+              ouvrir = urllib.request.build_opener(RedirectionSansJeton()).open
+              def requete(url, binaire=False):
+                  # Le jeton reste sur api.github.com : le gestionnaire
+                  # ci-dessus le retire du saut vers le stockage des assets.
+                  return urllib.request.Request(url, headers={
+                      'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                      'Accept': 'application/octet-stream' if binaire else 'application/vnd.github+json',
+                      'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'Diapason-beta-windows'})
+              release = None
+              # /releases/tags ne convient pas aux brouillons ; lire la liste
+              # authentifiee. Dix pages bornent a 1 000 releases la recherche.
+              for page in range(1, 11):
+                  with ouvrir(requete(f'{api}/releases?per_page=100&page={page}'), timeout=60) as flux:
+                      lot = json.load(flux)
+                  release = next((r for r in lot if r['tag_name'] == tag), None)
+                  if release or len(lot) < 100:
+                      break
+              if release is None or release.get('draft') is not True:
+                  raise ValueError('La release snapshot doit exister et rester brouillon')
+              assets = [a for a in release['assets'] if a['name'] == 'snapshot-windows.tar.gz']
+              if len(assets) != 1 or not 0 < assets[0]['size'] <= 512 * 1024**2:
+                  raise ValueError('Asset absent, ambigu ou trop volumineux')
+              racine = Path(os.environ['BETA_WORKDIR'])
+              archive = racine / 'snapshot-windows.tar.gz'
+              digest, taille = hashlib.sha256(), 0
+              with ouvrir(requete(f"{api}/releases/assets/{assets[0]['id']}", True), timeout=60) as entree, archive.open('xb') as sortie:
+                  while morceau := entree.read(1024**2):
+                      taille += len(morceau)
+                      if taille > 512 * 1024**2:
+                          raise ValueError('Telechargement trop gros')
+                      digest.update(morceau)
+                      sortie.write(morceau)
+              if digest.hexdigest() != attendu or taille != assets[0]['size']:
+                  raise ValueError('SHA-256 ou taille de snapshot divergent')
+              extrait = extraire_snapshot(archive, racine / 'payload')
+              cible = Path(os.environ['BETA_SOURCE'])
+              cible.parent.mkdir(parents=True, exist_ok=False)
+              extrait.rename(cible)
+              preuve = {'snapshotReleaseId': release['id'], 'snapshotTag': tag,
+                  'snapshotAssetId': assets[0]['id'], 'snapshotSha256': attendu,
+                  'workflowCommit': os.environ['GITHUB_SHA'], 'runId': os.environ['GITHUB_RUN_ID']}
+              (racine / 'download-provenance.json').write_text(json.dumps(preuve, indent=2), encoding='utf-8')
+
+          if __name__ == '__main__':
+              recevoir()
+          # END_BOOTSTRAP
+          '@
+          # PowerShell 5.1 retire des guillemets d'un programme multiligne
+          # transmis en argument natif ; un fichier conserve ses octets.
+          $fichier = Join-Path $env:BETA_WORKDIR 'recevoir_snapshot.py'
+          [System.IO.File]::WriteAllText($fichier, $programme, (New-Object System.Text.UTF8Encoding($false)))
+          & $env:BETA_PYTHON $fichier
+          if ($LASTEXITCODE -ne 0) { throw 'Reception de la snapshot refusee' }
+
+      - name: Vérifier chaque fichier et isoler les URL de la bêta
+        id: preparation
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & $env:BETA_PYTHON "$env:BETA_SOURCE\scripts\preparer_beta_windows.py" prepare `
+            --root "$env:BETA_SOURCE" --repository "$env:GITHUB_REPOSITORY" `
+            --snapshot-sha256 "$($env:SNAPSHOT_SHA256.ToLower())" `
+            --windows-complet --target x86_64-pc-windows-msvc
+          if ($LASTEXITCODE -ne 0) { throw 'Preparation de la copie refusee' }
+          $preuve = Get-Content "$env:BETA_SOURCE\beta-build.json" -Raw | ConvertFrom-Json
+          "BETA_RELEASES_URL=$($preuve.buildEnvironment.DIAPASON_BACKEND_RELEASES_URL)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "BETA_RELEASE_TAG=$($preuve.buildEnvironment.DIAPASON_BACKEND_RELEASE_TAG)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          New-Item -ItemType Directory -Path $env:BETA_OUTPUT | Out-Null
+          Copy-Item "$env:BETA_WORKDIR\download-provenance.json" $env:BETA_OUTPUT
+
+      - name: Wheel Windows CP313 de la snapshot
+        id: wheel
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-Location $env:BETA_SOURCE
+          & $env:BETA_UV venv --python $env:BETA_PYTHON .venv-assets
+          if ($LASTEXITCODE -ne 0) { throw 'Venv de build refuse' }
+          & $env:BETA_UV pip install --python .venv-assets maturin==1.14.1
+          if ($LASTEXITCODE -ne 0) { throw 'Installation maturin refusee' }
+          & .venv-assets\Scripts\maturin.exe build --release `
+            --manifest-path rust\crates\diapason-python\Cargo.toml `
+            --interpreter (Resolve-Path .venv-assets\Scripts\python.exe).Path --out $env:BETA_OUTPUT
+          if ($LASTEXITCODE -ne 0) { throw 'Construction de la wheel refusee' }
+
+      - name: Profil de production verrouillé dans la copie jetable
+        id: profil
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-Location $env:BETA_SOURCE
+          & $env:BETA_UV lock --check --python $env:BETA_PYTHON
+          if ($LASTEXITCODE -ne 0) { throw 'Overlay et verrou incoherents' }
+          & $env:BETA_UV sync --locked --no-dev --python $env:BETA_PYTHON `
+            --extra desktop --extra dictation --extra inference-cloud --extra inference-google --extra voice-windows
+          if ($LASTEXITCODE -ne 0) { throw 'Installation du profil verrouille refusee' }
+          $roues = @(Get-ChildItem "$env:BETA_OUTPUT\diapason_rust-*-cp313-cp313-win_amd64.whl")
+          if ($roues.Count -ne 1) { throw 'Wheel CP313 absente ou ambigue' }
+          & $env:BETA_UV pip install --python .venv --no-deps $roues[0].FullName
+          if ($LASTEXITCODE -ne 0) { throw 'Installation de la wheel native refusee' }
+          & .venv\Scripts\python.exe -c "import diapason_rust; import faster_whisper; import diapason.server.app; import runpy; runpy.run_path('deploy/windows/beta_backend.py', run_name='beta_import')"
+          if ($LASTEXITCODE -ne 0) { throw 'Imports du backend Windows refuses' }
+
+      - name: Bundle web Python depuis les sources courantes
+        id: frontend
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-Location "$env:BETA_SOURCE\frontend"
+          npm ci
+          if ($LASTEXITCODE -ne 0) { throw 'npm ci refuse' }
+          npm run build
+          if ($LASTEXITCODE -ne 0) { throw 'Bundle web refuse' }
+
+      - name: Contrats communs et fenêtres Windows
+        id: contrats
+        env:
+          DIAPASON_TEST_PYTHON: ${{ env.BETA_PYTHON }}
+          DIAPASON_WINDOWS_COMPLET: '1'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-Location "$env:BETA_SOURCE\frontend\src-tauri"
+          cargo test --locked --lib
+          if ($LASTEXITCODE -ne 0) { throw 'Contrats Tauri Windows refuses' }
+          cargo clippy --locked --all-targets -- -D warnings
+          if ($LASTEXITCODE -ne 0) { throw 'Clippy Windows refuse' }
+          Set-Location "$env:BETA_SOURCE\frontend"
+          npx tsc --noEmit
+          if ($LASTEXITCODE -ne 0) { throw 'TypeScript refuse' }
+          npx vitest run
+          if ($LASTEXITCODE -ne 0) { throw 'Contrats interface refuses' }
+
+      - name: Orion, lecture et serveur complets dans un profil Windows jetable
+        id: preuve_native
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-Location $env:BETA_SOURCE
+          & .venv\Scripts\python.exe scripts\verifier_parite_windows.py `
+            --root "$env:BETA_SOURCE" --uv "$env:BETA_UV" `
+            --output "$env:BETA_OUTPUT\parite-windows.json" `
+            --workdir "$env:BETA_WORKDIR\preuve-native"
+          if ($LASTEXITCODE -ne 0) { throw 'Preuve native Windows refusee : aucun installateur livrable' }
+
+      - name: Installateur NSIS et signature updater
+        id: nsis
+        if: success() && steps.preuve_native.outcome == 'success'
+        env:
+          DIAPASON_BACKEND_RELEASES_URL: ${{ env.BETA_RELEASES_URL }}
+          DIAPASON_BACKEND_RELEASE_TAG: ${{ env.BETA_RELEASE_TAG }}
+          DIAPASON_WINDOWS_COMPLET: '1'
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:TAURI_SIGNING_PRIVATE_KEY) { throw 'Cle updater absente' }
+          Set-Location "$env:BETA_SOURCE\frontend"
+          npx tauri build --verbose --config src-tauri\tauri.windows.conf.json
+          if ($LASTEXITCODE -ne 0) { throw 'Construction NSIS refusee' }
+
+      - name: Source construite, backend et empreintes
+        id: assemblage
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & $env:BETA_PYTHON "$env:BETA_SOURCE\scripts\preparer_beta_windows.py" assemble `
+            --root "$env:BETA_SOURCE" --output "$env:BETA_OUTPUT"
+          if ($LASTEXITCODE -ne 0) { throw 'Assemblage incomplet' }
+
+      - name: Conserver le statut minimal même après un échec précoce
+        id: rapport
+        if: always()
+        env:
+          RAPPORT_DOSSIER: ${{ runner.temp }}/diapason-beta-${{ github.run_id }}-${{ github.run_attempt }}/artefact
+          ETAPE_GIT_BASH: ${{ steps.git_bash.outcome }}
+          ETAPE_NODE: ${{ steps.node.outcome }}
+          ETAPE_RUST: ${{ steps.rust.outcome }}
+          ETAPE_INITIALISATION: ${{ steps.initialisation.outcome }}
+          ETAPE_RECEPTION: ${{ steps.reception.outcome }}
+          ETAPE_PREPARATION: ${{ steps.preparation.outcome }}
+          ETAPE_WHEEL: ${{ steps.wheel.outcome }}
+          ETAPE_PROFIL: ${{ steps.profil.outcome }}
+          ETAPE_FRONTEND: ${{ steps.frontend.outcome }}
+          ETAPE_CONTRATS: ${{ steps.contrats.outcome }}
+          ETAPE_PREUVE_NATIVE: ${{ steps.preuve_native.outcome }}
+          ETAPE_NSIS: ${{ steps.nsis.outcome }}
+          ETAPE_ASSEMBLAGE: ${{ steps.assemblage.outcome }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # 05/11/2026 : un échec setup/SHA précédait BETA_OUTPUT et perdait
+          # sa preuve. Le chemin fixe ne dépend d'aucun export de ces étapes.
+          New-Item -ItemType Directory -Force -Path $env:RAPPORT_DOSSIER | Out-Null
+          $valeurs = @{
+            git_bash = $env:ETAPE_GIT_BASH
+            node = $env:ETAPE_NODE
+            rust = $env:ETAPE_RUST
+            initialisation = $env:ETAPE_INITIALISATION
+            reception = $env:ETAPE_RECEPTION
+            preparation = $env:ETAPE_PREPARATION
+            wheel = $env:ETAPE_WHEEL
+            profil = $env:ETAPE_PROFIL
+            frontend = $env:ETAPE_FRONTEND
+            contrats = $env:ETAPE_CONTRATS
+            preuve_native = $env:ETAPE_PREUVE_NATIVE
+            nsis = $env:ETAPE_NSIS
+            assemblage = $env:ETAPE_ASSEMBLAGE
+          }
+          $etapes = [ordered]@{}
+          foreach ($nom in ($valeurs.Keys | Sort-Object)) {
+            $valeur = [string]$valeurs[$nom]
+            if ($valeur -notin @('success', 'failure', 'cancelled', 'skipped')) {
+              $valeur = 'unknown'
+            }
+            $etapes[$nom] = $valeur
+          }
+          $issues = @($etapes.Values)
+          $statut = 'success'
+          if ($issues -contains 'failure') {
+            $statut = 'failure'
+          } elseif ($issues -contains 'cancelled') {
+            $statut = 'cancelled'
+          } elseif (($issues -contains 'skipped') -or ($issues -contains 'unknown')) {
+            $statut = 'incomplete'
+          }
+          $rapport = [ordered]@{
+            schemaVersion = 1
+            mode = 'complet'
+            status = $statut
+            steps = $etapes
+          }
+          $chemin = Join-Path $env:RAPPORT_DOSSIER 'run-status.json'
+          $rapport | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $chemin -Encoding utf8
+
+      - name: Garder le livrable complet, sans publication
+        id: artefacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parite-windows-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/diapason-beta-${{ github.run_id }}-${{ github.run_attempt }}/artefact
+          if-no-files-found: error
+          # 14 jours laissent la revue humaine avant publication ; ce n'est
+          # pas un stockage durable ni une release disponible pour l'ami.
+          retention-days: 14
