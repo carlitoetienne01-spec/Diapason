@@ -19,6 +19,26 @@ def lire():
 
 
 class TestWorkflowPariteWindows:
+    def test_le_manifeste_libtest_reste_limite_a_la_commande_de_tests(self):
+        """§100 : le contexte v6 doit atteindre libtest sans contaminer NSIS."""
+        job = lire()["jobs"]["build"]
+        script = next(s["run"] for s in job["steps"] if s.get("id") == "contrats")
+        variable = "DIAPASON_WINDOWS_LIBTEST_MANIFEST"
+        assert f"$env:{variable} = '1'" in script
+        assert script.index(f"$env:{variable}") < script.index(
+            "cargo test --locked --lib"
+        )
+        assert "finally {" in script
+        assert script.index(f"Remove-Item Env:{variable}") < script.index(
+            "cargo clippy"
+        )
+        assert script.index("$codeContrats = $LASTEXITCODE") < script.index(
+            "Remove-Item"
+        )
+        assert variable not in job.get("env", {})
+        signature = next(s for s in job["steps"] if s.get("id") == "nsis")
+        assert variable not in signature.get("env", {}), "aucun flag de test en release"
+
     def test_le_bilan_final_exige_les_rapports_du_run_et_le_sha_attendu(self):
         """§100 : les résultats des trois bancs doivent être validés ensemble."""
         etapes = lire()["jobs"]["build"]["steps"]

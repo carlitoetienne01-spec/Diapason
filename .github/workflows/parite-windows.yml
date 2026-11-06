@@ -370,8 +370,15 @@ jobs:
             startedAtUnixMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
           }
           $demande | ConvertTo-Json | Set-Content -LiteralPath "$env:BETA_OUTPUT\capsule-request.json" -Encoding utf8
-          cargo test --locked --lib
-          if ($LASTEXITCODE -ne 0) {
+          $env:DIAPASON_WINDOWS_LIBTEST_MANIFEST = '1'
+          $codeContrats = 1
+          try {
+            cargo test --locked --lib
+            $codeContrats = $LASTEXITCODE
+          } finally {
+            Remove-Item Env:DIAPASON_WINDOWS_LIBTEST_MANIFEST -ErrorAction SilentlyContinue
+          }
+          if ($codeContrats -ne 0) {
             # Un refus du chargeur Windows survient avant le main du test.
             # Sonder seulement les imports du PE construit et les DLL système.
             $diagnostic = Join-Path $env:BETA_SOURCE 'scripts\diagnostiquer_chargement_windows.py'
