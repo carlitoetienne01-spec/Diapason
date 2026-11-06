@@ -373,7 +373,9 @@ jobs:
           $env:DIAPASON_WINDOWS_LIBTEST_MANIFEST = '1'
           $codeContrats = 1
           try {
-            cargo test --locked --lib
+            # Les fixtures Python et la vraie fenêtre doivent être isolées ;
+            # trois délais ont expiré pendant le passage parallèle .7.
+            cargo test --locked --lib -- --test-threads=1
             $codeContrats = $LASTEXITCODE
           } finally {
             Remove-Item Env:DIAPASON_WINDOWS_LIBTEST_MANIFEST -ErrorAction SilentlyContinue
@@ -418,6 +420,14 @@ jobs:
           if (Test-Path -LiteralPath $rapport) {
             Copy-Item -LiteralPath $rapport -Destination "$env:BETA_OUTPUT\parite-windows.json"
           }
+          $journal = Join-Path $essai 'logs\preparation.log'
+          if (Test-Path -LiteralPath $journal) {
+            if ((Get-Item -LiteralPath $journal).Length -le 1048576) {
+              $destination = Join-Path $env:BETA_OUTPUT 'logs'
+              New-Item -ItemType Directory -Force -Path $destination | Out-Null
+              Copy-Item -LiteralPath $journal -Destination $destination
+            }
+          }
           # Seulement les quatre WAV du corpus public ; ni DB ni cache du profil.
           foreach ($nom in @('fr-tts.wav','fr-narration.wav','en-tts.wav','en-narration.wav')) {
             $wav = Join-Path (Join-Path $essai 'wav') $nom
@@ -440,6 +450,7 @@ jobs:
             ${{ runner.temp }}/diapason-beta-${{ github.run_id }}-${{ github.run_attempt }}/artefact/capsule-request.json
             ${{ runner.temp }}/diapason-beta-${{ github.run_id }}-${{ github.run_attempt }}/artefact/capsule-windows.json
             ${{ runner.temp }}/diapason-beta-${{ github.run_id }}-${{ github.run_attempt }}/artefact/parite-windows.json
+            ${{ runner.temp }}/diapason-beta-${{ github.run_id }}-${{ github.run_attempt }}/artefact/logs/preparation.log
           if-no-files-found: warn
           retention-days: 14
 
