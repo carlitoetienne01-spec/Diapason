@@ -14,6 +14,19 @@ def lire():
 
 
 class TestWorkflowPariteWindows:
+    def test_le_diagnostic_de_chargement_ne_masque_pas_lechec_des_contrats(self):
+        """§100 : le chargeur refusait le PE avant toute sortie des tests Rust."""
+        script = next(
+            s["run"]
+            for s in lire()["jobs"]["build"]["steps"]
+            if s.get("id") == "contrats"
+        )
+        assert "diagnostiquer_chargement_windows.py" in script
+        assert '"$env:BETA_OUTPUT\\chargement-windows.json"' in script
+        assert script.index("$env:BETA_PYTHON $diagnostic") < script.index(
+            "throw 'Contrats Tauri Windows refuses'"
+        ), "le diagnostic conserve le refus initial"
+
     def test_le_bundle_tauri_existe_avant_les_contrats_rust(self):
         """§100 : le bundle Python seul laissait frontendDist absent sur le PC."""
         etapes = lire()["jobs"]["build"]["steps"]
