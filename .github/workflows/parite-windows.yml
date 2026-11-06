@@ -362,7 +362,16 @@ jobs:
           $ErrorActionPreference = 'Stop'
           Set-Location "$env:BETA_SOURCE\frontend\src-tauri"
           cargo test --locked --lib
-          if ($LASTEXITCODE -ne 0) { throw 'Contrats Tauri Windows refuses' }
+          if ($LASTEXITCODE -ne 0) {
+            # Un refus du chargeur Windows survient avant le main du test.
+            # Sonder seulement les imports du PE construit et les DLL système.
+            $diagnostic = Join-Path $env:BETA_SOURCE 'scripts\diagnostiquer_chargement_windows.py'
+            if (Test-Path -LiteralPath $diagnostic) {
+              & $env:BETA_PYTHON $diagnostic --root "$env:BETA_SOURCE" `
+                --output "$env:BETA_OUTPUT\chargement-windows.json"
+            }
+            throw 'Contrats Tauri Windows refuses'
+          }
           cargo clippy --locked --all-targets -- -D warnings
           if ($LASTEXITCODE -ne 0) { throw 'Clippy Windows refuse' }
           Set-Location "$env:BETA_SOURCE\frontend"
