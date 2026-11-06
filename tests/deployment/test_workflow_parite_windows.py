@@ -35,6 +35,9 @@ class TestWorkflowPariteWindows:
         assert script.index("$codeContrats = $LASTEXITCODE") < script.index(
             "Remove-Item"
         )
+        assert "cargo test --locked --lib -- --test-threads=1" in script, (
+            "isoler les fenêtres et les amorçages Python"
+        )
         assert variable not in job.get("env", {})
         signature = next(s for s in job["steps"] if s.get("id") == "nsis")
         assert variable not in signature.get("env", {}), "aucun flag de test en release"
@@ -70,9 +73,11 @@ class TestWorkflowPariteWindows:
         )
         assert collecte["if"] == "always() && steps.preparation.outcome == 'success'"
         chemins = collecte["with"]["path"].splitlines()
-        assert len(chemins) == 4, "quatre rapports fixes seulement"
+        assert len(chemins) == 5, "quatre rapports et le journal de préparation fixes"
         assert all(c.startswith("${{ runner.temp }}/diapason-beta-") for c in chemins)
-        assert all(c.endswith(".json") and "*" not in c for c in chemins)
+        assert all("*" not in c for c in chemins)
+        assert sum(c.endswith(".json") for c in chemins) == 4
+        assert chemins[-1].endswith("/artefact/logs/preparation.log")
         assert "env.BETA_OUTPUT" not in str(collecte), "aucune racine vide après échec"
 
     def test_les_bancs_llm_et_capsule_ont_des_preuves_liees_a_ce_run(self):
