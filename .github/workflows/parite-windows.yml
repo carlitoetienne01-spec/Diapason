@@ -347,6 +347,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'npm ci refuse' }
           npm run build
           if ($LASTEXITCODE -ne 0) { throw 'Bundle web refuse' }
+          # 06/11/2026 : le bundle Python ne crée pas frontend/dist ; les
+          # tests Rust échouaient dans generate_context! avant tout essai natif.
+          npm run build:tauri
+          if ($LASTEXITCODE -ne 0) { throw 'Bundle Tauri refuse' }
+          if (-not (Test-Path -LiteralPath 'dist\index.html')) { throw 'Bundle Tauri absent' }
 
       - name: Contrats communs et fenêtres Windows
         id: contrats
