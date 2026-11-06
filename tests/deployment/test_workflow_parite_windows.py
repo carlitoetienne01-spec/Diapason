@@ -14,6 +14,21 @@ def lire():
 
 
 class TestWorkflowPariteWindows:
+    def test_les_bancs_llm_et_capsule_ont_des_preuves_liees_a_ce_run(self):
+        """§100 : ni un ancien reçu de capsule ni une sonde de modèle ne suffisent."""
+        etapes = lire()["jobs"]["build"]["steps"]
+        contrats = next(s["run"] for s in etapes if s.get("id") == "contrats")
+        for nom in ("REPORT", "NONCE", "RUN_ID"):
+            assert f"DIAPASON_CAPSULE_TEST_{nom}" in contrats
+        assert contrats.index("capsule-request.json") < contrats.index("cargo test")
+        llm = next(s["run"] for s in etapes if s.get("id") == "preuve_llm")
+        assert "scripts\\prouver_llm_windows.py" in llm
+        assert '--workdir "$essai" --download' in llm
+        assert llm.index("$codePreuve = $LASTEXITCODE") < llm.index("Copy-Item")
+        assert "Get-ChildItem" not in llm, "ne collecter que les preuves synthétiques"
+        assert "'report.json','dialogue.json','backend-events.jsonl'" in llm
+        assert "if ($codePreuve -ne 0)" in llm
+
     def test_la_voix_avance_apres_un_echec_de_fenetre_sans_livrer_nsis(self):
         """§100 : les deux bancs sont indépendants, la livraison exige les deux."""
         etapes = lire()["jobs"]["build"]["steps"]
@@ -234,7 +249,7 @@ def simuler_echec(identifiant, *, annule=False):
         if s.get("id") == "rapport":
             break
         condition = s.get("if")
-        if s.get("id") == "preuve_native":
+        if s.get("id") in {"preuve_native", "preuve_llm"}:
             assert condition == (
                 "${{ !cancelled() && steps.profil.outcome == 'success' "
                 "&& steps.frontend.outcome == 'success' }}"
@@ -406,6 +421,7 @@ class TestRapportsWorkflowPariteWindows:
             "frontend",
             "contrats",
             "preuve_native",
+            "preuve_llm",
         ):
             resultats = simuler_echec(phase)
             assert resultats[phase] == "failure", "la panne doit être conservée"
