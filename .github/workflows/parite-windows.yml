@@ -456,7 +456,9 @@ jobs:
 
       - name: Conversation et calcul réels dans un profil Windows distinct
         id: preuve_llm
-        if: ${{ !cancelled() && steps.profil.outcome == 'success' && steps.frontend.outcome == 'success' }}
+        # Le dialogue réel passe depuis .9. Ne pas retélécharger 4,94 Go
+        # quand un échec vocal ou d'interface empêche déjà la livraison.
+        if: success() && steps.preuve_native.outcome == 'success' && steps.contrats.outcome == 'success'
         run: |
           $ErrorActionPreference = 'Stop'
           Set-Location $env:BETA_SOURCE

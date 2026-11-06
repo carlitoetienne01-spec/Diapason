@@ -308,7 +308,7 @@ def etape(identifiant, job="build"):
 
 
 def simuler_echec(identifiant, *, annule=False):
-    """Conditions relues : deux bancs indépendants, succès global irréversible."""
+    """Audio indépendant ; le LLM attend le parcours vert sans effacer de refus."""
     resultats = {}
     succes = True
     for s in lire()["jobs"]["build"]["steps"]:
@@ -324,7 +324,7 @@ def simuler_echec(identifiant, *, annule=False):
                 == "${{ !cancelled() && steps.preparation.outcome == 'success' }}"
             )
             executer = not annule and resultats.get("preparation") == "success"
-        elif s.get("id") in {"preuve_native", "preuve_llm"}:
+        elif s.get("id") == "preuve_native":
             assert condition == (
                 "${{ !cancelled() && steps.profil.outcome == 'success' "
                 "&& steps.frontend.outcome == 'success' }}"
@@ -333,6 +333,17 @@ def simuler_echec(identifiant, *, annule=False):
                 not annule
                 and resultats.get("profil") == "success"
                 and resultats.get("frontend") == "success"
+            )
+        elif s.get("id") == "preuve_llm":
+            assert condition == (
+                "success() && steps.preuve_native.outcome == 'success' "
+                "&& steps.contrats.outcome == 'success'"
+            ), "le modèle lourd attend les preuves natives réussies"
+            executer = (
+                not annule
+                and succes
+                and resultats.get("preuve_native") == "success"
+                and resultats.get("contrats") == "success"
             )
         elif condition:
             assert condition == CONDITION_NSIS, (
@@ -542,6 +553,18 @@ class TestRapportsWorkflowPariteWindows:
         assert resultats["nsis"] == "skipped", "la panne de fenêtre reste bloquante"
         assert simuler_echec("aucune", annule=True)["preuve_native"] == "skipped", (
             "une annulation ne lance aucun modèle"
+        )
+
+    def test_un_refus_natif_evite_le_telechargement_llm_sans_autoriser_nsis(self):
+        """§100 : économiser le modèle ne doit pas devenir une livraison partielle."""
+        for refus in ("contrats", "preuve_native", "premiers_rapports"):
+            resultats = simuler_echec(refus)
+            assert resultats["preuve_llm"] == "skipped", (
+                "aucun téléchargement lourd après un refus déjà bloquant"
+            )
+            assert resultats["nsis"] == "skipped", "toutes les preuves restent requises"
+        assert simuler_echec("aucune")["preuve_llm"] == "success", (
+            "le parcours complet doit encore exercer le vrai dialogue"
         )
 
     def test_finally_conserve_un_echec_diagnostic_generique(
