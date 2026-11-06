@@ -382,6 +382,9 @@ jobs:
 
       - name: Orion, lecture et serveur complets dans un profil Windows jetable
         id: preuve_native
+        # Un refus du chargeur de la fenêtre ne doit pas empêcher de mesurer
+        # la voix Python indépendante. NSIS exige toujours le succès global.
+        if: ${{ !cancelled() && steps.profil.outcome == 'success' && steps.frontend.outcome == 'success' }}
         run: |
           $ErrorActionPreference = 'Stop'
           Set-Location $env:BETA_SOURCE
