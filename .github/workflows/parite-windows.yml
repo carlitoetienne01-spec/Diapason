@@ -370,8 +370,15 @@ jobs:
             startedAtUnixMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
           }
           $demande | ConvertTo-Json | Set-Content -LiteralPath "$env:BETA_OUTPUT\capsule-request.json" -Encoding utf8
-          cargo test --locked --lib
-          if ($LASTEXITCODE -ne 0) {
+          $env:DIAPASON_WINDOWS_LIBTEST_MANIFEST = '1'
+          $codeContrats = 1
+          try {
+            cargo test --locked --lib
+            $codeContrats = $LASTEXITCODE
+          } finally {
+            Remove-Item Env:DIAPASON_WINDOWS_LIBTEST_MANIFEST -ErrorAction SilentlyContinue
+          }
+          if ($codeContrats -ne 0) {
             # Un refus du chargeur Windows survient avant le main du test.
             # Sonder seulement les imports du PE construit et les DLL système.
             $diagnostic = Join-Path $env:BETA_SOURCE 'scripts\diagnostiquer_chargement_windows.py'
@@ -405,7 +412,7 @@ jobs:
           [System.IO.File]::WriteAllText($temoin, 'managed', (New-Object System.Text.UTF8Encoding($false)))
           & .venv\Scripts\python.exe scripts\verifier_parite_windows.py `
             --root "$env:BETA_SOURCE" --uv "$env:BETA_UV" `
-            --output "$essai\rapport.json" --workdir "$essai"
+            --output "$essai\rapport.json" --workdir "$essai" --audio-ocr-only
           $codePreuve = $LASTEXITCODE
           $rapport = Join-Path $essai 'rapport.json'
           if (Test-Path -LiteralPath $rapport) {
@@ -422,6 +429,20 @@ jobs:
           }
           if ($codePreuve -ne 0) { throw 'Preuve native Windows refusee : aucun installateur livrable' }
 
+      - name: Conserver les premiers rapports avant le téléchargement du LLM
+        id: premiers_rapports
+        if: always() && steps.preparation.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: premiers-rapports-windows-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/diapason-beta-${{ github.run_id }}-${{ github.run_attempt }}/artefact/chargement-windows.json
+            ${{ runner.temp }}/diapason-beta-${{ github.run_id }}-${{ github.run_attempt }}/artefact/capsule-request.json
+            ${{ runner.temp }}/diapason-beta-${{ github.run_id }}-${{ github.run_attempt }}/artefact/capsule-windows.json
+            ${{ runner.temp }}/diapason-beta-${{ github.run_id }}-${{ github.run_attempt }}/artefact/parite-windows.json
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Conversation et calcul réels dans un profil Windows distinct
         id: preuve_llm
         if: ${{ !cancelled() && steps.profil.outcome == 'success' && steps.frontend.outcome == 'success' }}
@@ -433,18 +454,32 @@ jobs:
             --root "$env:BETA_SOURCE" --workdir "$essai" --download
           $codePreuve = $LASTEXITCODE
           $destination = Join-Path $env:BETA_OUTPUT 'llm'
-          foreach ($nom in @('report.json','dialogue.json','backend-events.jsonl')) {
+          foreach ($nom in @('report.json','dialogue.json','backend-events.jsonl','logs/backend.log','logs/helper.log')) {
             $fichier = Join-Path $essai $nom
             if (Test-Path -LiteralPath $fichier) {
-              New-Item -ItemType Directory -Force -Path $destination | Out-Null
-              Copy-Item -LiteralPath $fichier -Destination $destination
+              $cible = Join-Path $destination $nom
+              New-Item -ItemType Directory -Force -Path (Split-Path $cible -Parent) | Out-Null
+              if ((Get-Item -LiteralPath $fichier).Length -le 4194304) {
+                Copy-Item -LiteralPath $fichier -Destination $cible
+              }
             }
           }
           if ($codePreuve -ne 0) { throw 'Preuve LLM Windows refusee' }
 
+      - name: Valider ensemble les preuves natives avant l'installateur
+        id: validation_parite
+        if: ${{ !cancelled() && steps.preparation.outcome == 'success' }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & $env:BETA_PYTHON -I -B "$env:BETA_SOURCE\scripts\valider_parite_windows.py" `
+            --root "$env:BETA_SOURCE" --artifact "$env:BETA_OUTPUT" `
+            --snapshot-sha256 "$($env:SNAPSHOT_SHA256.ToLower())" `
+            --run-id "$env:GITHUB_RUN_ID" --attempt "$env:GITHUB_RUN_ATTEMPT"
+          if ($LASTEXITCODE -ne 0) { throw 'Parite Windows complete non prouvee' }
+
       - name: Installateur NSIS et signature updater
         id: nsis
-        if: success() && steps.preuve_native.outcome == 'success'
+        if: success() && steps.preuve_native.outcome == 'success' && steps.preuve_llm.outcome == 'success' && steps.validation_parite.outcome == 'success'
         env:
           DIAPASON_BACKEND_RELEASES_URL: ${{ env.BETA_RELEASES_URL }}
           DIAPASON_BACKEND_RELEASE_TAG: ${{ env.BETA_RELEASE_TAG }}
@@ -482,7 +517,9 @@ jobs:
           ETAPE_FRONTEND: ${{ steps.frontend.outcome }}
           ETAPE_CONTRATS: ${{ steps.contrats.outcome }}
           ETAPE_PREUVE_NATIVE: ${{ steps.preuve_native.outcome }}
+          ETAPE_PREMIERS_RAPPORTS: ${{ steps.premiers_rapports.outcome }}
           ETAPE_PREUVE_LLM: ${{ steps.preuve_llm.outcome }}
+          ETAPE_VALIDATION_PARITE: ${{ steps.validation_parite.outcome }}
           ETAPE_NSIS: ${{ steps.nsis.outcome }}
           ETAPE_ASSEMBLAGE: ${{ steps.assemblage.outcome }}
         run: |
@@ -502,7 +539,9 @@ jobs:
             frontend = $env:ETAPE_FRONTEND
             contrats = $env:ETAPE_CONTRATS
             preuve_native = $env:ETAPE_PREUVE_NATIVE
+            premiers_rapports = $env:ETAPE_PREMIERS_RAPPORTS
             preuve_llm = $env:ETAPE_PREUVE_LLM
+            validation_parite = $env:ETAPE_VALIDATION_PARITE
             nsis = $env:ETAPE_NSIS
             assemblage = $env:ETAPE_ASSEMBLAGE
           }

@@ -7,6 +7,11 @@ from pathlib import Path
 import yaml
 
 WORKFLOW = Path(__file__).resolve().parents[2] / ".github/workflows/parite-windows.yml"
+CONDITION_NSIS = (
+    "success() && steps.preuve_native.outcome == 'success' "
+    "&& steps.preuve_llm.outcome == 'success' "
+    "&& steps.validation_parite.outcome == 'success'"
+)
 
 
 def lire():
@@ -14,6 +19,62 @@ def lire():
 
 
 class TestWorkflowPariteWindows:
+    def test_le_manifeste_libtest_reste_limite_a_la_commande_de_tests(self):
+        """§100 : le contexte v6 doit atteindre libtest sans contaminer NSIS."""
+        job = lire()["jobs"]["build"]
+        script = next(s["run"] for s in job["steps"] if s.get("id") == "contrats")
+        variable = "DIAPASON_WINDOWS_LIBTEST_MANIFEST"
+        assert f"$env:{variable} = '1'" in script
+        assert script.index(f"$env:{variable}") < script.index(
+            "cargo test --locked --lib"
+        )
+        assert "finally {" in script
+        assert script.index(f"Remove-Item Env:{variable}") < script.index(
+            "cargo clippy"
+        )
+        assert script.index("$codeContrats = $LASTEXITCODE") < script.index(
+            "Remove-Item"
+        )
+        assert variable not in job.get("env", {})
+        signature = next(s for s in job["steps"] if s.get("id") == "nsis")
+        assert variable not in signature.get("env", {}), "aucun flag de test en release"
+
+    def test_le_bilan_final_exige_les_rapports_du_run_et_le_sha_attendu(self):
+        """§100 : les résultats des trois bancs doivent être validés ensemble."""
+        etapes = lire()["jobs"]["build"]["steps"]
+        controle = next(s for s in etapes if s.get("id") == "validation_parite")
+        script = controle["run"]
+        assert "scripts\\valider_parite_windows.py" in script
+        for attendu in (
+            '--root "$env:BETA_SOURCE" --artifact "$env:BETA_OUTPUT"',
+            '--snapshot-sha256 "$($env:SNAPSHOT_SHA256.ToLower())"',
+            '--run-id "$env:GITHUB_RUN_ID" --attempt "$env:GITHUB_RUN_ATTEMPT"',
+        ):
+            assert attendu in script, "les identités viennent du workflow courant"
+        assert "if ($LASTEXITCODE -ne 0)" in script
+        assert next(s for s in etapes if s.get("id") == "nsis")["if"] == CONDITION_NSIS
+        assert "--audio-ocr-only" in next(
+            s["run"] for s in etapes if s.get("id") == "preuve_native"
+        )
+
+    def test_les_diagnostics_sont_accessibles_avant_le_banc_llm_long(self):
+        """§100 : attendre plusieurs Go du LLM cachait les défauts déjà observés."""
+        etapes = lire()["jobs"]["build"]["steps"]
+        index = next(
+            i for i, s in enumerate(etapes) if s.get("id") == "premiers_rapports"
+        )
+        llm = next(i for i, s in enumerate(etapes) if s.get("id") == "preuve_llm")
+        collecte = etapes[index]
+        assert index < llm, (
+            "collecter les preuves déjà terminées avant le téléchargement"
+        )
+        assert collecte["if"] == "always() && steps.preparation.outcome == 'success'"
+        chemins = collecte["with"]["path"].splitlines()
+        assert len(chemins) == 4, "quatre rapports fixes seulement"
+        assert all(c.startswith("${{ runner.temp }}/diapason-beta-") for c in chemins)
+        assert all(c.endswith(".json") and "*" not in c for c in chemins)
+        assert "env.BETA_OUTPUT" not in str(collecte), "aucune racine vide après échec"
+
     def test_les_bancs_llm_et_capsule_ont_des_preuves_liees_a_ce_run(self):
         """§100 : ni un ancien reçu de capsule ni une sonde de modèle ne suffisent."""
         etapes = lire()["jobs"]["build"]["steps"]
@@ -249,7 +310,16 @@ def simuler_echec(identifiant, *, annule=False):
         if s.get("id") == "rapport":
             break
         condition = s.get("if")
-        if s.get("id") in {"preuve_native", "preuve_llm"}:
+        if s.get("id") == "premiers_rapports":
+            assert condition == "always() && steps.preparation.outcome == 'success'"
+            executer = resultats.get("preparation") == "success"
+        elif s.get("id") == "validation_parite":
+            assert (
+                condition
+                == "${{ !cancelled() && steps.preparation.outcome == 'success' }}"
+            )
+            executer = not annule and resultats.get("preparation") == "success"
+        elif s.get("id") in {"preuve_native", "preuve_llm"}:
             assert condition == (
                 "${{ !cancelled() && steps.profil.outcome == 'success' "
                 "&& steps.frontend.outcome == 'success' }}"
@@ -260,11 +330,16 @@ def simuler_echec(identifiant, *, annule=False):
                 and resultats.get("frontend") == "success"
             )
         elif condition:
-            assert (
-                condition == "success() && steps.preuve_native.outcome == 'success'"
-            ), "une condition nouvelle doit être relue avant de simuler le pipeline"
+            assert condition == CONDITION_NSIS, (
+                "une condition nouvelle doit être relue avant de simuler le pipeline"
+            )
             executer = (
-                not annule and succes and resultats.get("preuve_native") == "success"
+                not annule
+                and succes
+                and all(
+                    resultats.get(n) == "success"
+                    for n in ("preuve_native", "preuve_llm", "validation_parite")
+                )
             )
         else:
             executer = succes
@@ -422,6 +497,7 @@ class TestRapportsWorkflowPariteWindows:
             "contrats",
             "preuve_native",
             "preuve_llm",
+            "validation_parite",
         ):
             resultats = simuler_echec(phase)
             assert resultats[phase] == "failure", "la panne doit être conservée"
@@ -444,9 +520,9 @@ class TestRapportsWorkflowPariteWindows:
     def test_nsis_exige_explicitement_la_reussite_de_la_preuve(self):
         """§100 : même une preuve sautée ne doit pas rendre les clés disponibles."""
         signature = etape("nsis")
-        assert (
-            signature["if"] == "success() && steps.preuve_native.outcome == 'success'"
-        ), "l'état global et le résultat de la preuve doivent tous deux être verts"
+        assert signature["if"] == CONDITION_NSIS, (
+            "l'état global et le résultat de la preuve doivent tous deux être verts"
+        )
         assert simuler_echec("aucune")["nsis"] == "success", (
             "le parcours vert reste possible"
         )
