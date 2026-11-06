@@ -14,6 +14,20 @@ def lire():
 
 
 class TestWorkflowPariteWindows:
+    def test_la_voix_avance_apres_un_echec_de_fenetre_sans_livrer_nsis(self):
+        """§100 : les deux bancs sont indépendants, la livraison exige les deux."""
+        etapes = lire()["jobs"]["build"]["steps"]
+        preuve = next(s for s in etapes if s.get("id") == "preuve_native")
+        nsis = next(s for s in etapes if s.get("id") == "nsis")
+        assert "!cancelled()" in preuve["if"], "un arrêt manuel reste prioritaire"
+        assert "steps.profil.outcome == 'success'" in preuve["if"]
+        assert "steps.frontend.outcome == 'success'" in preuve["if"]
+        assert "steps.contrats" not in preuve["if"], "la voix peut être exercée seule"
+        assert "success()" in nsis["if"], (
+            "un échec Tauri bloque toujours l'installateur"
+        )
+        assert "steps.preuve_native.outcome == 'success'" in nsis["if"]
+
     def test_le_diagnostic_de_chargement_ne_masque_pas_lechec_des_contrats(self):
         """§100 : le chargeur refusait le PE avant toute sortie des tests Rust."""
         script = next(
@@ -212,26 +226,38 @@ def etape(identifiant, job="build"):
     return next(s for s in lire()["jobs"][job]["steps"] if s.get("id") == identifiant)
 
 
-def simuler_echec(identifiant):
-    """Les seules conditions admises restent les deux gardes du workflow."""
+def simuler_echec(identifiant, *, annule=False):
+    """Conditions relues : deux bancs indépendants, succès global irréversible."""
     resultats = {}
     succes = True
     for s in lire()["jobs"]["build"]["steps"]:
         if s.get("id") == "rapport":
             break
         condition = s.get("if")
-        if condition:
+        if s.get("id") == "preuve_native":
+            assert condition == (
+                "${{ !cancelled() && steps.profil.outcome == 'success' "
+                "&& steps.frontend.outcome == 'success' }}"
+            ), "la preuve ne démarre qu'après la préparation vérifiée"
+            executer = (
+                not annule
+                and resultats.get("profil") == "success"
+                and resultats.get("frontend") == "success"
+            )
+        elif condition:
             assert (
                 condition == "success() && steps.preuve_native.outcome == 'success'"
             ), "une condition nouvelle doit être relue avant de simuler le pipeline"
-            executer = succes and resultats.get("preuve_native") == "success"
+            executer = (
+                not annule and succes and resultats.get("preuve_native") == "success"
+            )
         else:
             executer = succes
         assert "continue-on-error" not in s, "ne pas masquer un échec de preuve"
         resultat = "skipped"
         if executer:
             resultat = "failure" if s["id"] == identifiant else "success"
-            succes = resultat == "success"
+            succes = succes and resultat == "success"
         resultats[s["id"]] = resultat
     return resultats
 
@@ -376,6 +402,9 @@ class TestRapportsWorkflowPariteWindows:
             "initialisation",
             "reception",
             "preparation",
+            "profil",
+            "frontend",
+            "contrats",
             "preuve_native",
         ):
             resultats = simuler_echec(phase)
@@ -408,6 +437,15 @@ class TestRapportsWorkflowPariteWindows:
         for s in lire()["jobs"]["build"]["steps"]:
             if s.get("id") != "nsis":
                 assert "secrets." not in str(s), "les clés restent exclusives à NSIS"
+
+    def test_une_preuve_audio_reussie_nefface_pas_un_echec_tauri(self):
+        """§100 : le second banc peut passer sans rendre le premier vert."""
+        resultats = simuler_echec("contrats")
+        assert resultats["preuve_native"] == "success", "l'essai audio continue"
+        assert resultats["nsis"] == "skipped", "la panne de fenêtre reste bloquante"
+        assert simuler_echec("aucune", annule=True)["preuve_native"] == "skipped", (
+            "une annulation ne lance aucun modèle"
+        )
 
     def test_finally_conserve_un_echec_diagnostic_generique(
         self,
