@@ -14,6 +14,25 @@ def lire():
 
 
 class TestWorkflowPariteWindows:
+    def test_le_bundle_tauri_existe_avant_les_contrats_rust(self):
+        """§100 : le bundle Python seul laissait frontendDist absent sur le PC."""
+        etapes = lire()["jobs"]["build"]["steps"]
+        construction = next(
+            i for i, s in enumerate(etapes) if s.get("id") == "frontend"
+        )
+        contrats = next(i for i, s in enumerate(etapes) if s.get("id") == "contrats")
+        script = etapes[construction]["run"]
+        assert construction < contrats, "le vrai bundle doit précéder generate_context!"
+        assert "npm run build:tauri" in script, (
+            "le build Python ne produit pas frontend/dist"
+        )
+        assert script.index("npm run build\n") < script.index("npm run build:tauri"), (
+            "les deux applications doivent recevoir leur bundle"
+        )
+        assert "Test-Path -LiteralPath 'dist\\index.html'" in script, (
+            "la sortie attendue doit être vérifiée avant cargo test"
+        )
+
     def test_le_driver_recoit_ses_chemins_qa_et_garde_les_wav_sur_echec(self):
         """§100 : le driver refusait profil et rapport placés hors de son essai."""
         etape = next(
