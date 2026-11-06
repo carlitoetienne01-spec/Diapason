@@ -361,6 +361,15 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           Set-Location "$env:BETA_SOURCE\frontend\src-tauri"
+          $env:DIAPASON_CAPSULE_TEST_REPORT = Join-Path $env:BETA_OUTPUT 'capsule-windows.json'
+          $env:DIAPASON_CAPSULE_TEST_NONCE = [guid]::NewGuid().ToString('N')
+          $env:DIAPASON_CAPSULE_TEST_RUN_ID = "$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          $demande = [ordered]@{
+            nonce = $env:DIAPASON_CAPSULE_TEST_NONCE
+            runId = $env:DIAPASON_CAPSULE_TEST_RUN_ID
+            startedAtUnixMs = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+          }
+          $demande | ConvertTo-Json | Set-Content -LiteralPath "$env:BETA_OUTPUT\capsule-request.json" -Encoding utf8
           cargo test --locked --lib
           if ($LASTEXITCODE -ne 0) {
             # Un refus du chargeur Windows survient avant le main du test.
@@ -413,6 +422,26 @@ jobs:
           }
           if ($codePreuve -ne 0) { throw 'Preuve native Windows refusee : aucun installateur livrable' }
 
+      - name: Conversation et calcul réels dans un profil Windows distinct
+        id: preuve_llm
+        if: ${{ !cancelled() && steps.profil.outcome == 'success' && steps.frontend.outcome == 'success' }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-Location $env:BETA_SOURCE
+          $essai = Join-Path $env:BETA_WORKDIR 'preuve-llm'
+          & .venv\Scripts\python.exe -I -B scripts\prouver_llm_windows.py `
+            --root "$env:BETA_SOURCE" --workdir "$essai" --download
+          $codePreuve = $LASTEXITCODE
+          $destination = Join-Path $env:BETA_OUTPUT 'llm'
+          foreach ($nom in @('report.json','dialogue.json','backend-events.jsonl')) {
+            $fichier = Join-Path $essai $nom
+            if (Test-Path -LiteralPath $fichier) {
+              New-Item -ItemType Directory -Force -Path $destination | Out-Null
+              Copy-Item -LiteralPath $fichier -Destination $destination
+            }
+          }
+          if ($codePreuve -ne 0) { throw 'Preuve LLM Windows refusee' }
+
       - name: Installateur NSIS et signature updater
         id: nsis
         if: success() && steps.preuve_native.outcome == 'success'
@@ -453,6 +482,7 @@ jobs:
           ETAPE_FRONTEND: ${{ steps.frontend.outcome }}
           ETAPE_CONTRATS: ${{ steps.contrats.outcome }}
           ETAPE_PREUVE_NATIVE: ${{ steps.preuve_native.outcome }}
+          ETAPE_PREUVE_LLM: ${{ steps.preuve_llm.outcome }}
           ETAPE_NSIS: ${{ steps.nsis.outcome }}
           ETAPE_ASSEMBLAGE: ${{ steps.assemblage.outcome }}
         run: |
@@ -472,6 +502,7 @@ jobs:
             frontend = $env:ETAPE_FRONTEND
             contrats = $env:ETAPE_CONTRATS
             preuve_native = $env:ETAPE_PREUVE_NATIVE
+            preuve_llm = $env:ETAPE_PREUVE_LLM
             nsis = $env:ETAPE_NSIS
             assemblage = $env:ETAPE_ASSEMBLAGE
           }
