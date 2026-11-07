@@ -31,27 +31,51 @@ jobs:
     env:
       INSTALLATION_VERSION: ${{ inputs.version }}
       INSTALLATION_SHA256: ${{ inputs.installer_sha256 }}
+      BANC_COMMIT: ${{ github.sha }}
+      BANC_SCRIPT_SHA256: 96dc0c3d203787080c489851a11918a4820503a00df48f95e34b16bfd9b0f946
+      BANC_TEST_SHA256: fd0004e4effadac5518d25028d42dbc79eed6ae36f96ac16e38d58992848d932
 
     steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-
       - uses: actions/setup-node@v6
         with:
           node-version: '22'
 
+      - name: Recevoir les deux fichiers vérifiés du banc
+        timeout-minutes: 5
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:BANC_COMMIT -notmatch '^[a-f0-9]{40}$') { throw 'Commit invalide' }
+          $banc = Join-Path $env:RUNNER_TEMP ('diapason-installation-banc-{0}-{1}' -f $env:GITHUB_RUN_ID, $env:GITHUB_RUN_ATTEMPT)
+          if (Test-Path -LiteralPath $banc) { throw 'Banc deja present' }
+          New-Item -ItemType Directory -Path $banc | Out-Null
+          # 07/11/2026 : checkout nettoyait un ancien workspace volumineux
+          # avant l'essai. Deux fichiers du commit immuable suffisent ici.
+          $fichiers = @(
+            @{ path='scripts/tester_installation_windows.mjs'; sha=$env:BANC_SCRIPT_SHA256 },
+            @{ path='tests/deployment/premier_lancement_windows.test.mjs'; sha=$env:BANC_TEST_SHA256 }
+          )
+          foreach ($fichier in $fichiers) {
+            $cible = Join-Path $banc $fichier.path
+            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $cible) | Out-Null
+            $uri = 'https://raw.githubusercontent.com/carlitoetienne01-spec/Diapason/{0}/{1}' -f $env:BANC_COMMIT, $fichier.path
+            Invoke-WebRequest -UseBasicParsing -Uri $uri -OutFile $cible -TimeoutSec 60
+            $recu = (Get-FileHash -LiteralPath $cible -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($recu -ne $fichier.sha) { throw 'Empreinte du banc divergente' }
+          }
+
       - name: Contrôles du banc sans lancer l'application
         run: |
-          node --test tests/deployment/premier_lancement_windows.test.mjs
+          $banc = Join-Path $env:RUNNER_TEMP ('diapason-installation-banc-{0}-{1}' -f $env:GITHUB_RUN_ID, $env:GITHUB_RUN_ATTEMPT)
+          node --test (Join-Path $banc 'tests/deployment/premier_lancement_windows.test.mjs')
           if ($LASTEXITCODE -ne 0) { throw 'Contrats du banc refuses' }
 
       - name: Installer le véritable EXE et démarrer un profil neuf
         run: |
           $ErrorActionPreference = 'Stop'
           $travail = Join-Path $env:RUNNER_TEMP ('diapason-installation-{0}-{1}' -f $env:GITHUB_RUN_ID, $env:GITHUB_RUN_ATTEMPT)
+          $banc = Join-Path $env:RUNNER_TEMP ('diapason-installation-banc-{0}-{1}' -f $env:GITHUB_RUN_ID, $env:GITHUB_RUN_ATTEMPT)
           if (Test-Path -LiteralPath $travail) { throw 'Dossier d essai deja present' }
-          node scripts/tester_installation_windows.mjs `
+          node (Join-Path $banc 'scripts/tester_installation_windows.mjs') `
             --version $env:INSTALLATION_VERSION `
             --sha256 $env:INSTALLATION_SHA256 `
             --workdir $travail
