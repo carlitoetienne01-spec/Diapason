@@ -1,0 +1,69 @@
+name: Installation et premier lancement Windows publiés
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version bêta Windows déjà publiée à tester
+        required: true
+        type: string
+        default: '1.0.5-beta.20261107.22'
+      installer_sha256:
+        description: Empreinte du véritable installateur publié
+        required: true
+        type: string
+        default: '227b5dd1b66f305f16d42a5664df38eca88192f306a339e12afcef0a06266242'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: premier-lancement-windows
+  cancel-in-progress: false
+
+jobs:
+  installer:
+    runs-on: [self-hosted, windows-local]
+    timeout-minutes: 180
+    defaults:
+      run:
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "& '{0}'"
+    env:
+      INSTALLATION_VERSION: ${{ inputs.version }}
+      INSTALLATION_SHA256: ${{ inputs.installer_sha256 }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - name: Contrôles du banc sans lancer l'application
+        run: |
+          node --test tests/deployment/premier_lancement_windows.test.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Contrats du banc refuses' }
+
+      - name: Installer le véritable EXE et démarrer un profil neuf
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $travail = Join-Path $env:RUNNER_TEMP ('diapason-installation-{0}-{1}' -f $env:GITHUB_RUN_ID, $env:GITHUB_RUN_ATTEMPT)
+          if (Test-Path -LiteralPath $travail) { throw 'Dossier d essai deja present' }
+          node scripts/tester_installation_windows.mjs `
+            --version $env:INSTALLATION_VERSION `
+            --sha256 $env:INSTALLATION_SHA256 `
+            --workdir $travail
+          if ($LASTEXITCODE -ne 0) { throw 'Installation ou premier lancement refuses. Voir resultat.json' }
+
+      - name: Garder seulement les preuves synthétiques
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: installation-windows-${{ github.run_id }}-${{ github.run_attempt }}
+          # 07/11/2026 : le dossier parent contient les clés locales du profil
+          # d'essai. Seul rapport/ est publiable, jamais le profil ou les logs.
+          path: ${{ runner.temp }}/diapason-installation-${{ github.run_id }}-${{ github.run_attempt }}/rapport/
+          if-no-files-found: warn
+          retention-days: 14
