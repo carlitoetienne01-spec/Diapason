@@ -3,11 +3,20 @@ import assert from 'node:assert/strict';
 import {
   CONTROLES, ciblePubliee, argumentsNsis, environnementApplication,
   rapportValide, urlCdpValide, origineApplication, verifierNarration,
-  residuFermable, ollamaPartageable,
+  residuFermable, ollamaPartageable, erreurDemarragePubliable,
 } from '../../scripts/tester_installation_windows.mjs';
 
 const version = '1.0.5-beta.20261107.22';
 const sha = '227b5dd1b66f305f16d42a5664df38eca88192f306a339e12afcef0a06266242';
+
+test('le diagnostic conserve la fin de pile sans publier de chemin ni jeton', () => {
+  const pile = 'x'.repeat(1800) + '\nC:\\profil\\runtime\\serve.py\nBearer jeton-factice\nUnicodeDecodeError: cp1252';
+  const nettoye = erreurDemarragePubliable(pile);
+  assert(nettoye.endsWith('UnicodeDecodeError: cp1252'));
+  assert(!nettoye.includes('C:\\profil'));
+  assert(!nettoye.includes('jeton-factice'));
+  assert.equal(erreurDemarragePubliable('x'.repeat(20000)).length, 12000);
+});
 
 test('la cible ne peut sortir de la release officielle et vérifiée', () => {
   const cible = ciblePubliee(version, sha);

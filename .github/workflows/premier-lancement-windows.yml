@@ -43,8 +43,8 @@ jobs:
       INSTALLATION_RESIDUAL_PID: ${{ inputs.residual_pid }}
       INSTALLATION_RESIDUAL_BEFORE: ${{ inputs.residual_before }}
       BANC_COMMIT: ${{ github.sha }}
-      BANC_SCRIPT_SHA256: 60f033ae0baa12475cdeca8f41f64e79b6b2689dd8a6d0da338b188eb0be6b0c
-      BANC_TEST_SHA256: eecd855489342735bdffd8007da49dd36292dd7afa0463ddaf3b49162181ad9f
+      BANC_SCRIPT_SHA256: 64e2eae16722d533b2ecab52097fe0e1da057e98659abc6a2eaf35b1345ce39e
+      BANC_TEST_SHA256: ede2a99882aef6554177a2ddf6dd4415e305fcb5c518462b0bab689101c92921
 
     steps:
       - uses: actions/setup-node@v6

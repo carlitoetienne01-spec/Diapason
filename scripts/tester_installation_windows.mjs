@@ -72,6 +72,13 @@ export function rapportValide(rapport) {
     && rapport.failureCode === null && !rapport.cleanupFailed;
 }
 
+export function erreurDemarragePubliable(erreur) {
+  // 07/11/2026 : 1 500 caractères coupaient la pile avant l'appel fautif.
+  // Garder 12 Kio de diagnostic du seul profil synthétique, chemins masqués.
+  return String(erreur).replace(/[A-Za-z]:[\\/][^\s"']+/g, '<qa-path>')
+    .replace(/Bearer\s+\S+/gi, 'Bearer <redacted>').slice(0, 12000);
+}
+
 export function residuFermable(bureau, pid) {
   const apps = bureau.existingApplications;
   return Number.isInteger(pid) && pid > 0 && bureau.interactive === true
@@ -522,6 +529,7 @@ $connexions = @(Get-NetTCPConnection -State Listen -LocalPort $port)
 $valide = $false
 $profilValide = $false
 $relation = 'missing'
+$nombreProfils = 0
 foreach ($c in $connexions) {
   if ($c.LocalAddress -ne '127.0.0.1') { continue }
   $courant = [int]$c.OwningProcess
@@ -542,6 +550,7 @@ foreach ($c in $connexions) {
     for ($i=0; $i -lt $argc; $i++) {
       $arg = [Runtime.InteropServices.Marshal]::PtrToStringUni([Runtime.InteropServices.Marshal]::ReadIntPtr($argv, $i*[IntPtr]::Size))
       if (-not $arg.StartsWith('--user-data-dir=',[StringComparison]::Ordinal)) { continue }
+      $nombreProfils++
       $reel = [IO.Path]::GetFullPath($arg.Substring('--user-data-dir='.Length)).TrimEnd([char]'\')
       $attendu = [IO.Path]::GetFullPath($env:DIAPASON_E2E_WEBVIEW).TrimEnd([char]'\')
       if ($reel.Equals($attendu,[StringComparison]::OrdinalIgnoreCase)) {
@@ -553,7 +562,7 @@ foreach ($c in $connexions) {
     }
   } finally { [DiapasonCommandLine]::LocalFree($argv) | Out-Null }
 }
-@{ owned=$valide; privateProfile=$profilValide; profileRelation=$relation } | ConvertTo-Json -Compress
+@{ owned=$valide; privateProfile=($profilValide -and $nombreProfils -eq 1); profileRelation=$relation } | ConvertTo-Json -Compress
 `, { ...process.env, DIAPASON_E2E_PORT: String(port), DIAPASON_E2E_PID: String(appPid),
     DIAPASON_E2E_WEBVIEW: profilWebview });
   verifier(origine.owned === true, 'debugPortNotOwnedByTestApp');
@@ -692,8 +701,7 @@ export async function premierLancement(options) {
       }
       if (etat.error) {
         // Uniquement le profil neuf, sans conserver de clé ou d'environnement.
-        rapport.startupError = String(etat.error).replace(/[A-Za-z]:[\\/][^\s"']+/g, '<qa-path>')
-          .replace(/Bearer\s+\S+/gi, 'Bearer <redacted>').slice(0, 1500);
+        rapport.startupError = erreurDemarragePubliable(etat.error);
         throw new Error('firstLaunchStartupError');
       }
       return etat.backend_ready && etat.ollama_ready && etat.model_ready && etat.server_ready;
