@@ -7,12 +7,10 @@ on:
         description: Version bêta Windows déjà publiée à tester
         required: true
         type: string
-        default: '1.0.5-beta.20261107.23'
       installer_sha256:
         description: Empreinte du véritable installateur publié
         required: true
         type: string
-        default: '8932e416a560c302e1a85c44b24d81598443daaf2151c6c8243c0f29c9c07687'
       residual_pid:
         description: 'PID résiduel sans fenêtre, déjà identifié après fermeture de Diapason ; zéro laisse tous les processus existants intacts'
         required: false
@@ -43,7 +41,7 @@ jobs:
       INSTALLATION_RESIDUAL_PID: ${{ inputs.residual_pid }}
       INSTALLATION_RESIDUAL_BEFORE: ${{ inputs.residual_before }}
       BANC_COMMIT: ${{ github.sha }}
-      BANC_SCRIPT_SHA256: 3ae2905d95860866e72ee962fab61387e1ccf750422d9adf2cde291022c493d0
+      BANC_SCRIPT_SHA256: 04a834a5f45afa761762d301f702626321df3581b82e14c799e3d734a572f2b6
       BANC_TEST_SHA256: b3df7fdd2f2062e35eaae0d120a79e9db23aabcb13b1ac8df8ebaae369631a3a
 
     steps:

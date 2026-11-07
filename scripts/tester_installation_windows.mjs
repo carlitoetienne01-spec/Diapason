@@ -11,6 +11,7 @@ export const CONTROLES = Object.freeze([
   'preflightPassed', 'installerHashVerified', 'installerExecuted',
   'installedExecutablePresent', 'versionMatches', 'firstLaunchReady',
   'newManagedBackendPrepared', 'twoTurnUiConversation',
+  'initialModelMatchesValidatedPlan',
   'notePersistedAfterRestart', 'narrationWithWordTimings',
   'updateButtonVisible', 'updateCatalogueMatches',
   'uninstallSucceeded', 'registryRestored', 'processesStopped',
@@ -577,7 +578,7 @@ async function capture(cdp, fichier) {
   fs.writeFileSync(fichier, Buffer.from(image.data, 'base64'));
 }
 
-async function dialogue(cdp, question, attendu) {
+async function dialogue(cdp, question, attendu, preuve = {}) {
   await attendre(async () => {
     const cible = await cdp.evaluer(`(() => {
     function visible(e, kind) {
@@ -614,13 +615,18 @@ async function dialogue(cdp, question, attendu) {
   return attendre(async () => {
     const r = await cdp.evaluer(`(() => {
       const messages = [...document.querySelectorAll('[data-message-id].mb-6')];
-      return { count: messages.length, text: messages.at(-1)?.innerText || '',
+      const dernier = messages.at(-1);
+      return { count: messages.length, text: dernier?.querySelector('.frappe-reponse .prose')?.innerText || '',
+        typing: !!dernier?.querySelector('.frappe-curseur:not([hidden])'),
         generating: !!document.querySelector('button[aria-label="Stop generating"],button[aria-label="Arrêter la génération"]') };
     })()`);
-    if (r.count <= nombre || r.generating || !r.text.trim()) return false;
+    if (r.count <= nombre || r.generating || r.typing || !r.text.trim()) return false;
     stable = r.text === dernier ? stable + 1 : 0; dernier = r.text;
     if (stable < 2) return false;
-    verifier(attendu.test(r.text), 'conversationAnswerIncorrect');
+    preuve.response = erreurDemarragePubliable(r.text);
+    preuve.complete = true;
+    preuve.expectedResultFound = attendu.test(r.text);
+    verifier(preuve.expectedResultFound, 'conversationAnswerIncorrect');
     return { complete: true, expectedResultFound: true };
   }, 300000, 'conversationIncomplete');
 }
@@ -804,8 +810,19 @@ if ($LASTEXITCODE -ne 0) { throw 'residualProcessStopFailed' }
       return res.json();
     };
     noter('twoTurnConversation');
-    await dialogue(cdp, 'Combien font 12 plus 25 ? Réponds en une phrase.', /37|trente[ -]sept/i);
-    await dialogue(cdp, 'Ajoute un au résultat précédent. Réponds en une phrase.', /38|trente[ -]huit/i);
+    rapport.dialogue = [{}, {}];
+    await dialogue(cdp, 'Combien font 12 plus 25 ? Réponds en une phrase.', /37|trente[ -]sept/i, rapport.dialogue[0]);
+    // 07/11/2026 : l'ancien 3b d'Ollama passait le premier calcul puis
+    // envoyait le suivi sur le Web. Le PC32Go doit préparer le 4b du plan.
+    const listeModeles = await api('/v1/models');
+    rapport.initialModel = listeModeles.data?.[0]?.id;
+    const modeleAffiche = await cdp.evaluer(`!![...document.querySelectorAll('button')].find(b => {
+      const r = b.getBoundingClientRect();
+      return b.innerText.trim() === 'qwen3.5:4b' && r.width > 0 && r.height > 0;
+    })`);
+    verifier(rapport.initialModel === 'qwen3.5:4b' && modeleAffiche, 'initialModelNotPreparedForWindows');
+    rapport.checks.initialModelMatchesValidatedPlan = true;
+    await dialogue(cdp, 'Ajoute un au résultat précédent. Réponds en une phrase.', /38|trente[ -]huit/i, rapport.dialogue[1]);
     rapport.checks.twoTurnUiConversation = true;
     await capture(cdp, path.join(sortie, '02-discussion-reelle.png'));
     noter('saveSyntheticNote');
