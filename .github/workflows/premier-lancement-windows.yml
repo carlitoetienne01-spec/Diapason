@@ -32,7 +32,7 @@ jobs:
       INSTALLATION_VERSION: ${{ inputs.version }}
       INSTALLATION_SHA256: ${{ inputs.installer_sha256 }}
       BANC_COMMIT: ${{ github.sha }}
-      BANC_SCRIPT_SHA256: 96dc0c3d203787080c489851a11918a4820503a00df48f95e34b16bfd9b0f946
+      BANC_SCRIPT_SHA256: 501cafe00c86df0e46b20f4f2425de16e7956dae92d6fdac6b0d7186de070e74
       BANC_TEST_SHA256: fd0004e4effadac5518d25028d42dbc79eed6ae36f96ac16e38d58992848d932
 
     steps:

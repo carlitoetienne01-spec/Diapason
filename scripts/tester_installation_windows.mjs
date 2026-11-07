@@ -386,6 +386,7 @@ export async function premierLancement(options) {
     verifier(actif.count === 0, 'applicationRunningBeforeUninstall');
   }
   async function arreter() {
+    if (!enfant && !cdp) return;
     if (cdp) {
       try { await cdp.invoquer('stop_backend'); } catch { /* récolte par PID ensuite */ }
       cdp.fermer(); cdp = null;
@@ -435,11 +436,19 @@ export async function premierLancement(options) {
   try {
     noter('preflight');
     const bureau = await powershell(String.raw`
+$apps = @(Get-Process -Name 'diapason-desktop','Diapason' -ErrorAction SilentlyContinue | ForEach-Object {
+  $chemin = [string]$_.Path
+  $temporaire = [regex]::Match($chemin, '[\\/]diapason-beta-(\d+)-(\d+)[\\/]', 'IgnoreCase')
+  @{ processId=$_.Id; temporaryRunId=$(if ($temporaire.Success) {$temporaire.Groups[1].Value} else {$null});
+     runnerTemporaryPath=($chemin.StartsWith($env:RUNNER_TEMP + '\', [StringComparison]::OrdinalIgnoreCase)) }
+})
 @{ sessionId=[Diagnostics.Process]::GetCurrentProcess().SessionId;
    interactive=[Environment]::UserInteractive;
-   appRunning=(@(Get-Process -Name 'diapason-desktop','Diapason' -ErrorAction SilentlyContinue).Count -gt 0)
+   appRunning=($apps.Count -gt 0); existingApplications=$apps;
+   windowsSandboxAvailable=(Test-Path -LiteralPath (Join-Path $env:SystemRoot 'System32\WindowsSandbox.exe'))
 } | ConvertTo-Json -Compress
 `);
+    rapport.preflight = bureau;
     verifier(bureau.sessionId > 0 && bureau.interactive, 'interactiveRunnerRequired');
     verifier(!bureau.appRunning, 'preexistingAppRunning');
     verifier(!(await portOccupe(8000)) && !(await portOccupe(11434)), 'preexistingServerPort');
