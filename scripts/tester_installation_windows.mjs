@@ -14,6 +14,7 @@ export const CONTROLES = Object.freeze([
   'notePersistedAfterRestart', 'narrationWithWordTimings',
   'updateButtonVisible', 'updateCatalogueMatches',
   'uninstallSucceeded', 'registryRestored', 'processesStopped',
+  'originalInstallationPreserved',
 ]);
 const DEPOT = 'https://github.com/carlitoetienne01-spec/Diapason/releases/download/';
 
@@ -68,6 +69,14 @@ export function rapportValide(rapport) {
   return rapport.installerExecuted === true
     && CONTROLES.every(c => rapport.checks[c] === true)
     && rapport.failureCode === null && !rapport.cleanupFailed;
+}
+
+export function residuFermable(bureau, pid) {
+  const apps = bureau.existingApplications;
+  return Number.isInteger(pid) && pid > 0 && bureau.interactive === true
+    && Array.isArray(apps) && apps.length === 1 && apps[0].processId === pid
+    && apps[0].sessionId === bureau.sessionId && apps[0].hasWindow === false
+    && apps[0].pathReadable === true && apps[0].processName?.toLowerCase() === 'diapason';
 }
 
 export function urlCdpValide(texte, port) {
@@ -158,7 +167,10 @@ async function powershell(programme, env = process.env) {
     'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
   const r = await executer(exe, ['-NoProfile', '-NonInteractive', '-EncodedCommand',
     Buffer.from(`$ErrorActionPreference='Stop'\n${programme}`, 'utf16le').toString('base64')], { env });
-  verifier(r.code === 0, 'windowsPreflightOrMetadataFailed');
+  if (r.code !== 0) {
+    const code = r.stderr.match(/\b(registry(?:ParentMissing|RenameFailed|ExportFailed|SelfTestFailed|ScopeRefused|StateMismatch|BackupAlreadyExists|ModeRefused)|machineInstallationRequiresSeparatePc|originalRegistryChanged|originalBinaryChanged|residualProcessChanged|residualProcessStopFailed)\b/);
+    throw new Error(code?.[1] || 'windowsPreflightOrMetadataFailed');
+  }
   return JSON.parse(r.stdout.replace(/^\uFEFF/, '').trim());
 }
 
@@ -174,6 +186,7 @@ foreach ($ruche in @([Microsoft.Win32.RegistryHive]::CurrentUser, [Microsoft.Win
       if ($uninstall) {
         try {
           foreach ($nom in $uninstall.GetSubKeyNames()) {
+            if ($env:DIAPASON_E2E_SUFFIX -and $nom.EndsWith($env:DIAPASON_E2E_SUFFIX, [StringComparison]::Ordinal)) { continue }
             $cle = $uninstall.OpenSubKey($nom)
             try {
               if ($cle -and ($nom -ieq 'Diapason' -or ([string]$cle.GetValue('DisplayName')) -match '^Diapason(?:\s|$)')) { $present++ }
@@ -200,6 +213,194 @@ foreach ($ruche in @([Microsoft.Win32.RegistryHive]::CurrentUser, [Microsoft.Win
 }
 @{ existingKeys=$present } | ConvertTo-Json -Compress
 `;
+
+// Le PC de construction porte déjà Diapason. Ses clés sont RENOMMÉES,
+// jamais réécrites : l'installateur voit un emplacement neuf et les clés
+// d'origine restent récupérables même si le runner s'arrête brutalement.
+const REGISTRE_ISOLE = String.raw`
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class DiapasonRegRename {
+  [DllImport("advapi32.dll", CharSet=CharSet.Unicode, ExactSpelling=true)]
+  public static extern int RegRenameKey(IntPtr parent, string oldName, string newName);
+}
+'@
+$base = [Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::CurrentUser, [Microsoft.Win32.RegistryView]::Registry64)
+$etatPath = Join-Path $env:DIAPASON_E2E_BACKUP 'etat.json'
+$reg = Join-Path $env:SystemRoot 'System32\reg.exe'
+function Renommer([string]$path, [string]$nouveau) {
+  $parentPath = $path.Substring(0, $path.LastIndexOf('\'))
+  $ancien = $path.Substring($path.LastIndexOf('\') + 1)
+  $parent = $base.OpenSubKey($parentPath, $true)
+  try {
+    if (-not $parent) { throw 'registryParentMissing' }
+    $code = [DiapasonRegRename]::RegRenameKey($parent.Handle.DangerousGetHandle(), $ancien, $nouveau)
+    if ($code -ne 0) { throw 'registryRenameFailed' }
+  } finally { if ($parent) { $parent.Dispose() } }
+}
+function Exporter([string]$path, [string]$fichier) {
+  & $reg export ('HKCU\' + $path) $fichier /y 2>$null | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw 'registryExportFailed' }
+  return (Get-FileHash -LiteralPath $fichier -Algorithm SHA256).Hash
+}
+function Autorisee([string]$path) {
+  return $path -ieq 'Software\Microsoft\Windows\CurrentVersion\Uninstall\Diapason' -or
+    $path -ieq 'Software\Classes\diapason' -or $path -match '^Software\\[^\\]+\\Diapason$'
+}
+function Cles([string]$suffixe) {
+  $paths = @('Software\Microsoft\Windows\CurrentVersion\Uninstall\Diapason', 'Software\Classes\diapason')
+  $software = $base.OpenSubKey('Software')
+  try {
+    foreach ($nom in $software.GetSubKeyNames()) {
+      if ($nom -ieq 'Classes') { continue }
+      $path = 'Software\' + $nom + '\Diapason'
+      $cle = $base.OpenSubKey($path)
+      if ($cle) { $paths += $path; $cle.Dispose() }
+    }
+  } finally { $software.Dispose() }
+  return @($paths | Select-Object -Unique | Where-Object {
+    $cle = $base.OpenSubKey($_)
+    if ($cle) { $cle.Dispose(); $true } else { $false }
+  })
+}
+function Appartient([Microsoft.Win32.RegistryKey]$cle, [string]$dossier, [int]$profondeur=0) {
+  if ($profondeur -gt 8) { throw 'unexpectedRegistryDepth' }
+  foreach ($nom in $cle.GetValueNames()) {
+    $v = $cle.GetValue($nom, $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+    if ($v -is [string] -and $v.IndexOf($dossier, [StringComparison]::OrdinalIgnoreCase) -ge 0) { return $true }
+  }
+  foreach ($nom in $cle.GetSubKeyNames()) {
+    $enfant = $cle.OpenSubKey($nom)
+    try { if (Appartient $enfant $dossier ($profondeur+1)) { return $true } }
+    finally { $enfant.Dispose() }
+  }
+  return $false
+}
+try {
+  if ($env:DIAPASON_E2E_REG_MODE -eq 'prepare') {
+    if (Test-Path -LiteralPath $etatPath) { throw 'registryBackupAlreadyExists' }
+    New-Item -ItemType Directory -Path $env:DIAPASON_E2E_BACKUP -Force | Out-Null
+    # Eprouver le renommage sur NOTRE clé avant de toucher à Diapason.
+    $test = 'Software\DiapasonInstallationTests\' + $env:DIAPASON_E2E_NONCE
+    $k = $base.CreateSubKey($test + '\avant'); $k.SetValue('preuve', '37'); $k.Dispose()
+    try {
+      Renommer ($test + '\avant') 'apres'
+      $k = $base.OpenSubKey($test + '\apres')
+      try { if ($k.GetValue('preuve') -ne '37') { throw 'registrySelfTestFailed' } } finally { $k.Dispose() }
+      Renommer ($test + '\apres') 'avant'
+    } finally { $base.DeleteSubKeyTree($test, $false) }
+    # Aucun ancien MSI ni installation machine ne doit être désinstallé.
+    foreach ($vue in @([Microsoft.Win32.RegistryView]::Registry64,[Microsoft.Win32.RegistryView]::Registry32)) {
+      $machine = [Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::LocalMachine,$vue)
+      try {
+        $u = $machine.OpenSubKey('Software\Microsoft\Windows\CurrentVersion\Uninstall')
+        try {
+          foreach ($nom in $u.GetSubKeyNames()) {
+            $k=$u.OpenSubKey($nom)
+            try { if ($k -and ([string]$k.GetValue('DisplayName')) -match '^Diapason(?:\s|$)') { throw 'machineInstallationRequiresSeparatePc' } }
+            finally { if ($k) {$k.Dispose()} }
+          }
+        } finally { if ($u) {$u.Dispose()} }
+      } finally {$machine.Dispose()}
+    }
+    $cles = @(); $binaires = @(); $i = 0
+    foreach ($path in @(Cles '')) {
+      if (-not (Autorisee $path)) { throw 'registryScopeRefused' }
+      $fichier = Join-Path $env:DIAPASON_E2E_BACKUP ('cle-{0}.reg' -f $i)
+      $empreinte = Exporter $path $fichier
+      $cle = $base.OpenSubKey($path)
+      try {
+        foreach ($valeur in @('InstallLocation','')) {
+          $dir = ([string]$cle.GetValue($valeur)).Trim('"')
+          if ($dir -notmatch '^[A-Za-z]:\\' -or $dir -eq $env:DIAPASON_E2E_INSTALL) { continue }
+          foreach ($nom in @('diapason.exe','diapason-desktop.exe','uninstall.exe')) {
+            $exe = Join-Path $dir $nom
+            if (Test-Path -LiteralPath $exe -PathType Leaf) {
+              $hash = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash
+              $copie = Join-Path $env:DIAPASON_E2E_BACKUP ('binaire-{0}.bin' -f $binaires.Count)
+              Copy-Item -LiteralPath $exe -Destination $copie
+              $binaires += @{ path=$exe; sha256=$hash; copy=$copie }
+            }
+          }
+        }
+      } finally {$cle.Dispose()}
+      $cles += @{path=$path; backupName=($path.Substring($path.LastIndexOf('\')+1)+$env:DIAPASON_E2E_SUFFIX); sha256=$empreinte}
+      $i++
+    }
+    $etat = @{ nonce=$env:DIAPASON_E2E_NONCE; installDir=$env:DIAPASON_E2E_INSTALL; keys=$cles; binaries=$binaires; restored=$false; appPid=0 }
+    $etat | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $etatPath -Encoding UTF8
+    foreach ($cle in $cles) {
+      $k=$base.OpenSubKey($cle.path)
+      if ($k) { $k.Dispose(); Renommer $cle.path $cle.backupName }
+    }
+    @{ prepared=$true; selfTestPassed=$true; originalKeys=$cles.Count; originalBinaries=$binaires.Count } | ConvertTo-Json -Compress
+  } elseif ($env:DIAPASON_E2E_REG_MODE -eq 'restore') {
+    if (-not (Test-Path -LiteralPath $etatPath)) { @{restored=$true; preserved=$true} | ConvertTo-Json -Compress; exit }
+    $etat = Get-Content -LiteralPath $etatPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ($etat.nonce -ne $env:DIAPASON_E2E_NONCE -or $etat.installDir -ne $env:DIAPASON_E2E_INSTALL) { throw 'registryStateMismatch' }
+    if (-not $etat.restored) {
+      foreach ($path in @(Cles '')) {
+        $k = $base.OpenSubKey($path)
+        try { $notre = Appartient $k $etat.installDir } finally {$k.Dispose()}
+        # Supprimer uniquement les clés créées par CET installateur.
+        if ($notre) { $base.DeleteSubKeyTree($path, $false) }
+      }
+      foreach ($cle in $etat.keys) {
+        if (-not (Autorisee $cle.path) -or -not $cle.backupName.EndsWith($env:DIAPASON_E2E_SUFFIX,[StringComparison]::Ordinal)) { throw 'registryScopeRefused' }
+        $parent = $cle.path.Substring(0,$cle.path.LastIndexOf('\'))
+        $backup = $parent + '\' + $cle.backupName
+        $k=$base.OpenSubKey($backup)
+        if ($k) { $k.Dispose(); Renommer $backup $cle.path.Substring($cle.path.LastIndexOf('\')+1) }
+        $apres = Exporter $cle.path (Join-Path $env:DIAPASON_E2E_BACKUP 'controle.reg')
+        if ($apres -ne $cle.sha256) { throw 'originalRegistryChanged' }
+      }
+      foreach ($b in $etat.binaries) {
+        if (-not (Test-Path -LiteralPath $b.path) -or (Get-FileHash -LiteralPath $b.path -Algorithm SHA256).Hash -ne $b.sha256) { throw 'originalBinaryChanged' }
+      }
+      $etat.restored=$true
+      $etat | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $etatPath -Encoding UTF8
+    }
+    @{ restored=$true; preserved=$true; originalKeys=@($etat.keys).Count; originalBinaries=@($etat.binaries).Count } | ConvertTo-Json -Compress
+  } else { throw 'registryModeRefused' }
+} finally { $base.Dispose() }
+`;
+
+function contexteRegistre(travail) {
+  const nonce = path.basename(travail);
+  verifier(/^diapason-installation-\d+-\d+$/.test(nonce), 'registryWorkdirRefused');
+  const sauvegarde = path.join(process.env.LOCALAPPDATA, 'DiapasonInstallationTests', nonce);
+  return { ...process.env, DIAPASON_E2E_NONCE: nonce, DIAPASON_E2E_SUFFIX: `.Banc-${nonce}`,
+    DIAPASON_E2E_BACKUP: sauvegarde, DIAPASON_E2E_INSTALL: path.join(travail, 'application') };
+}
+
+export async function recupererInstallation(travail) {
+  verifier(process.platform === 'win32', 'windowsRequired');
+  const env = contexteRegistre(path.resolve(travail));
+  const etatPath = path.join(env.DIAPASON_E2E_BACKUP, 'etat.json');
+  if (!fs.existsSync(etatPath)) return { restored: true, preserved: true };
+  const etat = JSON.parse(fs.readFileSync(etatPath, 'utf8').replace(/^\uFEFF/, ''));
+  if (etat.restored) return { restored: true, preserved: true,
+    originalKeys: etat.keys.length, originalBinaries: etat.binaries.length };
+  verifier(etat.nonce === env.DIAPASON_E2E_NONCE && etat.installDir === env.DIAPASON_E2E_INSTALL, 'registryStateMismatch');
+  if (etat.appPid) {
+    const p = await powershell(String.raw`
+$p = Get-CimInstance Win32_Process -Filter ('ProcessId=' + [int]$env:DIAPASON_E2E_PID)
+if ($p -and $p.ExecutablePath -eq (Join-Path $env:DIAPASON_E2E_INSTALL 'diapason-desktop.exe')) {
+  & (Join-Path $env:SystemRoot 'System32\taskkill.exe') /PID $p.ProcessId /T /F | Out-Null
+}
+@{ stopped=$true } | ConvertTo-Json -Compress
+`, { ...env, DIAPASON_E2E_PID: String(etat.appPid) });
+    verifier(p.stopped, 'testProcessRecoveryFailed');
+  }
+  const desinstalleur = path.join(etat.installDir, 'uninstall.exe');
+  if (fs.existsSync(desinstalleur)) {
+    const u = await executer(desinstalleur, ['/S', '/UPDATE'], { cwd: travail });
+    verifier(u.code === 0, 'recoveryUninstallFailed');
+    await attendre(() => !fs.existsSync(path.join(etat.installDir, 'diapason-desktop.exe')), 30000, 'recoveryLeftApplication');
+  }
+  return powershell(REGISTRE_ISOLE, { ...env, DIAPASON_E2E_REG_MODE: 'restore' });
+}
 
 class Cdp {
   constructor(ws) {
@@ -378,7 +579,7 @@ export async function premierLancement(options) {
     fs.writeFileSync(path.join(sortie, 'resultat.json'), JSON.stringify(rapport, null, 2));
   };
   let enfant; let cdp; let installe = false;
-  let envApp; let exe; let port;
+  let envApp; let exe; let port; let regEnv;
   async function verifierAucuneApp() {
     const actif = await powershell(String.raw`
 @{ count=@(Get-Process -Name 'diapason-desktop','Diapason' -ErrorAction SilentlyContinue).Count } | ConvertTo-Json -Compress
@@ -411,6 +612,11 @@ export async function premierLancement(options) {
       stdio: ['ignore', log, log], windowsHide: false });
     enfant.once('error', () => {});
     fs.closeSync(log);
+    const etatPath = path.join(regEnv.DIAPASON_E2E_BACKUP, 'etat.json');
+    const etatInstallation = JSON.parse(fs.readFileSync(etatPath, 'utf8').replace(/^\uFEFF/, ''));
+    etatInstallation.appPid = enfant.pid || 0;
+    fs.writeFileSync(etatPath + '.new', JSON.stringify(etatInstallation));
+    fs.renameSync(etatPath + '.new', etatPath);
     cdp = await connecterApplication(port, enfant.pid, envApp.WEBVIEW2_USER_DATA_FOLDER);
     verifier(await cdp.invoquer('plugin:app|version') === cible.version, 'installedVersionMismatch');
     rapport.checks.versionMatches = true;
@@ -454,7 +660,21 @@ $apps = @(Get-Process -Name 'diapason-desktop','Diapason' -ErrorAction SilentlyC
     rapport.preflight = bureau;
     rapport.preflight.existingInstallationKeys = (await powershell(SONDE_REGISTRE)).existingKeys;
     verifier(bureau.sessionId > 0 && bureau.interactive, 'interactiveRunnerRequired');
-    verifier(!bureau.appRunning, 'preexistingAppRunning');
+    if (bureau.appRunning && Number(options['residual-pid'])) {
+      const pid = Number(options['residual-pid']);
+      verifier(residuFermable(bureau, pid), 'residualProcessNotOwnedOrHasWindow');
+      verifier(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/.test(options['residual-before'] || ''), 'residualProcessCutoffRequired');
+      await powershell(String.raw`
+$p = Get-Process -Id ([int]$env:DIAPASON_E2E_PID)
+if ($p.ProcessName -ine 'diapason' -or $p.MainWindowHandle -ne 0 -or $p.SessionId -ne [Diagnostics.Process]::GetCurrentProcess().SessionId -or
+    $p.StartTime.ToUniversalTime() -ge [datetime]::Parse($env:DIAPASON_E2E_BEFORE).ToUniversalTime()) { throw 'residualProcessChanged' }
+& (Join-Path $env:SystemRoot 'System32\taskkill.exe') /PID $p.Id /T /F | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'residualProcessStopFailed' }
+@{ stopped=$true } | ConvertTo-Json -Compress
+`, { ...process.env, DIAPASON_E2E_PID: String(pid), DIAPASON_E2E_BEFORE: options['residual-before'] });
+      rapport.stoppedResidualProcessId = pid;
+      await verifierAucuneApp();
+    } else verifier(!bureau.appRunning, 'preexistingAppRunning');
     verifier(!(await portOccupe(8000)) && !(await portOccupe(11434)), 'preexistingServerPort');
     noter('downloadInstaller');
     const r = await fetch(cible.url, { signal: AbortSignal.timeout(300000) });
@@ -464,7 +684,13 @@ $apps = @(Get-Process -Name 'diapason-desktop','Diapason' -ErrorAction SilentlyC
     verifier(octets.toString('ascii', 0, 2) === 'MZ', 'installerNotExecutable');
     const installateur = path.join(travail, cible.nom); fs.writeFileSync(installateur, octets);
     rapport.checks.installerHashVerified = true;
-    const avant = await powershell(SONDE_REGISTRE);
+    noter('isolateInstallationRegistry');
+    regEnv = contexteRegistre(travail);
+    rapport.registryIsolation = await powershell(REGISTRE_ISOLE,
+      { ...regEnv, DIAPASON_E2E_REG_MODE: 'prepare' });
+    verifier(rapport.registryIsolation.prepared === true && rapport.registryIsolation.selfTestPassed === true,
+      'registryIsolationNotReady');
+    const avant = await powershell(SONDE_REGISTRE, regEnv);
     verifier(avant.existingKeys === 0, 'preexistingInstallationOrProtocol');
     rapport.checks.preflightPassed = true;
     const dossierApp = path.join(travail, 'application');
@@ -535,31 +761,21 @@ $apps = @(Get-Process -Name 'diapason-desktop','Diapason' -ErrorAction SilentlyC
     await arreter(); rapport.checks.processesStopped = true;
     noter('uninstallTestCopy');
     await verifierAucuneApp();
-    const desinstallation = await executer(path.join(dossierApp, 'uninstall.exe'), ['/S'], { cwd: travail });
+    const desinstallation = await executer(path.join(dossierApp, 'uninstall.exe'), ['/S', '/UPDATE'], { cwd: travail });
     verifier(desinstallation.code === 0, 'uninstallerFailed');
     await attendre(() => !fs.existsSync(exe), 30000, 'uninstallerLeftApplication');
     rapport.checks.uninstallSucceeded = true; installe = false;
-    await attendre(async () => (await powershell(SONDE_REGISTRE)).existingKeys === 0,
-      30000, 'registryNotRestored');
-    rapport.checks.registryRestored = true;
   } catch (e) {
     rapport.failureCode = /^[A-Za-z0-9_:<>/-]{1,180}$/.test(e.message) ? e.message : 'unexpectedTestFailure';
     try { if (cdp) await capture(cdp, path.join(sortie, 'echec-application.png')); } catch { /* facultatif */ }
   } finally {
     try { await arreter(); } catch { rapport.cleanupFailed = true; }
-    if (installe && exe && fs.existsSync(path.join(path.dirname(exe), 'uninstall.exe'))) {
+    if (regEnv) {
       try {
-        await verifierAucuneApp();
-        const u = await executer(path.join(path.dirname(exe), 'uninstall.exe'), ['/S'], { cwd: travail });
-        rapport.cleanupUninstallerExitCode = u.code;
-        verifier(u.code === 0, 'cleanupUninstallFailed');
-        await attendre(() => !fs.existsSync(exe), 30000, 'cleanupLeftApplication');
-      } catch { rapport.cleanupFailed = true; }
-    }
-    if (installe) {
-      try {
-        await attendre(async () => (await powershell(SONDE_REGISTRE)).existingKeys === 0,
-          30000, 'cleanupLeftRegistry');
+        rapport.registryRestoration = await recupererInstallation(travail);
+        rapport.checks.registryRestored = rapport.registryRestoration.restored === true;
+        rapport.checks.originalInstallationPreserved = rapport.registryRestoration.preserved === true;
+        if (installe && exe && !fs.existsSync(exe)) rapport.checks.uninstallSucceeded = true;
       } catch { rapport.cleanupFailed = true; }
     }
     rapport.passed = rapportValide(rapport) && !rapport.cleanupFailed;
@@ -572,7 +788,10 @@ $apps = @(Get-Process -Name 'diapason-desktop','Diapason' -ErrorAction SilentlyC
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const valeurs = {};
   for (let i = 2; i < process.argv.length; i += 2) valeurs[process.argv[i].replace(/^--/, '')] = process.argv[i + 1];
-  premierLancement(valeurs).then(r => { process.exitCode = r.passed ? 0 : 1; }).catch(() => {
+  const action = valeurs['restore-workdir']
+    ? recupererInstallation(valeurs['restore-workdir']).then(r => ({ passed: r.restored && r.preserved }))
+    : premierLancement(valeurs);
+  action.then(r => { process.exitCode = r.passed ? 0 : 1; }).catch(() => {
     console.error('Préparation de l’essai refusée. Aucun succès déclaré.'); process.exitCode = 1;
   });
 }

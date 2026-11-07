@@ -13,6 +13,15 @@ on:
         required: true
         type: string
         default: '227b5dd1b66f305f16d42a5664df38eca88192f306a339e12afcef0a06266242'
+      residual_pid:
+        description: 'PID résiduel sans fenêtre, déjà identifié après fermeture de Diapason ; zéro laisse tous les processus existants intacts'
+        required: false
+        type: string
+        default: '0'
+      residual_before:
+        description: 'Date UTC de son observation antérieure, obligatoire si residual_pid est fourni'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -31,9 +40,11 @@ jobs:
     env:
       INSTALLATION_VERSION: ${{ inputs.version }}
       INSTALLATION_SHA256: ${{ inputs.installer_sha256 }}
+      INSTALLATION_RESIDUAL_PID: ${{ inputs.residual_pid }}
+      INSTALLATION_RESIDUAL_BEFORE: ${{ inputs.residual_before }}
       BANC_COMMIT: ${{ github.sha }}
-      BANC_SCRIPT_SHA256: 168f787ac0035aeba37b04b18a575fbfb2005a5bd09abf034bb788684380d89d
-      BANC_TEST_SHA256: fd0004e4effadac5518d25028d42dbc79eed6ae36f96ac16e38d58992848d932
+      BANC_SCRIPT_SHA256: 862571e68274bbbe6e360a9ea2cdd2c2d549eb292d62a23819b461699945f92f
+      BANC_TEST_SHA256: 9df18926c5746ca5160ace9e47b4bff1fddfe8c83581723d503709714a70b259
 
     steps:
       - uses: actions/setup-node@v6
@@ -78,8 +89,21 @@ jobs:
           node (Join-Path $banc 'scripts/tester_installation_windows.mjs') `
             --version $env:INSTALLATION_VERSION `
             --sha256 $env:INSTALLATION_SHA256 `
-            --workdir $travail
+            --workdir $travail `
+            --residual-pid $env:INSTALLATION_RESIDUAL_PID `
+            --residual-before $env:INSTALLATION_RESIDUAL_BEFORE
           if ($LASTEXITCODE -ne 0) { throw 'Installation ou premier lancement refuses. Voir resultat.json' }
+
+      - name: Restaurer aussi après interruption du banc
+        if: always()
+        run: |
+          $travail = Join-Path $env:RUNNER_TEMP ('diapason-installation-{0}-{1}' -f $env:GITHUB_RUN_ID, $env:GITHUB_RUN_ATTEMPT)
+          $banc = Join-Path $env:RUNNER_TEMP ('diapason-installation-banc-{0}-{1}' -f $env:GITHUB_RUN_ID, $env:GITHUB_RUN_ATTEMPT)
+          $script = Join-Path $banc 'scripts/tester_installation_windows.mjs'
+          if (Test-Path -LiteralPath $script) {
+            node $script --restore-workdir $travail
+            if ($LASTEXITCODE -ne 0) { throw 'Restauration Windows requise. Sauvegarde conservee dans LocalAppData/DiapasonInstallationTests.' }
+          }
 
       - name: Garder seulement les preuves synthétiques
         if: always()

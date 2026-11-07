@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   CONTROLES, ciblePubliee, argumentsNsis, environnementApplication,
   rapportValide, urlCdpValide, origineApplication, verifierNarration,
+  residuFermable,
 } from '../../scripts/tester_installation_windows.mjs';
 
 const version = '1.0.5-beta.20261107.22';
@@ -56,6 +57,17 @@ test('aucun contrôle manquant ne devient une installation réussie', () => {
   assert(!rapportValide({ ...r, installerExecuted: false }));
   assert(!rapportValide({ ...r, failureCode: 'notInstalled' }));
   assert(!rapportValide({ ...r, cleanupFailed: true }));
+});
+
+test('le serveur résiduel ne permet pas de fermer une autre fenêtre ou session', () => {
+  const app = { processId: 20224, sessionId: 30, hasWindow: false, pathReadable: true, processName: 'diapason' };
+  const bureau = { interactive: true, sessionId: 30, existingApplications: [app] };
+  assert(residuFermable(bureau, 20224));
+  assert(!residuFermable(bureau, 9));
+  for (const patch of [{ hasWindow: true }, { sessionId: 0 }, { pathReadable: false }, { processName: 'python' }]) {
+    assert(!residuFermable({ ...bureau, existingApplications: [{ ...app, ...patch }] }, 20224));
+  }
+  assert(!residuFermable({ ...bureau, existingApplications: [app, app] }, 20224));
 });
 
 test('le canal de test refuse un navigateur externe ou un autre port', () => {
