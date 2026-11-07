@@ -15,6 +15,7 @@ export const CONTROLES = Object.freeze([
   'updateButtonVisible', 'updateCatalogueMatches',
   'uninstallSucceeded', 'registryRestored', 'processesStopped',
   'originalInstallationPreserved',
+  'originalInferenceServerPreserved',
 ]);
 const DEPOT = 'https://github.com/carlitoetienne01-spec/Diapason/releases/download/';
 
@@ -77,6 +78,14 @@ export function residuFermable(bureau, pid) {
     && Array.isArray(apps) && apps.length === 1 && apps[0].processId === pid
     && apps[0].sessionId === bureau.sessionId && apps[0].hasWindow === false
     && apps[0].pathReadable === true && apps[0].processName?.toLowerCase() === 'diapason';
+}
+
+export function ollamaPartageable(listeners, sessionId) {
+  if (!Array.isArray(listeners) || listeners.length === 0) return false;
+  const pid = listeners[0].processId;
+  return Number.isInteger(pid) && pid > 0 && listeners.every(p => p.port === 11434
+    && p.processId === pid && p.sessionId === sessionId && p.loopback === true
+    && p.processName?.toLowerCase() === 'ollama' && p.executableIsOllama === true);
 }
 
 export function urlCdpValide(texte, port) {
@@ -471,6 +480,20 @@ async function portOccupe(port) {
   });
 }
 
+async function lirePorts() {
+  return powershell(String.raw`
+$ports = @(Get-NetTCPConnection -State Listen -LocalPort 8000,11434 -ErrorAction SilentlyContinue)
+$sortie = @($ports | ForEach-Object {
+  $p=Get-CimInstance Win32_Process -Filter ('ProcessId=' + $_.OwningProcess)
+  $g=Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue
+  @{ port=$_.LocalPort; processId=$_.OwningProcess; sessionId=$g.SessionId;
+     processName=$g.ProcessName; executableIsOllama=([IO.Path]::GetFileName([string]$p.ExecutablePath) -ieq 'ollama.exe');
+     loopback=($_.LocalAddress -in @('127.0.0.1','::1')) }
+})
+@{ listeners=$sortie } | ConvertTo-Json -Compress
+`);
+}
+
 async function connecterApplication(port, appPid, profilWebview) {
   const cible = await attendre(async () => {
     try {
@@ -579,7 +602,14 @@ export async function premierLancement(options) {
     fs.writeFileSync(path.join(sortie, 'resultat.json'), JSON.stringify(rapport, null, 2));
   };
   let enfant; let cdp; let installe = false;
-  let envApp; let exe; let port; let regEnv;
+  let envApp; let exe; let port; let regEnv; let ollamaExistant;
+  async function inferenceOriginalePreservee() {
+    if (!ollamaExistant) return true;
+    const { listeners } = await lirePorts();
+    const infer = listeners.filter(p => p.port === 11434);
+    return ollamaPartageable(infer, rapport.preflight.sessionId)
+      && infer[0].processId === ollamaExistant.processId;
+  }
   async function verifierAucuneApp() {
     const actif = await powershell(String.raw`
 @{ count=@(Get-Process -Name 'diapason-desktop','Diapason' -ErrorAction SilentlyContinue).Count } | ConvertTo-Json -Compress
@@ -597,7 +627,8 @@ export async function premierLancement(options) {
         ['/PID', String(enfant.pid), '/T', '/F']);
     }
     enfant = null;
-    await attendre(async () => !(await portOccupe(8000)) && !(await portOccupe(11434)),
+    await attendre(async () => !(await portOccupe(8000)) && (ollamaExistant
+      ? await inferenceOriginalePreservee() : !(await portOccupe(11434))),
       30000, 'testProcessesNotStopped');
   }
   async function lancer() {
@@ -675,7 +706,17 @@ if ($LASTEXITCODE -ne 0) { throw 'residualProcessStopFailed' }
       rapport.stoppedResidualProcessId = pid;
       await verifierAucuneApp();
     } else verifier(!bureau.appRunning, 'preexistingAppRunning');
-    verifier(!(await portOccupe(8000)) && !(await portOccupe(11434)), 'preexistingServerPort');
+    rapport.preflight.listeners = (await lirePorts()).listeners;
+    verifier(!(await portOccupe(8000)), 'preexistingDiapasonServerPort');
+    if (await portOccupe(11434)) {
+      const infer = rapport.preflight.listeners.filter(p => p.port === 11434);
+      verifier(ollamaPartageable(infer, bureau.sessionId), 'preexistingInferenceServerNotRecognized');
+      const res = await fetch('http://127.0.0.1:11434/api/version', { signal: AbortSignal.timeout(5000) });
+      const version = res.ok && (await res.json()).version;
+      verifier(typeof version === 'string' && /^\d+\.\d+\.\d+(?:[-.+\w]*)?$/.test(version), 'preexistingInferenceVersionUnreadable');
+      ollamaExistant = { processId: infer[0].processId, version };
+      rapport.preexistingInferenceServer = { ...ollamaExistant, modelDownloadColdVerified: false };
+    }
     noter('downloadInstaller');
     const r = await fetch(cible.url, { signal: AbortSignal.timeout(300000) });
     verifier(r.ok, 'installerDownloadFailed');
@@ -778,6 +819,8 @@ if ($LASTEXITCODE -ne 0) { throw 'residualProcessStopFailed' }
         if (installe && exe && !fs.existsSync(exe)) rapport.checks.uninstallSucceeded = true;
       } catch { rapport.cleanupFailed = true; }
     }
+    try { rapport.checks.originalInferenceServerPreserved = await inferenceOriginalePreservee(); }
+    catch { rapport.cleanupFailed = true; }
     rapport.passed = rapportValide(rapport) && !rapport.cleanupFailed;
     rapport.status = rapport.passed ? 'passed' : 'failed';
     noter(rapport.status);

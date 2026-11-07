@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   CONTROLES, ciblePubliee, argumentsNsis, environnementApplication,
   rapportValide, urlCdpValide, origineApplication, verifierNarration,
-  residuFermable,
+  residuFermable, ollamaPartageable,
 } from '../../scripts/tester_installation_windows.mjs';
 
 const version = '1.0.5-beta.20261107.22';
@@ -27,7 +27,7 @@ test('NSIS reçoit /D en dernier sans une citation qui change son répertoire', 
   }
 });
 
-test('le premier démarrage ne réutilise ni clés, ni checkout, ni modèles du runner', () => {
+test('l’environnement enfant ne reçoit ni clés, ni checkout, ni chemins de modèles du runner', () => {
   const env = environnementApplication({ SystemRoot: 'C:\\Windows',
     PATH: 'C:\\outils\\uv;C:\\outils\\ollama', GITHUB_TOKEN: 'secret',
     DIAPASON_ROOT: 'C:\\checkout', DIAPASON_HOME: 'C:\\donnees',
@@ -68,6 +68,16 @@ test('le serveur résiduel ne permet pas de fermer une autre fenêtre ou session
     assert(!residuFermable({ ...bureau, existingApplications: [{ ...app, ...patch }] }, 20224));
   }
   assert(!residuFermable({ ...bureau, existingApplications: [app, app] }, 20224));
+});
+
+test('un service partagé est forcément Ollama en boucle locale dans la même session', () => {
+  const p = { port: 11434, processId: 9, sessionId: 30, loopback: true, processName: 'ollama', executableIsOllama: true };
+  assert(ollamaPartageable([p], 30));
+  for (const patch of [{ port: 8000 }, { processName: 'python' }, { sessionId: 0 }, { loopback: false }, { executableIsOllama: false }]) {
+    assert(!ollamaPartageable([{ ...p, ...patch }], 30));
+  }
+  assert(!ollamaPartageable([], 30));
+  assert(!ollamaPartageable([p, { ...p, processId: 10 }], 30));
 });
 
 test('le canal de test refuse un navigateur externe ou un autre port', () => {
