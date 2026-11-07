@@ -825,8 +825,16 @@ if ($LASTEXITCODE -ne 0) { throw 'residualProcessStopFailed' }
     fs.writeFileSync(path.join(sortie, 'narration-publique.wav'), son.wav);
     const { wav: _wav, ...mesures } = son; rapport.narration = mesures;
     rapport.checks.narrationWithWordTimings = true;
-    const maj = await cdp.evaluer(`!![...document.querySelectorAll('button')].find(b =>
-      /^(Mise à jour|Update|Updates|Check for updates)$/i.test(b.getAttribute('aria-label') || b.title || b.innerText.trim()))`);
+    const maj = await cdp.evaluer(`(() => {
+      const b = [...document.querySelectorAll('button')].find(b =>
+        /^(Mise à jour|Update|Updates|Check for updates)$/i.test(b.getAttribute('aria-label') || b.title || b.innerText.trim()));
+      if (!b || b.disabled) return false;
+      const r = b.getBoundingClientRect(), s = getComputedStyle(b);
+      const x = r.x + r.width / 2, y = r.y + r.height / 2;
+      return r.width > 0 && r.height > 0 && x >= 0 && y >= 0
+        && x < innerWidth && y < innerHeight && s.visibility === 'visible'
+        && s.display !== 'none' && b.contains(document.elementFromPoint(x, y));
+    })()`);
     verifier(maj, 'updateButtonMissing'); rapport.checks.updateButtonVisible = true;
     noter('restartInstalledApplication');
     await arreter(); await lancer();
