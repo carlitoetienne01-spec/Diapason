@@ -325,6 +325,7 @@ try {
           if ($dir -notmatch '^[A-Za-z]:\\' -or $dir -eq $env:DIAPASON_E2E_INSTALL) { continue }
           foreach ($nom in @('diapason.exe','diapason-desktop.exe','uninstall.exe')) {
             $exe = Join-Path $dir $nom
+            if (@($binaires | Where-Object { $_.path -ieq $exe }).Count -gt 0) { continue }
             if (Test-Path -LiteralPath $exe -PathType Leaf) {
               $hash = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash
               $copie = Join-Path $env:DIAPASON_E2E_BACKUP ('binaire-{0}.bin' -f $binaires.Count)
@@ -505,31 +506,61 @@ async function connecterApplication(port, appPid, profilWebview) {
   }, 90000, 'webviewNotReachable');
   // Ne jamais remettre le jeton local à un autre navigateur déjà sur le port.
   const origine = await powershell(String.raw`
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class DiapasonCommandLine {
+  [DllImport("shell32.dll", CharSet=CharSet.Unicode, ExactSpelling=true)]
+  public static extern IntPtr CommandLineToArgvW(string command, out int count);
+  [DllImport("kernel32.dll", ExactSpelling=true)]
+  public static extern IntPtr LocalFree(IntPtr memory);
+}
+'@
 $port = [int]$env:DIAPASON_E2E_PORT
 $racine = [int]$env:DIAPASON_E2E_PID
 $connexions = @(Get-NetTCPConnection -State Listen -LocalPort $port)
 $valide = $false
 $profilValide = $false
+$relation = 'missing'
 foreach ($c in $connexions) {
   if ($c.LocalAddress -ne '127.0.0.1') { continue }
   $courant = [int]$c.OwningProcess
   $navigateur = Get-CimInstance Win32_Process -Filter ('ProcessId=' + $courant)
-  $chemin = [regex]::Escape($env:DIAPASON_E2E_WEBVIEW)
-  $motif = '--user-data-dir=(?:"' + $chemin + '"|' + $chemin + '(?=\s|$))'
-  if ($navigateur.CommandLine -match $motif) { $profilValide = $true }
+  $descendant = $false
   for ($i=0; $i -lt 12 -and $courant -gt 0; $i++) {
-    if ($courant -eq $racine) { $valide=$true; break }
+    if ($courant -eq $racine) { $descendant=$true; break }
     $p = Get-CimInstance Win32_Process -Filter ('ProcessId=' + $courant)
     if (-not $p) { break }
     $courant = [int]$p.ParentProcessId
   }
+  if (-not $descendant) { continue }
+  $valide = $true
+  $argc = 0
+  $argv = [DiapasonCommandLine]::CommandLineToArgvW($navigateur.CommandLine, [ref]$argc)
+  if ($argv -eq [IntPtr]::Zero) { throw 'webviewCommandLineUnreadable' }
+  try {
+    for ($i=0; $i -lt $argc; $i++) {
+      $arg = [Runtime.InteropServices.Marshal]::PtrToStringUni([Runtime.InteropServices.Marshal]::ReadIntPtr($argv, $i*[IntPtr]::Size))
+      if (-not $arg.StartsWith('--user-data-dir=',[StringComparison]::Ordinal)) { continue }
+      $reel = [IO.Path]::GetFullPath($arg.Substring('--user-data-dir='.Length)).TrimEnd([char]'\')
+      $attendu = [IO.Path]::GetFullPath($env:DIAPASON_E2E_WEBVIEW).TrimEnd([char]'\')
+      if ($reel.Equals($attendu,[StringComparison]::OrdinalIgnoreCase)) {
+        $profilValide=$true; $relation='exact'
+      } elseif ($reel.StartsWith($attendu+'\',[StringComparison]::OrdinalIgnoreCase)) {
+        # WebView2 place notamment EBWebView dans le dossier utilisateur.
+        $profilValide=$true; $relation='privateDescendant'
+      } else { $relation='outside' }
+    }
+  } finally { [DiapasonCommandLine]::LocalFree($argv) | Out-Null }
 }
-@{ owned=$valide; privateProfile=$profilValide } | ConvertTo-Json -Compress
+@{ owned=$valide; privateProfile=$profilValide; profileRelation=$relation } | ConvertTo-Json -Compress
 `, { ...process.env, DIAPASON_E2E_PORT: String(port), DIAPASON_E2E_PID: String(appPid),
     DIAPASON_E2E_WEBVIEW: profilWebview });
   verifier(origine.owned === true, 'debugPortNotOwnedByTestApp');
-  verifier(origine.privateProfile === true, 'webviewProfileNotIsolated');
-  return Cdp.connecter(cible.webSocketDebuggerUrl);
+  verifier(origine.privateProfile === true, `webviewProfileNotIsolated:${origine.profileRelation}`);
+  const canal = await Cdp.connecter(cible.webSocketDebuggerUrl);
+  canal.isolation = { owned: true, privateProfileVerified: true, profileRelation: origine.profileRelation };
+  return canal;
 }
 
 async function capture(cdp, fichier) {
@@ -649,6 +680,7 @@ export async function premierLancement(options) {
     fs.writeFileSync(etatPath + '.new', JSON.stringify(etatInstallation));
     fs.renameSync(etatPath + '.new', etatPath);
     cdp = await connecterApplication(port, enfant.pid, envApp.WEBVIEW2_USER_DATA_FOLDER);
+    rapport.webviewIsolation = cdp.isolation;
     verifier(await cdp.invoquer('plugin:app|version') === cible.version, 'installedVersionMismatch');
     rapport.checks.versionMatches = true;
     let phase = '';
