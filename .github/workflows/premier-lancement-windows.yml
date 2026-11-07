@@ -43,7 +43,7 @@ jobs:
       INSTALLATION_RESIDUAL_PID: ${{ inputs.residual_pid }}
       INSTALLATION_RESIDUAL_BEFORE: ${{ inputs.residual_before }}
       BANC_COMMIT: ${{ github.sha }}
-      BANC_SCRIPT_SHA256: 64e2eae16722d533b2ecab52097fe0e1da057e98659abc6a2eaf35b1345ce39e
+      BANC_SCRIPT_SHA256: 066a8df5357a6fed8cc86a493d067b3729d1e9514ccfa69a1f74c4692dc42098
       BANC_TEST_SHA256: ede2a99882aef6554177a2ddf6dd4415e305fcb5c518462b0bab689101c92921
 
     steps:

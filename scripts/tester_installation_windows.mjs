@@ -828,10 +828,6 @@ if ($LASTEXITCODE -ne 0) { throw 'residualProcessStopFailed' }
     const maj = await cdp.evaluer(`!![...document.querySelectorAll('button')].find(b =>
       /^(Mise à jour|Update|Updates|Check for updates)$/i.test(b.getAttribute('aria-label') || b.title || b.innerText.trim()))`);
     verifier(maj, 'updateButtonMissing'); rapport.checks.updateButtonVisible = true;
-    const catalogue = await cdp.invoquer('verifier_telechargements');
-    verifier(catalogue.platform === 'windows' && catalogue.currentVersion === cible.version
-      && catalogue.catalog?.platforms?.windows?.version === cible.version, 'updateCatalogueMismatch');
-    rapport.checks.updateCatalogueMatches = true;
     noter('restartInstalledApplication');
     await arreter(); await lancer();
     cle = await cdp.invoquer('get_local_api_key');
@@ -839,6 +835,17 @@ if ($LASTEXITCODE -ne 0) { throw 'residualProcessStopFailed' }
     verifier(relue.content === contenu && relue.projectId === projet.id, 'noteLostAfterRestart');
     rapport.checks.notePersistedAfterRestart = true;
     await capture(cdp, path.join(sortie, '03-apres-relance.png'));
+    // 07/11/2026 : le site reste en attente pendant le premier essai réel.
+    // Après conversation, voix et relance validées, attendre sa publication
+    // exacte ; dix minutes laissent la synchronisation sans accepter l'ancien.
+    noter('awaitingExactUpdateCatalogue');
+    await attendre(async () => {
+      const catalogue = await cdp.invoquer('verifier_telechargements');
+      return catalogue.platform === 'windows' && catalogue.currentVersion === cible.version
+        && catalogue.catalog?.platforms?.windows?.status === 'ready'
+        && catalogue.catalog.platforms.windows.version === cible.version;
+    }, 600000, 'updateCatalogueMismatch', 2000);
+    rapport.checks.updateCatalogueMatches = true;
     await arreter(); rapport.checks.processesStopped = true;
     noter('uninstallTestCopy');
     await verifierAucuneApp();
