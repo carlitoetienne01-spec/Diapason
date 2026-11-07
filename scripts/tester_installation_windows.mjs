@@ -438,8 +438,11 @@ export async function premierLancement(options) {
     const bureau = await powershell(String.raw`
 $apps = @(Get-Process -Name 'diapason-desktop','Diapason' -ErrorAction SilentlyContinue | ForEach-Object {
   $chemin = [string]$_.Path
+  if (-not $chemin) { $chemin = [string](Get-CimInstance Win32_Process -Filter ('ProcessId=' + $_.Id)).ExecutablePath }
   $temporaire = [regex]::Match($chemin, '[\\/]diapason-beta-(\d+)-(\d+)[\\/]', 'IgnoreCase')
   @{ processId=$_.Id; temporaryRunId=$(if ($temporaire.Success) {$temporaire.Groups[1].Value} else {$null});
+     sessionId=$_.SessionId; hasWindow=($_.MainWindowHandle -ne 0); pathReadable=($chemin.Length -gt 0);
+     processName=$_.ProcessName;
      runnerTemporaryPath=($chemin.StartsWith($env:RUNNER_TEMP + '\', [StringComparison]::OrdinalIgnoreCase)) }
 })
 @{ sessionId=[Diagnostics.Process]::GetCurrentProcess().SessionId;
@@ -449,6 +452,7 @@ $apps = @(Get-Process -Name 'diapason-desktop','Diapason' -ErrorAction SilentlyC
 } | ConvertTo-Json -Compress
 `);
     rapport.preflight = bureau;
+    rapport.preflight.existingInstallationKeys = (await powershell(SONDE_REGISTRE)).existingKeys;
     verifier(bureau.sessionId > 0 && bureau.interactive, 'interactiveRunnerRequired');
     verifier(!bureau.appRunning, 'preexistingAppRunning');
     verifier(!(await portOccupe(8000)) && !(await portOccupe(11434)), 'preexistingServerPort');
