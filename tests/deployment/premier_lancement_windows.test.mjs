@@ -6,8 +6,8 @@ import {
   residuFermable, ollamaPartageable, erreurDemarragePubliable,
 } from '../../scripts/tester_installation_windows.mjs';
 
-const version = '1.0.5-beta.20261107.22';
-const sha = '227b5dd1b66f305f16d42a5664df38eca88192f306a339e12afcef0a06266242';
+const version = '1.0.5-beta.20261107.23';
+const sha = '8932e416a560c302e1a85c44b24d81598443daaf2151c6c8243c0f29c9c07687';
 
 test('le diagnostic conserve la fin de pile sans publier de chemin ni jeton', () => {
   const pile = 'x'.repeat(1800) + '\nC:\\profil\\runtime\\serve.py\nBearer jeton-factice\nUnicodeDecodeError: cp1252';
