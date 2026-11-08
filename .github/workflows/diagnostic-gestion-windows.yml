@@ -2,6 +2,11 @@ name: Diagnostic Windows existant en lecture seule
 
 on:
   workflow_dispatch:
+    inputs:
+      legacy:
+        description: Vérifier les anciennes routes de gestion au lieu des nouvelles
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -19,8 +24,9 @@ jobs:
         shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "& '{0}'"
     env:
       DIAGNOSTIC_COMMIT: ${{ github.sha }}
-      DIAGNOSTIC_SCRIPT_SHA256: a390e0419cb0c00cc5f32fb4e1641f0d850ac6c3cd4c0e46f999dcf0e870af09
-      DIAGNOSTIC_TEST_SHA256: e5281561f0fc4669ea9896c54d278e59bae091606d7e5af6356a52bea06ec35f
+      DIAGNOSTIC_LEGACY: ${{ inputs.legacy }}
+      DIAGNOSTIC_SCRIPT_SHA256: 50ee6e29315718d11d2dc42669cd855b0977d90524b9343061e512192eec7d99
+      DIAGNOSTIC_TEST_SHA256: 1dfa8857eb362656c7ab31f48be3723e6676220f301d1315aa04370f72bae359
 
     steps:
       - uses: actions/setup-node@v6
@@ -63,7 +69,9 @@ jobs:
           $ErrorActionPreference = 'Stop'
           try {
             $banc = Join-Path $env:RUNNER_TEMP ('diapason-diagnostic-gestion-{0}-{1}' -f $env:GITHUB_RUN_ID,$env:GITHUB_RUN_ATTEMPT)
-            $sortie = @(& node (Join-Path $banc 'scripts/diagnostiquer_gestion_windows.mjs') --output (Join-Path $banc 'rapport.json') 2>&1)
+            $arguments = @((Join-Path $banc 'scripts/diagnostiquer_gestion_windows.mjs'), '--output', (Join-Path $banc 'rapport.json'))
+            if ($env:DIAGNOSTIC_LEGACY -eq 'true') { $arguments+='--legacy' }
+            $sortie = @(& node @arguments 2>&1)
             if ($LASTEXITCODE -ne 0) { throw 'diagnosticFailed' }
             Write-Output 'diagnosticReportWritten'
           } catch { Write-Output 'diagnosticFailed'; exit 1 }

@@ -208,7 +208,7 @@ test('§78 — importer et refuser une plateforme non Windows ne lance aucune so
   for (const f of [collectNative, probe, readKey]) assert.equal(f.mock.callCount(), 0);
 });
 
-test('§5 — seules cinq URL canoniques littérales de 127.0.0.1:8000 sont admises', () => {
+test('§5 — seules les URL canoniques des deux familles de routes sont admises', () => {
   for (const p of ['/health', ...Object.values(SONDES)]) assert(urlAutorisee(ORIGINE + p));
   for (const u of ['https://127.0.0.1:8000/health', 'http://localhost:8000/health',
     'http://[::1]:8000/health', 'http://127.0.0.1:8001/health', 'http://127.0.0.1:8000.evil/health',
@@ -267,6 +267,23 @@ test('§5 — serveur du même usager non attribué : quatre statuts sans jamais
   assert.equal(readKey.mock.callCount(), 0); assert.equal(probe.mock.callCount(), 5);
   assert.equal(r.probes.notes.status, 429); assert.equal(r.probes.config.status, 401);
   assert(!JSON.stringify(r).includes(CLE)); assert(!JSON.stringify(r).includes(PRIVE));
+});
+
+test('§100 — le profil historique reste cinq GET canoniques sans corps conservé', async () => {
+  const urls = [];
+  const probe = async o => {
+    urls.push(o.url); assert(urlAutorisee(o.url));
+    if (o.url.endsWith('/health')) return sante;
+    assert(!o.url.includes('/v1/vie/'));
+    assert.equal(await o.attestSocket(19001), true);
+    return { status: 200, outcome: 'http', authenticated: true };
+  };
+  const r = await diagnostiquer({ platform: 'win32', legacy: true, collectNative: async () => natif(),
+    readKey: async () => CLE, attestNative: async () => true, probe });
+  assert.equal(r.routeFamily, 'succes'); assert.equal(urls.length, 5);
+  assert(urls.includes(ORIGINE + '/v1/succes/notes/resumes'));
+  assert(urls.includes(ORIGINE + '/v1/succes/finances/overview'));
+  assert.equal(r.status, 'completed');
 });
 
 test('§5 — changement de PID/SID sur la connexion : aucun Bearer envoyé', async () => {

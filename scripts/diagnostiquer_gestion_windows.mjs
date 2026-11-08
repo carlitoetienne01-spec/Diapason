@@ -11,7 +11,9 @@ export const SONDES = Object.freeze({
   notes: '/v1/vie/notes/resumes', projects: '/v1/vie/projects',
   finances: '/v1/vie/finances/overview', config: '/v1/config',
 });
-const URLS = new Set(['/health', ...Object.values(SONDES)].map(p => ORIGINE + p));
+export const SONDES_HISTORIQUES = Object.freeze(Object.fromEntries(Object.entries(SONDES)
+  .map(([nom, route]) => [nom, route.replace('/v1/vie/', '/v1/succes/')])));
+const URLS = new Set(['/health', ...Object.values(SONDES), ...Object.values(SONDES_HISTORIQUES)].map(p => ORIGINE + p));
 export const DELAI_HTTP_MS = 6000;
 const ISSUES = new Set(['notRequested', 'http', 'timeout', 'connectionRefused',
   'networkError', 'redirectRefused', 'ownerChanged', 'bodyTooLarge', 'invalidTarget']);
@@ -99,7 +101,9 @@ export function attribuerInventaire(n) {
   n.backend = {};
   if (candidats.length === 1) {
     const c = candidats[0];
-    n.backend = { version: versionPublique(c.publicVersions), metadataOwned: true, crudExemption: c.crudExemption };
+    n.backend = { version: versionPublique(c.publicVersions), sourceVersion: version(c.sourceVersion),
+      rootKind: c.managedPath === true ? 'managedLocation' : 'otherLocation',
+      metadataOwned: true, crudExemption: c.crudExemption };
   }
   return n;
 }
@@ -133,6 +137,7 @@ export function nettoyerRapport(r = {}) {
     schemaVersion: 1, kind: 'windowsGestionReadOnly',
     platform: ['win32', 'windows'].includes(r.platform) ? 'windows' : 'unsupported',
     status: ['completed', 'partial', 'refused'].includes(r.status) ? r.status : 'refused',
+    routeFamily: r.routeFamily === 'succes' ? 'succes' : 'vie',
     codes: Array.isArray(r.codes) ? [...new Set(r.codes.filter(c => CODES.has(c)))].slice(0, 8) : [],
     native: nettoyerNatif(r.native),
     attribution: {
@@ -151,7 +156,9 @@ export function nettoyerRapport(r = {}) {
       ownership: ['diapason', 'unknown', 'absent'].includes(r.listener?.ownership) ? r.listener.ownership : 'unknown',
       sameUser: typeof r.listener?.sameSid === 'boolean' ? r.listener.sameSid
         : typeof r.listener?.sameUser === 'boolean' ? r.listener.sameUser : null },
-    backend: { version: version(r.backend?.version), metadataOwned: r.backend?.metadataOwned === true,
+    backend: { version: version(r.backend?.version), sourceVersion: version(r.backend?.sourceVersion),
+      rootKind: ['managedLocation', 'otherLocation'].includes(r.backend?.rootKind) ? r.backend.rootKind : null,
+      metadataOwned: r.backend?.metadataOwned === true,
       crudExemption: ['patternPresent', 'patternNotFound', 'unreadable'].includes(r.backend?.crudExemption)
         ? r.backend.crudExemption : 'unreadable' },
     credential: ['used', 'unavailable', 'refused', 'notSent'].includes(r.credential) ? r.credential : 'refused',
@@ -221,8 +228,9 @@ export function creerSondeHttp({ connecter = net.createConnection, demander = ht
 }
 
 export async function diagnostiquer({ platform = process.platform, collectNative = collecterNatif,
-  attestNative = attesterNatif, readKey = lireCle, probe = creerSondeHttp() } = {}) {
-  const r = { platform, status: 'partial', codes: [], credential: 'notSent',
+  attestNative = attesterNatif, readKey = lireCle, probe = creerSondeHttp(), legacy = false } = {}) {
+  const sondes = legacy === true ? SONDES_HISTORIQUES : SONDES;
+  const r = { platform, status: 'partial', codes: [], credential: 'notSent', routeFamily: legacy === true ? 'succes' : 'vie',
     health: INCONNU(), probes: Object.fromEntries(Object.keys(SONDES).map(n => [n, INCONNU()])) };
   if (platform !== 'win32') {
     r.status = 'refused'; r.codes.push('unsupportedPlatform'); return nettoyerRapport(r);
@@ -241,7 +249,7 @@ export async function diagnostiquer({ platform = process.platform, collectNative
     // lire ni transmettre une clé. Leur contenu n'est jamais conservé.
     if (n?.listener?.sameSid === true && r.health.outcome === 'http'
       && ['compatible', 'windowsBetaGestion', 'engineUnhealthy'].includes(r.health.signature)) {
-      for (const [nom, route] of Object.entries(SONDES)) {
+      for (const [nom, route] of Object.entries(sondes)) {
         try { r.probes[nom] = await probe({ url: ORIGINE + route, key: '' }); }
         catch { r.probes[nom] = { outcome: 'networkError' }; }
       }
@@ -256,7 +264,7 @@ export async function diagnostiquer({ platform = process.platform, collectNative
   try { const lue = await readKey(n); if (cleValide(lue)) key = lue; } catch { /* Refus fermé. */ }
   r.credential = key ? 'notSent' : 'unavailable';
   if (!key) r.codes.push('keyUnavailable');
-  for (const [nom, route] of Object.entries(SONDES)) {
+  for (const [nom, route] of Object.entries(sondes)) {
     try {
       r.probes[nom] = await probe({ url: ORIGINE + route, key,
         attestSocket: port => attesterBorne(n, port, attestNative) });
@@ -494,6 +502,8 @@ if ($ids.Count -eq 1) {
       if (-not $projet) { $resultat.candidateStages+='projectUnreadable'; continue }
       if ($projet -match '(?im)^name\s*=\s*["''](?:OpenJarvis|Jarvis)["'']\s*$') { $resultat.candidateStages+='legacyProject'; continue }
       if ($projet -notmatch '(?im)^name\s*=\s*["'']Diapason["'']\s*$') { $resultat.candidateStages+='projectUnrecognized'; continue }
+      $versionSource=$null
+      if ($projet -match '(?im)^version\s*=\s*["'']([0-9A-Za-z.\-]+)["'']\s*$') { $versionSource=$Matches[1] }
       $entree=Join-Path $racine '.venv\Scripts\diapason.exe'
       $python=Join-Path $racine '.venv\Scripts\python.exe'
       $cfg=Petit (Join-Path $racine '.venv\pyvenv.cfg') 8192
@@ -509,6 +519,7 @@ if ($ids.Count -eq 1) {
         $exemption= if ($present) { 'patternPresent' } else { 'patternNotFound' }
       }
       $resultat.candidates+=@{ root=$racine; metadataOwned=$true; cfgOwned=$true; cfg=$cfg;
+        sourceVersion=$versionSource; managedPath=($racine -ieq (Join-Path $local 'Diapason\src'));
         resolvedHome=$baseDeclaree; baseVerified=$true; entryOwned=(ApplicationSure $entree); venvPythonOwned=(ApplicationSure $python);
         betaOwned=(ApplicationSure (Join-Path $racine 'deploy\windows\beta_backend.py'));
         publicVersions=(VersionsPubliques $racine); crudExemption=$exemption }
@@ -574,10 +585,11 @@ async function attesterNatif({ pid, identity, port }) {
 async function main() {
   let rapport;
   try {
-    if (process.argv.length !== 4 || process.argv[2] !== '--output' || !path.isAbsolute(process.argv[3])) {
+    if (![4, 5].includes(process.argv.length) || (process.argv.length === 5 && process.argv[4] !== '--legacy')
+      || process.argv[2] !== '--output' || !path.isAbsolute(process.argv[3])) {
       throw new Error('invalidArguments');
     }
-    rapport = await diagnostiquer();
+    rapport = await diagnostiquer({ legacy: process.argv[4] === '--legacy' });
     const texte = JSON.stringify(nettoyerRapport(rapport), null, 2) + '\n';
     if (Buffer.byteLength(texte) > 8192) throw new Error('reportWriteFailed');
     await fs.writeFile(process.argv[3], texte, { flag: 'wx', mode: 0o600 });
