@@ -356,6 +356,15 @@ function MemeSid($p) {
   $o=CimCmdlets\Invoke-CimMethod -InputObject $p -MethodName GetOwnerSid -OperationTimeoutSec 2
   return ($o.ReturnValue -eq 0 -and $o.Sid -eq $sid)
 }
+function ExecutableInstalle([string]$dir) {
+  # Une ancienne valeur InstallLocation invalide ne doit pas annuler l'inventaire.
+  try {
+    $dir=$dir.Trim()
+    if ($dir.Length -ge 2 -and $dir[0] -eq '"' -and $dir[$dir.Length-1] -eq '"') { $dir=$dir.Substring(1,$dir.Length-2) }
+    if ($dir -notmatch '^[A-Za-z]:\\' -or $dir -match '[\x00-\x1f"<>|?*]' -or $dir.Substring(2).Contains(':')) { return $null }
+    return [IO.Path]::Combine($dir,'Diapason.exe')
+  } catch { return $null }
+}
 function Processus([int]$numero) {
   return CimCmdlets\Get-CimInstance Win32_Process -Filter ('ProcessId='+$numero) -OperationTimeoutSec 2
 }
@@ -382,7 +391,8 @@ if ($reg) {
       try {
         if ($k -and ([string]$k.GetValue('DisplayName')) -match '^Diapason(?:\s|$)') {
           $dir=[string]$k.GetValue('InstallLocation')
-          if ($dir) { $executables+=Join-Path $dir 'Diapason.exe' }
+          $exeInstalle=ExecutableInstalle $dir
+          if ($exeInstalle) { $executables+=$exeInstalle }
         }
       } finally { if ($k) { $k.Dispose() } }
     }

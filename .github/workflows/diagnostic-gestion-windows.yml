@@ -19,7 +19,7 @@ jobs:
         shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "& '{0}'"
     env:
       DIAGNOSTIC_COMMIT: ${{ github.sha }}
-      DIAGNOSTIC_SCRIPT_SHA256: 4872906de81336978f526acd841457e64a6643b4fe11cedc22bcb68f0ba6db49
+      DIAGNOSTIC_SCRIPT_SHA256: 0e0e823862669d18a931c4b1e0d3d88b723db2ca5c491919a6efae9135f9bf61
       DIAGNOSTIC_TEST_SHA256: 59f1ba9f64aae638df02828fe33b7bab26a257f29e220dabaabebb5ff57321bd
 
     steps:
