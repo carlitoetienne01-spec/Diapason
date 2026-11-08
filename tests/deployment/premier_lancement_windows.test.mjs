@@ -202,7 +202,7 @@ test('§100 — sonde bornée, environnement sans modules usager ni secrets et a
   const faux = fauxArretNatif();
   const r = await arreterAncienBackend(accordAncien(), { platform: 'win32',
     systeme: { SystemRoot: 'C:\\Windows', PSModulePath: 'C:\\privé\\Modules', TOKEN: 'canari-secret', HOME: 'C:\\privé' }, lancer: faux.lancer });
-  assert.deepEqual(r, { requested: true, status: 'stopped', code: null, targetStopped: true, portFree: true, launcherExited: true });
+  assert.deepEqual(r, { requested: true, status: 'stopped', code: null, stage: null, property: null, targetStopped: true, portFree: true, launcherExited: true });
   const { capture, permis, script } = faux.etat(); assert.equal(permis, 1);
   assert.equal(capture.options.shell, false);
   assert.equal(capture.options.env.PSModulePath, 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\Modules');
@@ -240,7 +240,7 @@ test('§100 — rapport fermé sans paths, commandes, SID, erreurs ni clé', () 
   const r = rapportArretAncien({ requested: 'true', status: canari, code: canari,
     path: canari, commandLine: canari, sid: 'S-1-5-21-secret', key: 'canari-secret', error: new Error(canari),
     targetStopped: 'true', portFree: 1, launcherExited: true });
-  assert.deepEqual(Object.keys(r), ['requested', 'status', 'code', 'targetStopped', 'portFree', 'launcherExited']);
+  assert.deepEqual(Object.keys(r), ['requested', 'status', 'code', 'stage', 'property', 'targetStopped', 'portFree', 'launcherExited']);
   assert.equal(r.status, 'refused'); assert.equal(r.code, null); assert.equal(r.targetStopped, false);
   assert(!/Privé|secret|canari|S-1-/.test(JSON.stringify(r)));
 });
@@ -700,4 +700,92 @@ test('gel35 — apparition simulée entre attestations refuse ; contrat finally 
   const terminer = code.indexOf('$stopped=$lease.StopChecked(');
   assert(avant > 0 && apres > avant && comparer > apres && absenceFinale > comparer && terminer > absenceFinale);
   assert(code.includes('} finally { if ($lease) { $lease.Dispose() } }'), 'libération statiquement contrôlée, pas un test Win32');
+});
+
+// Gel36 : projection fermée et protocole réel du parent avec réponses natives
+// factices. Les ACL/étapes PowerShell restent contrôlées statiquement sur Mac.
+const etapesGel36 = ['initialization', 'processHandle', 'processIdentity', 'rootOwnership', 'markerAbsence',
+  'projectMetadata', 'venvMetadata', 'basePythonAcl', 'entryFiles', 'betaAbsence', 'gitAbsence',
+  'attestation', 'finalCheck', 'stopConfirmation'];
+const proprietesGel36 = ['outsideProfile', 'invalidPath', 'reparse', 'itemOwnerNotAllowed', 'ancestorOwnerNotAllowed',
+  'itemWriteNotAllowed', 'ancestorWriteNotAllowed', 'inspectionFailed'];
+
+test('gel36 — enums strictes sans chemin, SID, propriétaire, metadata ni erreur brute', () => {
+  const canari = 'C:\\Users\\Privé\\metadata-secret';
+  const base = { requested: true, status: 'refused', code: 'oldBackendSourceRefused',
+    refusalStage: 'basePythonAcl', refusalProperty: 'ancestorOwnerNotAllowed',
+    sid: 'S-1-5-21-personne', owner: 'nom-personnel', metadata: canari, commandLine: canari,
+    exception: canari, rawError: canari, path: canari };
+  const r = rapportArretAncien(base);
+  assert.equal(r.stage, 'basePythonAcl'); assert.equal(r.property, 'ancestorOwnerNotAllowed');
+  assert.deepEqual(rapportArretAncien(r), r, 'projection réapplicable au seul rapport fermé');
+  assert(!/Privé|secret|S-1-|personnel|metadata|exception|commandLine/.test(JSON.stringify(r)));
+  for (const etape of [undefined, null, true, false, {}, 'BASEPYTHONACL', 'basePythonAcl\n', canari]) {
+    const inconnu = rapportArretAncien({ ...base, refusalStage: etape });
+    assert.equal(inconnu.stage, null); assert.equal(inconnu.property, null);
+  }
+  for (const propriete of [undefined, null, true, {}, 'ancestorOwnerNotAllowed\n', canari]) {
+    const inconnu = rapportArretAncien({ ...base, refusalProperty: propriete });
+    assert.equal(inconnu.stage, 'basePythonAcl'); assert.equal(inconnu.property, null);
+  }
+  for (const property of proprietesGel36) {
+    assert.equal(rapportArretAncien({ ...base, refusalProperty: property }).property, property);
+  }
+});
+
+test('gel36 — le refus natif propage seulement étape/propriété fermées, sans permis', async () => {
+  for (const refusalStage of etapesGel36) {
+    const refus = await jouerMarqueur({ refusAvantAttestation: { stage: 'result', status: 'refused',
+      code: 'oldBackendSourceRefused', refusalStage, refusalProperty: 'ancestorOwnerNotAllowed',
+      path: 'C:\\Users\\Privé', sid: 'S-1-5-21-canari', rawError: 'canari-secret' } });
+    assert.equal(refus.r.code, 'oldBackendSourceRefused'); assert.equal(refus.r.stage, refusalStage);
+    assert.equal(refus.r.property, 'ancestorOwnerNotAllowed'); assert.equal(refus.permis, 0);
+    assert.equal(refus.r.targetStopped, false);
+    assert(!/Privé|canari/.test(JSON.stringify(refus.r)));
+  }
+  const inconnu = await jouerMarqueur({ refusAvantAttestation: { stage: 'result', status: 'refused',
+    code: 'oldBackendSourceRefused', refusalStage: 'C:\\Usager', refusalProperty: 'S-1-5-21-canari' } });
+  assert.equal(inconnu.r.stage, null); assert.equal(inconnu.r.property, null); assert.equal(inconnu.permis, 0);
+});
+
+test('gel36 — attestation JS et refus final restent fermés et ne deviennent pas des succès', async () => {
+  const facts = faitsSansMarqueur(); facts.process.sameSid = false;
+  const attestation = await jouerMarqueur({ facts });
+  assert.equal(attestation.r.code, 'oldBackendOwnerRefused'); assert.equal(attestation.r.stage, 'attestation');
+  assert.equal(attestation.r.property, null); assert.equal(attestation.permis, 0);
+  const final = await jouerMarqueur({ facts: faitsSansMarqueur(), result: { stage: 'result', status: 'refused',
+    code: 'oldBackendSourceRefused', refusalStage: 'basePythonAcl', refusalProperty: 'ancestorWriteNotAllowed' } });
+  assert.equal(final.permis, 1); assert.equal(final.r.status, 'refused'); assert.equal(final.r.targetStopped, false);
+  assert.equal(final.r.stage, 'basePythonAcl'); assert.equal(final.r.property, 'ancestorWriteNotAllowed');
+});
+
+test('gel36 — défaut sans arrêt et champs diagnostiques incapables d’autoriser une action', async () => {
+  let lances = 0;
+  const r = await arreterAncienBackend(null, { platform: 'win32', lancer: () => lances++ });
+  assert.equal(lances, 0); assert.equal(r.status, 'notRequested'); assert.equal(r.stage, null); assert.equal(r.property, null);
+  assert.equal(autorisationArretAncien({ refusalStage: 'finalCheck', refusalProperty: 'inspectionFailed' }), null);
+  assert.throws(() => autorisationArretAncien({ 'residual-pid': '48196', refusalStage: 'finalCheck' }), /personalProcessStopNotAuthorized/);
+  const ferme = rapportArretAncien({ requested: false, status: 'refused', refusalStage: 'basePythonAcl', refusalProperty: 'reparse' });
+  assert.equal(ferme.stage, null); assert.equal(ferme.property, null);
+  const succes = rapportArretAncien({ requested: true, status: 'stopped', refusalStage: 'finalCheck', refusalProperty: 'inspectionFailed' });
+  assert.equal(succes.stage, null); assert.equal(succes.property, null);
+});
+
+test('gel36 — contrat PS statique : étapes de refus et ACL identiques, aucun propriétaire publié', () => {
+  const code = sourceBancMarqueur();
+  const faits = code.slice(code.indexOf('function Faits {'), code.indexOf('$lease=New-Object -TypeName'));
+  assert(faits.indexOf("Point 'rootOwnership'") < faits.indexOf('Possede $racine'));
+  assert(faits.indexOf("Point 'projectMetadata'") < faits.indexOf('$projet=Petit'));
+  assert(faits.indexOf("Point 'venvMetadata'") < faits.indexOf('$cfg=Petit'));
+  const acl = code.slice(code.indexOf('function AclBaseSure('), code.indexOf('function Absent('));
+  assert(acl.includes("Point 'basePythonAcl'"));
+  assert(acl.includes("$fiables=@($sid,'S-1-5-32-544','S-1-5-18')"));
+  assert(acl.includes('$masque=if ($premier) { 852310 } else { 852304 }'));
+  assert(acl.includes("if ($premier) { 'itemOwnerNotAllowed' } else { 'ancestorOwnerNotAllowed' }"));
+  const natif = code.slice(code.indexOf("  $etapePub=if ("), code.indexOf('`;\n\n// 08/11/2026'));
+  assert(natif.includes('refusalStage=$etapePub; refusalProperty=$proprietePub;'));
+  assert(!/owner=|path=|sid=|metadata=|Exception\s*=|rawError=|CommandLine=/.test(natif));
+  for (const etape of etapesGel36) assert(natif.includes("'" + etape + "'"));
+  for (const property of proprietesGel36) assert(natif.includes("'" + property + "'"));
+  assert(natif.includes('} finally { if ($lease) { $lease.Dispose() } }'));
 });

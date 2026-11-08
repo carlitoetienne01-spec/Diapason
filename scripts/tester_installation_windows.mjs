@@ -31,6 +31,7 @@ $env:PSModulePath=Join-Path $PSHOME 'Modules'
 $ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'
 [Console]::OutputEncoding=New-Object Text.UTF8Encoding($false)
 $lease=$null; $stopped=$false; $portFree=$false; $launcherExited=$false
+$script:refusalStage='initialization'; $script:refusalProperty=$null
 $chrono=[Diagnostics.Stopwatch]::StartNew()
 try {
 $sid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
@@ -85,44 +86,51 @@ public sealed class DiapasonOldServerLease : IDisposable {
   public void Dispose() { if (handle!=IntPtr.Zero) { CloseHandle(handle); handle=IntPtr.Zero; } }
 }
 '@
-# Possede/ApplicationSure/Petit/SansReparse/BaseVenv : diagnostic f0321e3,
+# Origine Possede/ApplicationSure/Petit/SansReparse/BaseVenv : diagnostic f0321e3,
 # SHA256 50ee6e29315718d11d2dc42669cd855b0977d90524b9343061e512192eec7d99.
+# 08/11/2026 : le refus 42509094620 ne nommait pas son contrôle. L'instrumentation
+# ne restitue que l'étape et la propriété refusée, jamais le propriétaire lu.
+function Point([string]$etape) { $script:refusalStage=$etape; $script:refusalProperty=$null }
 function Possede([string]$p) {
+  $script:refusalProperty=$null
   try {
     $p=[IO.Path]::GetFullPath($p)
-    if (-not $p.StartsWith($profil+'\',[StringComparison]::OrdinalIgnoreCase)) { return $false }
+    if (-not $p.StartsWith($profil+'\',[StringComparison]::OrdinalIgnoreCase)) { $script:refusalProperty='outsideProfile'; return $false }
     $courant=$p
     while ($courant) {
       $i=Get-Item -LiteralPath $courant -Force
-      if ($i.Attributes -band [IO.FileAttributes]::ReparsePoint) { return $false }
+      if ($i.Attributes -band [IO.FileAttributes]::ReparsePoint) { $script:refusalProperty='reparse'; return $false }
       $courant=[IO.Path]::GetDirectoryName($courant)
     }
-    return ((Get-Acl -LiteralPath $p).GetOwner([Security.Principal.SecurityIdentifier]).Value -eq $sid)
-  } catch { return $false }
+    $propre=((Get-Acl -LiteralPath $p).GetOwner([Security.Principal.SecurityIdentifier]).Value -eq $sid)
+    if (-not $propre) { $script:refusalProperty='itemOwnerNotAllowed' }
+    return $propre
+  } catch { $script:refusalProperty='inspectionFailed'; return $false }
 }
 function ApplicationSure([string]$p) {
   # Les fichiers extraits par le runner élevé appartiennent aux Administrateurs.
   # Accepter ce propriétaire exige aussi la chaîne des ACL, jamais le nom seul.
+  $script:refusalProperty=$null
   try {
     $p=[IO.Path]::GetFullPath($p)
-    if (-not $p.StartsWith($profil+'\',[StringComparison]::OrdinalIgnoreCase)) { return $false }
+    if (-not $p.StartsWith($profil+'\',[StringComparison]::OrdinalIgnoreCase)) { $script:refusalProperty='outsideProfile'; return $false }
     $courant=$p; $fiables=@($sid,'S-1-5-32-544','S-1-5-18')
     while ($courant -and ($courant -ieq $profil -or $courant.StartsWith($profil+'\',[StringComparison]::OrdinalIgnoreCase))) {
       $i=Get-Item -LiteralPath $courant -Force
-      if ($i.Attributes -band [IO.FileAttributes]::ReparsePoint) { return $false }
+      if ($i.Attributes -band [IO.FileAttributes]::ReparsePoint) { $script:refusalProperty='reparse'; return $false }
       $acl=Get-Acl -LiteralPath $courant
-      if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -notin $fiables) { return $false }
+      if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -notin $fiables) { $script:refusalProperty=if ($courant -ieq $p) { 'itemOwnerNotAllowed' } else { 'ancestorOwnerNotAllowed' }; return $false }
       foreach ($regle in $acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier])) {
         if ($regle.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow -or
           ($regle.PropagationFlags -band [Security.AccessControl.PropagationFlags]::InheritOnly)) { continue }
         # WriteData/AppendData/WriteEA/DeleteChild/WriteAttributes/Delete/WriteDac/WriteOwner.
-        if (([int64]$regle.FileSystemRights -band 852310) -ne 0 -and $regle.IdentityReference.Value -notin $fiables) { return $false }
+        if (([int64]$regle.FileSystemRights -band 852310) -ne 0 -and $regle.IdentityReference.Value -notin $fiables) { $script:refusalProperty=if ($courant -ieq $p) { 'itemWriteNotAllowed' } else { 'ancestorWriteNotAllowed' }; return $false }
       }
       if ($courant -ieq $profil) { return $true }
       $courant=[IO.Path]::GetDirectoryName($courant)
     }
-    return $false
-  } catch { return $false }
+    $script:refusalProperty='inspectionFailed'; return $false
+  } catch { $script:refusalProperty='inspectionFailed'; return $false }
 }
 function Petit([string]$p,[int]$max) {
   if (-not (ApplicationSure $p)) { return $null }
@@ -137,16 +145,17 @@ function Petit([string]$p,[int]$max) {
   } finally { $s.Dispose() }
 }
 function SansReparse([string]$p) {
+  $script:refusalProperty=$null
   try {
-    if ($p -notmatch '^[A-Za-z]:\\' -or $p -match '(?:^|\\)\.\.(?:\\|$)') { return $false }
+    if ($p -notmatch '^[A-Za-z]:\\' -or $p -match '(?:^|\\)\.\.(?:\\|$)') { $script:refusalProperty='invalidPath'; return $false }
     $courant=[IO.Path]::GetFullPath($p)
     while ($courant) {
       $i=Get-Item -LiteralPath $courant -Force
-      if ($i.Attributes -band [IO.FileAttributes]::ReparsePoint) { return $false }
+      if ($i.Attributes -band [IO.FileAttributes]::ReparsePoint) { $script:refusalProperty='reparse'; return $false }
       $courant=[IO.Path]::GetDirectoryName($courant)
     }
     return $true
-  } catch { return $false }
+  } catch { $script:refusalProperty='inspectionFailed'; return $false }
 }
 function BaseVenv([string]$cfg) {
   try {
@@ -179,6 +188,7 @@ function BaseVenv([string]$cfg) {
 }
 
 function AclBaseSure([string]$p) {
+  Point 'basePythonAcl'
   # Hors profil, vérifier aussi les ACL du Python pointé par pyvenv.cfg.
   try {
     if (-not (SansReparse $p)) { return $false }
@@ -186,18 +196,18 @@ function AclBaseSure([string]$p) {
     $fiables=@($sid,'S-1-5-32-544','S-1-5-18')
     while ($courant) {
       $acl=Get-Acl -LiteralPath $courant
-      if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -notin $fiables) { return $false }
+      if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -notin $fiables) { $script:refusalProperty=if ($premier) { 'itemOwnerNotAllowed' } else { 'ancestorOwnerNotAllowed' }; return $false }
       foreach ($r in $acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier])) {
         if ($r.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow -or
           ($r.PropagationFlags -band [Security.AccessControl.PropagationFlags]::InheritOnly)) { continue }
         # Les ancêtres ne doivent pas permettre de remplacer un enfant existant.
         $masque=if ($premier) { 852310 } else { 852304 }
-        if (([int64]$r.FileSystemRights -band $masque) -ne 0 -and $r.IdentityReference.Value -notin $fiables) { return $false }
+        if (([int64]$r.FileSystemRights -band $masque) -ne 0 -and $r.IdentityReference.Value -notin $fiables) { $script:refusalProperty=if ($premier) { 'itemWriteNotAllowed' } else { 'ancestorWriteNotAllowed' }; return $false }
       }
       $premier=$false; $courant=[IO.Path]::GetDirectoryName($courant)
     }
     return $true
-  } catch { return $false }
+  } catch { $script:refusalProperty='inspectionFailed'; return $false }
 }
 function Absent([string]$p) {
   $parent=[IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($p))
@@ -239,15 +249,27 @@ function Empreinte([string]$s) {
 }
 function Faits {
   if ($chrono.ElapsedMilliseconds -ge 25000) { throw 'oldBackendTimeout' }
+  Point 'processIdentity'
   $p=Processus $numero
   if (-not $p -or -not $lease.MatchesCimCreation($p.CreationDate)) { throw 'oldBackendIdentityChanged' }
+  Point 'rootOwnership'
   if (-not (Possede $racine) -or -not (ApplicationSure $racine)) { throw 'oldBackendSourceRefused' }
+  Point 'markerAbsence'
   # 08/11/2026, diagnostic 42505534195 : l'ancien PID n'a aucun marqueur.
   # Un contenu « managed », une version ou une erreur ne prouvent pas l'absence.
   if (-not (Absent (Join-Path $racine '.diapason-backend'))) { throw 'oldBackendVersionRefused' }
+  Point 'projectMetadata'
   $projet=Petit (Join-Path $racine 'pyproject.toml') 65536
+  $projetRefus=$script:refusalProperty
+  Point 'venvMetadata'
   $cfg=Petit (Join-Path $racine '.venv\pyvenv.cfg') 8192
-  if (-not $projet -or -not $cfg) { throw 'oldBackendSourceRefused' }
+  $cfgRefus=$script:refusalProperty
+  if (-not $projet -or -not $cfg) {
+    $script:refusalStage=if (-not $projet) { 'projectMetadata' } else { 'venvMetadata' }
+    $script:refusalProperty=if (-not $projet) { $projetRefus } else { $cfgRefus }
+    throw 'oldBackendSourceRefused'
+  }
+  Point 'projectMetadata'
   # Métadonnées [project] seulement : pas un name/version d'un autre tableau TOML.
   $sections=[regex]::Matches($projet,'(?ms)^\[project\]\s*\r?\n(.*?)(?=^\[|\z)')
   if ($sections.Count -ne 1) { throw 'oldBackendVersionRefused' }
@@ -255,11 +277,17 @@ function Faits {
   $noms=[regex]::Matches($texte,'(?m)^name\s*=\s*["'']([^"'']+)["'']\s*$')
   $versions=[regex]::Matches($texte,'(?m)^version\s*=\s*["'']([^"'']+)["'']\s*$')
   if ($noms.Count -ne 1 -or $versions.Count -ne 1) { throw 'oldBackendVersionRefused' }
+  Point 'venvMetadata'
   $base=BaseVenv $cfg
   if (-not $base -or -not (AclBaseSure (Join-Path $base 'python.exe'))) { throw 'oldBackendSourceRefused' }
+  Point 'entryFiles'
   $entree=Join-Path $racine '.venv\Scripts\diapason.exe'; $python=Join-Path $racine '.venv\Scripts\python.exe'
   if ((Get-Item -LiteralPath $entree -Force).PSIsContainer -or (Get-Item -LiteralPath $python -Force).PSIsContainer) { throw 'oldBackendSourceRefused' }
-  $sansBeta=Absent (Join-Path $racine 'beta-build.json'); $sansGit=Absent (Join-Path $racine '.git')
+  Point 'betaAbsence'
+  $sansBeta=Absent (Join-Path $racine 'beta-build.json');
+  Point 'gitAbsence'
+  $sansGit=Absent (Join-Path $racine '.git')
+  Point 'attestation'
   [ordered]@{
     canonicalRoot=$racine; interactive=[Environment]::UserInteractive; runnerSession=$session
     process=[ordered]@{ pid=$numero; sameSid=((MemeSid $p) -and $lease.Sid -ceq $sid);
@@ -276,17 +304,23 @@ function Faits {
     listeners=@(Ecoutes); applications=@(Applications)
   }
 }
+Point 'processHandle'
 $lease=New-Object -TypeName DiapasonOldServerLease -ArgumentList ([uint32]$numero)
 $avant=Faits | ConvertTo-Json -Depth 6 -Compress
 '{"stage":"attestation","facts":'+$avant+'}' | Write-Output
 [Console]::Out.Flush()
+Point 'attestation'
 $accord=ConvertFrom-Json -InputObject ([DiapasonOldServerLease]::ReadPermit())
 if ($accord.permit -isnot [bool] -or $accord.permit -ne $true -or $accord.identity -cne $lease.Creation.ToString()) { throw 'oldBackendProtocolRefused' }
 # Relire source/ACL/reparse/commande/SID/UI/socket sous le HANDLE ouvert initialement.
 $apres=Faits | ConvertTo-Json -Depth 6 -Compress
+Point 'finalCheck'
 if ($apres -cne $avant) { throw 'oldBackendFinalCheckChanged' }
+Point 'markerAbsence'
 if (-not (Absent (Join-Path $racine '.diapason-backend'))) { throw 'oldBackendVersionRefused' }
+Point 'finalCheck'
 $stopped=$lease.StopChecked($lease.Creation,$sid,$session,$chrono)
+Point 'stopConfirmation'
 if (-not $stopped) { throw 'oldBackendStopUnconfirmed' }
 $fin=[Diagnostics.Stopwatch]::StartNew()
 do {
@@ -301,7 +335,9 @@ if (-not $launcherExited) { throw 'oldBackendLauncherStillRunning' }
 } catch {
   $code='oldBackendNativeUnavailable'
   if ($_.Exception.Message -cmatch '^oldBackend(?:PidChanged|OwnerRefused|IdentityChanged|SourceRefused|VersionRefused|EntryRefused|PortChanged|UiActive|Timeout|ProtocolRefused|FinalCheckChanged|StopUnconfirmed|LauncherStillRunning)$') { $code=$_.Exception.Message }
-  @{ stage='result'; status='refused'; code=$code; targetStopped=[bool]$stopped; portFree=[bool]$portFree; launcherExited=[bool]$launcherExited } | ConvertTo-Json -Compress
+  $etapePub=if ($script:refusalStage -cin @('initialization','processHandle','processIdentity','rootOwnership','markerAbsence','projectMetadata','venvMetadata','basePythonAcl','entryFiles','betaAbsence','gitAbsence','attestation','finalCheck','stopConfirmation')) { $script:refusalStage } else { $null }
+  $proprietePub=if ($etapePub -and $script:refusalProperty -cin @('outsideProfile','invalidPath','reparse','itemOwnerNotAllowed','ancestorOwnerNotAllowed','itemWriteNotAllowed','ancestorWriteNotAllowed','inspectionFailed')) { $script:refusalProperty } else { $null }
+  @{ stage='result'; status='refused'; refusalStage=$etapePub; refusalProperty=$proprietePub; code=$code; targetStopped=[bool]$stopped; portFree=[bool]$portFree; launcherExited=[bool]$launcherExited } | ConvertTo-Json -Compress
 } finally { if ($lease) { $lease.Dispose() } }
 `;
 
@@ -404,9 +440,14 @@ const CODES_ARRET_ANCIEN = new Set(['oldBackendPidChanged', 'oldBackendOwnerRefu
   'oldBackendEntryRefused', 'oldBackendPortChanged', 'oldBackendUiActive',
   'oldBackendNativeUnavailable', 'oldBackendTimeout', 'oldBackendProtocolRefused',
   'oldBackendFinalCheckChanged', 'oldBackendStopUnconfirmed', 'oldBackendLauncherStillRunning']);
+const ETAPES_ARRET_ANCIEN = new Set(['initialization', 'processHandle', 'processIdentity', 'rootOwnership', 'markerAbsence', 'projectMetadata', 'venvMetadata', 'basePythonAcl', 'entryFiles', 'betaAbsence', 'gitAbsence', 'attestation', 'finalCheck', 'stopConfirmation']);
+const PROPRIETES_ARRET_ANCIEN = new Set(['outsideProfile', 'invalidPath', 'reparse', 'itemOwnerNotAllowed', 'ancestorOwnerNotAllowed', 'itemWriteNotAllowed', 'ancestorWriteNotAllowed', 'inspectionFailed']);
 export function rapportArretAncien(r = {}) {
+  const etape = r.refusalStage ?? r.stage, propriete = r.refusalProperty ?? r.property;
+  const stage = r.requested === true && r.status === 'refused' && ETAPES_ARRET_ANCIEN.has(etape) ? etape : null;
   return { requested: r.requested === true, status: ['notRequested', 'refused', 'stopped'].includes(r.status) ? r.status : 'refused',
     code: CODES_ARRET_ANCIEN.has(r.code) ? r.code : null,
+    stage, property: stage && PROPRIETES_ARRET_ANCIEN.has(propriete) ? propriete : null,
     targetStopped: r.targetStopped === true, portFree: r.portFree === true,
     launcherExited: r.launcherExited === true };
 }
@@ -448,7 +489,10 @@ export async function arreterAncienBackend(a, { platform = process.platform, sys
           try {
             const n = JSON.parse(ligne);
             if (n.stage === 'attestation' && !autorise) {
-              validerArretAncien(n.facts, a); autorise = true;
+              try { validerArretAncien(n.facts, a); } catch (e) {
+                return finir({ code: CODES_ARRET_ANCIEN.has(e.message) ? e.message : 'oldBackendProtocolRefused', refusalStage: 'attestation' });
+              }
+              autorise = true;
               // Le fils compare de nouveau TOUS les faits sous le même HANDLE.
               enfant.stdin.write(JSON.stringify({ permit: true, identity: n.facts.process.identity }) + '\n');
             } else if (n.stage === 'result' && n.status === 'stopped' && autorise
