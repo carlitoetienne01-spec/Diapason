@@ -17,6 +17,13 @@ const ISSUES = new Set(['notRequested', 'http', 'timeout', 'connectionRefused',
   'networkError', 'redirectRefused', 'ownerChanged', 'bodyTooLarge', 'invalidTarget']);
 const CODES = new Set(['unsupportedPlatform', 'nativeUnavailable', 'ownerNotAttributed',
   'healthUnrecognized', 'keyUnavailable', 'ownerChanged', 'reportWriteFailed', 'invalidArguments']);
+const ETAPES_NATIVES = new Set(['initialization', 'registry', 'applications', 'listener', 'backend', 'attestation']);
+const ISSUES_NATIVES = new Set(['completed', 'commandFailed', 'launchFailed', 'timeout', 'invalidOutput']);
+const nettoyerNatif = n => ({
+  outcome: ISSUES_NATIVES.has(n?.outcome) ? n.outcome : 'invalidOutput',
+  stage: ETAPES_NATIVES.has(n?.stage) ? n.stage : null,
+  line: Number.isInteger(n?.line) && n.line > 0 && n.line <= 1000 ? n.line : null,
+});
 const INCONNU = () => ({ status: null, outcome: 'notRequested', authenticated: false });
 const version = v => typeof v === 'string' && v.length <= 80
   && /^\d{1,4}\.\d{1,4}\.\d{1,4}(?:\.\d{1,9}|-beta\.\d{8}(?:\.\d{1,9})?)?$/.test(v) ? v : null;
@@ -126,6 +133,7 @@ export function nettoyerRapport(r = {}) {
     platform: ['win32', 'windows'].includes(r.platform) ? 'windows' : 'unsupported',
     status: ['completed', 'partial', 'refused'].includes(r.status) ? r.status : 'refused',
     codes: Array.isArray(r.codes) ? [...new Set(r.codes.filter(c => CODES.has(c)))].slice(0, 8) : [],
+    native: nettoyerNatif(r.native),
     installations: liste.map(i => ({ productVersion: version(i?.productVersion),
       fileVersion: version(i?.fileVersion), running: i?.running === true })),
     listener: { port: 8000, pid: pidValide(r.listener?.pid) ? r.listener.pid : null,
@@ -209,7 +217,8 @@ export async function diagnostiquer({ platform = process.platform, collectNative
     r.status = 'refused'; r.codes.push('unsupportedPlatform'); return nettoyerRapport(r);
   }
   let n;
-  try { n = await collectNative(); } catch { r.codes.push('nativeUnavailable'); }
+  try { n = await collectNative(); r.native = { outcome: 'completed' }; }
+  catch (e) { r.codes.push('nativeUnavailable'); r.native = nettoyerNatif(e?.nativeDiagnostic); }
   r.installations = n?.installations; r.listener = { ...n?.listener, ownership: 'unknown' }; r.backend = n?.backend;
   if (n?.listener?.absent === true) r.listener.ownership = 'absent';
   try { r.health = await probe({ url: ORIGINE + '/health' }); } catch { r.health = { outcome: 'networkError' }; }
@@ -262,6 +271,8 @@ const POWERSHELL = String.raw`
 $env:PSModulePath=Join-Path $PSHOME 'Modules'
 $ErrorActionPreference='Stop'
 $ProgressPreference='SilentlyContinue'
+$etape='initialization'
+try {
 [Console]::OutputEncoding=New-Object System.Text.UTF8Encoding($false)
 $sid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 $profil=[Environment]::GetFolderPath('UserProfile')
@@ -349,6 +360,7 @@ function Processus([int]$numero) {
   return CimCmdlets\Get-CimInstance Win32_Process -Filter ('ProcessId='+$numero) -OperationTimeoutSec 2
 }
 if ($env:DIAG_MODE -eq 'attest') {
+  $etape='attestation'
   $numero=[int]$env:DIAG_PID; $portClient=[int]$env:DIAG_CLIENT_PORT
   $p=Processus $numero
   $ok=$p -and (MemeSid $p) -and ($p.CreationDate.ToUniversalTime().Ticks.ToString() -eq $env:DIAG_IDENTITY)
@@ -361,6 +373,7 @@ $racines=@((Join-Path $local 'Diapason\src'))
 $memo=Petit (Join-Path $profil '.diapason\project_root') 4096
 if ($memo) { $racines+= $memo.Trim() }
 $installations=@(); $executables=@((Join-Path $local 'Programs\Diapason\Diapason.exe'),(Join-Path $local 'Diapason\Diapason.exe'))
+$etape='registry'
 $reg=[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Software\Microsoft\Windows\CurrentVersion\Uninstall',$false)
 if ($reg) {
   try {
@@ -375,6 +388,7 @@ if ($reg) {
     }
   } finally { $reg.Dispose() }
 }
+$etape='applications'
 $apps=@(CimCmdlets\Get-CimInstance Win32_Process -Filter "Name='Diapason.exe' OR Name='diapason-desktop.exe'" -OperationTimeoutSec 2)
 $executables=@($apps | Select-Object -ExpandProperty ExecutablePath)+$executables
 foreach ($exe in @($executables | Select-Object -Unique | Select-Object -First 8)) {
@@ -386,10 +400,12 @@ foreach ($exe in @($executables | Select-Object -Unique | Select-Object -First 8
     }
   }
 }
+$etape='listener'
 $ecoutes=@(NetTCPIP\Get-NetTCPConnection -State Listen -LocalPort 8000 -ErrorAction SilentlyContinue | Where-Object { $_.LocalAddress -in @('127.0.0.1','0.0.0.0') })
 $ids=@($ecoutes | Select-Object -ExpandProperty OwningProcess -Unique)
 $resultat=@{ installations=@($installations | Select-Object -First 4); listener=@{ absent=($ids.Count -eq 0) }; candidates=@(); private=@{} }
 if ($ids.Count -eq 1) {
+  $etape='backend'
   $p=Processus ([int]$ids[0]); $propre=$p -and (MemeSid $p)
   $genre='other'
   if ($p) {
@@ -428,6 +444,9 @@ if ($ids.Count -eq 1) {
   }
 }
 $resultat | ConvertTo-Json -Depth 5 -Compress
+} catch {
+  @{ diagnosticFailure=$true; stage=$etape; line=$_.InvocationInfo.ScriptLineNumber } | ConvertTo-Json -Compress
+}
 `;
 
 async function sondeNative(mode, valeurs = {}, { platform = process.platform, lancer = spawn } = {}) {
@@ -443,19 +462,25 @@ async function sondeNative(mode, valeurs = {}, { platform = process.platform, la
         PATH: path.win32.join(windows, 'System32'),
         PSModulePath: path.win32.join(windows, 'System32', 'WindowsPowerShell', 'v1.0', 'Modules'),
         DIAG_MODE: mode, ...valeurs } });
-    const finir = (valeur, erreur = false) => {
+    const finir = (valeur, erreur = false, detail = {}) => {
       if (fini) return; fini = true; clearTimeout(minuteur);
       enfant.stdout?.destroy(); enfant.stderr?.destroy(); enfant.unref();
-      if (erreur) reject(new Error('nativeUnavailable')); else resolve(valeur);
+      if (erreur) {
+        const e = new Error('nativeUnavailable'); e.nativeDiagnostic = nettoyerNatif(detail); reject(e);
+      } else resolve(valeur);
     };
     // Aucun taskkill/Stop-Process : seul le pipe de notre sonde est abandonné.
-    const minuteur = setTimeout(() => finir(null, true), 6500);
+    const minuteur = setTimeout(() => finir(null, true, { outcome: 'timeout' }), 6500);
     enfant.stdout.on('data', b => { taille += b.length; if (taille > 32768) finir(null, true); else blocs.push(b); });
     enfant.stderr.on('data', () => {});
-    enfant.on('error', () => finir(null, true));
+    enfant.on('error', () => finir(null, true, { outcome: 'launchFailed' }));
     enfant.on('close', code => {
-      if (code !== 0) return finir(null, true);
-      try { finir(JSON.parse(Buffer.concat(blocs).toString('utf8').replace(/^\uFEFF/, '').trim())); }
+      if (code !== 0) return finir(null, true, { outcome: 'commandFailed' });
+      try {
+        const r = JSON.parse(Buffer.concat(blocs).toString('utf8').replace(/^\uFEFF/, '').trim());
+        if (r?.diagnosticFailure === true) finir(null, true, { outcome: 'commandFailed', stage: r.stage, line: r.line });
+        else finir(r);
+      }
       catch { finir(null, true); }
     });
   });

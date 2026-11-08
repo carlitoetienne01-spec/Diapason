@@ -361,6 +361,41 @@ test('§5 — exceptions natives/réseau brutes remplacées par des codes fermé
   assert(!JSON.stringify(r).includes(CLE)); assert(!JSON.stringify(r).includes(PRIVE));
 });
 
+test('§5 — un échec PowerShell garde seulement son étape et sa ligne statique', async () => {
+  const ancien = process.env.SystemRoot; process.env.SystemRoot = 'C:\\Windows';
+  const lancer = (_exe, argv) => {
+    const code = Buffer.from(argv.at(-1), 'base64').toString('utf16le');
+    const lignes = code.split('\n');
+    const ligne = lignes.findIndex(l => l.startsWith('$apps=@(')) + 1;
+    assert(ligne > 0); assert(code.includes('} catch {'));
+    const enfant = new EventEmitter(); enfant.stdout = new EventEmitter(); enfant.stderr = new EventEmitter();
+    enfant.stdout.destroy = mock.fn(); enfant.stderr.destroy = mock.fn(); enfant.unref = mock.fn();
+    queueMicrotask(() => {
+      enfant.stderr.emit('data', Buffer.from(PRIVE + CLE));
+      enfant.stdout.emit('data', Buffer.from(JSON.stringify({ diagnosticFailure: true,
+        stage: 'applications', line: ligne, message: PRIVE + CLE })));
+      enfant.emit('close', 0);
+    });
+    return enfant;
+  };
+  try {
+    const r = await diagnostiquer({ platform: 'win32',
+      collectNative: () => collecterNatif({ platform: 'win32', lancer }), probe: async () => sante });
+    assert.deepEqual(r.native, { outcome: 'commandFailed', stage: 'applications', line: r.native.line });
+    assert(r.native.line > 0); assert(r.codes.includes('nativeUnavailable'));
+    assert(!JSON.stringify(r).includes(CLE)); assert(!JSON.stringify(r).includes(PRIVE));
+    assert.deepEqual(nettoyerRapport(r), r);
+  } finally {
+    if (ancien === undefined) delete process.env.SystemRoot; else process.env.SystemRoot = ancien;
+  }
+});
+
+test('§5 — le diagnostic natif refuse une étape ou une ligne reçue en texte privé', () => {
+  const r = nettoyerRapport({ native: { outcome: CLE, stage: PRIVE, line: 1001, secret: CLE } });
+  assert.deepEqual(r.native, { outcome: 'invalidOutput', stage: null, line: null });
+  assert(!JSON.stringify(r).includes(CLE)); assert(!JSON.stringify(r).includes(PRIVE));
+});
+
 test('§100 — la perte d’attribution arrête les GET suivants', async () => {
   const probe = mock.fn(async o => o.url.endsWith('/health') ? sante
     : { status: null, outcome: 'ownerChanged', authenticated: false });
