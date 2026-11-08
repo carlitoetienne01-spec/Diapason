@@ -493,12 +493,58 @@ const CODES_ARRET_ANCIEN = new Set(['oldBackendPidChanged', 'oldBackendOwnerRefu
   'oldBackendFinalCheckChanged', 'oldBackendStopUnconfirmed', 'oldBackendLauncherStillRunning']);
 const ETAPES_ARRET_ANCIEN = new Set(['initialization', 'processHandle', 'processIdentity', 'rootOwnership', 'markerAbsence', 'projectMetadata', 'venvMetadata', 'basePythonAcl', 'entryFiles', 'betaAbsence', 'gitAbsence', 'attestation', 'finalCheck', 'stopConfirmation']);
 const PROPRIETES_ARRET_ANCIEN = new Set(['outsideProfile', 'invalidPath', 'reparse', 'itemOwnerNotAllowed', 'ancestorOwnerNotAllowed', 'itemWriteNotAllowed', 'ancestorWriteNotAllowed', 'inspectionFailed', 'windowsAncestorLookupFailed', 'projectNameNotDiapason', 'sourceVersionNotLegacy', 'markerNotAbsent', 'betaMetadataPresent', 'gitMetadataUnverified']);
+const MOTS_ENTREE_ANCIENNE = new Map(Object.entries({
+  serve: 'serve', diapason: 'module', '-m': 'moduleFlag', '--host': 'host', '--port': 'port',
+  '127.0.0.1': 'loopback', '::1': 'loopback', localhost: 'localhost', '0.0.0.0': 'wildcard', '::': 'wildcard',
+  '8000': 'port8000', '-I': 'pythonFlag', '-B': 'pythonFlag', '-u': 'pythonFlag', '-S': 'pythonFlag',
+  '-X': 'pythonOption', utf8: 'utf8', '--log-level': 'logLevel', info: 'info', debug: 'debug',
+  warning: 'warning', error: 'error', '--reload': 'reload', '--workers': 'workers', '1': 'one',
+  '--engine': 'engine', '--model': 'model', '--agent': 'agent', ollama: 'ollama', auto: 'auto', simple: 'simple',
+  '--lan-host': 'lanHost', '--lan-port': 'lanPort', '8001': 'port8001', '--verbose': 'verbose', '--quiet': 'quiet',
+}));
+const ROLES_ENTREE_ANCIENNE = ['basePython', 'venvPython', 'consoleEntry', 'other'];
+const FORMES_ENTREE_ANCIENNE = new Set([
+  ...ROLES_ENTREE_ANCIENNE.flatMap(x => ['process:' + x, 'arg:' + x, 'launcher:' + x]),
+  ...[...MOTS_ENTREE_ANCIENNE.values()].map(x => 'arg:' + x),
+  'args:begin', 'args:unparsed', 'launcherArgs:begin', 'app:window', 'app:hidden',
+  'listener:loopback', 'listener:wildcard', 'listener:other', 'home:exact', 'home:alias', 'home:other',
+]);
+
+// 08/11/2026 : un refus agrégé imposait un essai par hypothèse de commande.
+// Ces catégories n'autorisent rien et ne publient aucun argument reçu.
+function formeEntreeAncienne(n) {
+  const c = n?.source, root = cheminAncien(c?.root), base = cheminAncien(c?.resolvedHome);
+  const role = s => {
+    const p = cheminAncien(s);
+    if (p && base && p === base + '\\python.exe') return 'basePython';
+    if (p && root && p === root + '\\.venv\\scripts\\python.exe') return 'venvPython';
+    if (p && root && p === root + '\\.venv\\scripts\\diapason.exe') return 'consoleEntry';
+    return 'other';
+  };
+  const args = ligne => {
+    const mots = argvAncien(ligne);
+    return mots ? mots.slice(0, 24).map(x => 'arg:' + (MOTS_ENTREE_ANCIENNE.get(x) ?? role(x))) : ['args:unparsed'];
+  };
+  const home = typeof c?.cfg === 'string' ? cheminAncien(c.cfg.match(/^\s*home\s*=\s*(.*?)\s*$/m)?.[1]) : null;
+  const alias = home && base && path.win32.basename(home) === 'cpython-3.13-windows-x86_64-none'
+    && /^cpython-3\.13\.\d+-windows-x86_64-none$/.test(path.win32.basename(base))
+    && path.win32.dirname(home) === path.win32.dirname(base);
+  return [home && home === base ? 'home:exact' : alias ? 'home:alias' : 'home:other',
+    'process:' + role(n?.process?.executablePath), 'args:begin', ...args(n?.process?.commandLine),
+    ...(Array.isArray(n?.listeners) ? n.listeners.slice(0, 4).map(l => ['127.0.0.1', '::1'].includes(l.address)
+      ? 'listener:loopback' : ['0.0.0.0', '::'].includes(l.address) ? 'listener:wildcard' : 'listener:other') : []),
+    ...(Array.isArray(n?.applications) ? n.applications.slice(0, 2).flatMap(p => [p.hasWindow === true ? 'app:window' : 'app:hidden',
+      'launcher:' + role(p.executablePath), 'launcherArgs:begin', ...args(p.commandLine)]) : []),
+  ].slice(0, 64);
+}
 export function rapportArretAncien(r = {}) {
   const etape = r.refusalStage ?? r.stage, propriete = r.refusalProperty ?? r.property;
   const stage = r.requested === true && r.status === 'refused' && ETAPES_ARRET_ANCIEN.has(etape) ? etape : null;
   return { requested: r.requested === true, status: ['notRequested', 'refused', 'stopped'].includes(r.status) ? r.status : 'refused',
     code: CODES_ARRET_ANCIEN.has(r.code) ? r.code : null,
     stage, property: stage && PROPRIETES_ARRET_ANCIEN.has(propriete) ? propriete : null,
+    refusalShape: stage === 'attestation' && Array.isArray(r.refusalShape)
+      ? r.refusalShape.slice(0, 64).filter(x => FORMES_ENTREE_ANCIENNE.has(x)) : [],
     legacySourceHasGitMetadata: r.requested === true && r.status === 'stopped' && r.targetStopped === true
       && r.portFree === true && r.launcherExited === true && r.legacySourceHasGitMetadata === true,
     basePythonAclWindowsAncestorVerified: r.requested === true && r.status === 'stopped' && r.targetStopped === true
@@ -549,7 +595,8 @@ export async function arreterAncienBackend(a, { platform = process.platform, sys
             if (n.stage === 'attestation' && !autorise) {
               try { validerArretAncien(n.facts, a); } catch (e) {
                 return finir({ code: CODES_ARRET_ANCIEN.has(e.message) ? e.message : 'oldBackendProtocolRefused',
-                  refusalStage: 'attestation', refusalProperty: e.refusalProperty });
+                  refusalStage: 'attestation', refusalProperty: e.refusalProperty,
+                  refusalShape: formeEntreeAncienne(n.facts) });
               }
               preuveOwner = n.facts.source.basePythonAclWindowsAncestorVerified;
               preuveWriter = n.facts.source.basePythonAclWindowsAncestorWriterVerified;

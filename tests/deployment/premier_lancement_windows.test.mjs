@@ -21,6 +21,24 @@ import {
 const version = '1.0.5-beta.20261107.23';
 const sha = '8932e416a560c302e1a85c44b24d81598443daaf2151c6c8243c0f29c9c07687';
 
+test('gel40 — le refus de commande expose sa structure sans argument privé', async () => {
+  const facts = faitsAncien();
+  facts.process.commandLine += ' --log-level info --secret "Privé-CANARI-40"';
+  const faux = fauxArretNatif({ facts });
+  const r = await arreterAncienBackend(accordAncien(), { platform: 'win32', systeme: { SystemRoot: 'C:\\Windows' }, lancer: faux.lancer });
+  assert.equal(r.code, 'oldBackendEntryRefused'); assert.equal(faux.etat().permis, 0);
+  assert(r.refusalShape.includes('arg:logLevel')); assert(r.refusalShape.includes('arg:info'));
+  assert(r.refusalShape.includes('arg:other'));
+  assert(!/Privé|CANARI|C:|secret/.test(JSON.stringify(r)));
+});
+
+test('gel40 — seules les catégories fermées du refus peuvent sortir', () => {
+  const r = rapportArretAncien({ requested: true, status: 'refused', code: 'oldBackendEntryRefused',
+    refusalStage: 'attestation', refusalShape: ['arg:serve', 'Privé-CANARI-40', {}, null, 'listener:wildcard'] });
+  assert.deepEqual(r.refusalShape, ['arg:serve', 'listener:wildcard']);
+  assert.deepEqual(rapportArretAncien({ requested: true, status: 'stopped', refusalShape: ['arg:serve'] }).refusalShape, []);
+});
+
 test('gel39 — le clone de l’ancien installateur garde son identité de serveur', async () => {
   for (const present of [true, false]) {
     const facts = faitsAncien(); facts.source.gitAbsent = !present;
@@ -261,6 +279,7 @@ test('§100 — sonde bornée, environnement sans modules usager ni secrets et a
   const r = await arreterAncienBackend(accordAncien(), { platform: 'win32',
     systeme: { SystemRoot: 'C:\\Windows', PSModulePath: 'C:\\privé\\Modules', TOKEN: 'canari-secret', HOME: 'C:\\privé' }, lancer: faux.lancer });
   assert.deepEqual(r, { requested: true, status: 'stopped', code: null, stage: null, property: null,
+    refusalShape: [],
     legacySourceHasGitMetadata: false,
     basePythonAclWindowsAncestorVerified: false, basePythonAclWindowsAncestorWriterVerified: false,
     targetStopped: true, portFree: true, launcherExited: true });
@@ -302,6 +321,7 @@ test('§100 — rapport fermé sans paths, commandes, SID, erreurs ni clé', () 
     path: canari, commandLine: canari, sid: 'S-1-5-21-secret', key: 'canari-secret', error: new Error(canari),
     targetStopped: 'true', portFree: 1, launcherExited: true });
   assert.deepEqual(Object.keys(r), ['requested', 'status', 'code', 'stage', 'property',
+    'refusalShape',
     'legacySourceHasGitMetadata',
     'basePythonAclWindowsAncestorVerified', 'basePythonAclWindowsAncestorWriterVerified',
     'targetStopped', 'portFree', 'launcherExited']);
