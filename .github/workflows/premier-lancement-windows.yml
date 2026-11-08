@@ -12,11 +12,11 @@ on:
         required: true
         type: string
       scenario:
-        description: Profil neuf ou reprise synthétique avec données et ancien serveur
+        description: Profil neuf, reprise synthétique ou diagnostic en lecture seule du profil QA45
         required: true
         type: choice
         default: fresh
-        options: [fresh, legacy]
+        options: [fresh, legacy, metadata-qa45]
       stop_old_backend_pid:
         description: Accord distinct requis — seul ancien serveur PID 48196 (vide = aucun arrêt)
         required: false
@@ -49,8 +49,8 @@ jobs:
       STOP_OLD_BACKEND_PID: ${{ inputs.stop_old_backend_pid }}
       STOP_OLD_BACKEND_OBSERVED_UTC: ${{ inputs.stop_old_backend_observed_utc }}
       BANC_COMMIT: ${{ github.sha }}
-      BANC_SCRIPT_SHA256: 03a6a004e25966c16af413933b892c7e0751147fa9b4652b0cf3722b8d5c6e92
-      BANC_TEST_SHA256: b4362de2fcf110ba19c4a8757869c8ebb23c0923b96af93beb55d7ac548af865
+      BANC_SCRIPT_SHA256: 6514710dc2a484d825d4b56856d2da2ee79d231b00ed31573c2fec4dc4de874a
+      BANC_TEST_SHA256: 9f5c67bb1c00aa7bfc16b098e04dadd6c3c191f43eb4d472a4987510012c2c5e
 
     steps:
       - uses: actions/setup-node@v6
@@ -86,7 +86,7 @@ jobs:
           node --test (Join-Path $banc 'tests/deployment/premier_lancement_windows.test.mjs')
           if ($LASTEXITCODE -ne 0) { throw 'Contrats du banc refuses' }
 
-      - name: Installer le véritable EXE et vérifier le scénario choisi
+      - name: ${{ inputs.scenario == 'metadata-qa45' && 'Lire uniquement les indices du profil QA45' || 'Installer le véritable EXE et vérifier le scénario choisi' }}
         run: |
           $ErrorActionPreference = 'Stop'
           $travail = Join-Path $env:RUNNER_TEMP ('diapason-installation-{0}-{1}' -f $env:GITHUB_RUN_ID, $env:GITHUB_RUN_ATTEMPT)

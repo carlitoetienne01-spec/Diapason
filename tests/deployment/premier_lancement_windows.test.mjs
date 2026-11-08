@@ -7,6 +7,7 @@ import http from 'node:http';
 import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
+import { execFileSync } from 'node:child_process';
 import {
   CONTROLES, ciblePubliee, argumentsNsis, environnementApplication,
   rapportValide, urlCdpValide, origineApplication, verifierNarration,
@@ -18,7 +19,82 @@ import {
   autorisationArretAncien, validerArretAncien, arreterAncienBackend, rapportArretAncien,
   exercerGestionSousQuota, preuveQuotaValide,
   nomsGestionUi, preuveGestionUiValide, observerGestionUi, exercerGestionUi, verifierReouvertureGestionUi,
+  resumerMetadataPreparation, METADATA_QA45, FILTRER_METADATA_QA45,
 } from '../../scripts/tester_installation_windows.mjs';
+
+test('métadonnées46 — le filtre PowerShell natif réduit le gros journal avant son transport32Kio',
+  { skip: process.platform !== 'win32' }, () => {
+    const systeme = process.env.SystemRoot || process.env.SYSTEMROOT;
+    const env = environnementApplication(process.env, 'C:\\temp\\qa-meta-parser', 9223);
+    env.DIAPASON_QA_METADATA_SCRIPT = FILTRER_METADATA_QA45;
+    const code = 'Invoke-Expression $env:DIAPASON_QA_METADATA_SCRIPT;$canari="CANARI-TRANSPORT46-PRIVE";$r=@{fileState="present";text=(($canari*4096)+" HTTPError "+$canari)};FiltrerMetadata appLog $r;$s=@{fileState="present";text=("{`"state`":`"preparing`",`"secret`":`""+($canari*4096)+"`"}")};FiltrerMetadata orionMarker $s;@{log=$r;marker=$s}|ConvertTo-Json -Depth 5 -Compress';
+    const sortie = execFileSync(path.win32.join(systeme, 'System32\\WindowsPowerShell\\v1.0\\powershell.exe'),
+      ['-NoProfile', '-NonInteractive', '-Command', code], { env, encoding: 'utf8', timeout: 10000 });
+    assert(Buffer.byteLength(sortie, 'utf8') < 4096); assert(!sortie.includes('CANARI-TRANSPORT46-PRIVE'));
+    const r = JSON.parse(sortie.replace(/^\uFEFF/, ''));
+    assert.equal(r.log.text, 'HTTPError'); assert.equal(JSON.parse(r.marker.text).state, 'preparing');
+  });
+
+test('métadonnées46 — le parseur PowerShell natif accepte le lecteur sans exécuter son corps',
+  { skip: process.platform !== 'win32' }, () => {
+    const systeme = process.env.SystemRoot || process.env.SYSTEMROOT;
+    const env = environnementApplication(process.env, 'C:\\temp\\qa-meta-parser', 9223);
+    env.DIAPASON_QA_METADATA_SCRIPT = METADATA_QA45;
+    const code = '$t=$null;$e=$null;$null=[System.Management.Automation.Language.Parser]::ParseInput($env:DIAPASON_QA_METADATA_SCRIPT,[ref]$t,[ref]$e);@{parserErrors=@($e).Count}|ConvertTo-Json -Compress';
+    const sortie = execFileSync(path.win32.join(systeme, 'System32\\WindowsPowerShell\\v1.0\\powershell.exe'),
+      ['-NoProfile', '-NonInteractive', '-Command', code], { env, encoding: 'utf8', timeout: 10000 });
+    assert.equal(JSON.parse(sortie.replace(/^\uFEFF/, '')).parserErrors, 0);
+  });
+
+test('métadonnées46 — un reçu de diagnostic ne valide jamais une installation', () => {
+  const r = resumerMetadataPreparation({ sourceReportMatched: true, pathsGuarded: true, files: {}, freeDiskBytes: 4096 });
+  assert.equal(r.readCompleted, true); assert.equal(r.applicationValidated, false);
+  assert.equal(r.passed, undefined); assert.equal(rapportValide(r), false);
+  assert.equal(r.component, 'unknown'); assert.equal(r.cause, 'unknown');
+});
+
+test('métadonnées46 — canaris, chemins, contenu métier et erreurs libres sont absents du reçu', () => {
+  const canari = 'SECRET-CANARI-46-NE-PAS-PUBLIER';
+  const j = JSON.stringify({ state: 'preparing', schemaVersion: 2, profileId: canari, key: canari, note: canari });
+  const r = resumerMetadataPreparation({ sourceReportMatched: true, pathsGuarded: true,
+    files: { orionMarker: { fileState: 'present', sizeBytes: j.length, text: j },
+      appLog: { fileState: 'present', text: `C:\\Prive\\${canari} HTTPError: ${canari}` },
+      notes: { text: canari } }, error: canari, freeDiskBytes: 123 });
+  assert(!JSON.stringify(r).includes(canari)); assert.deepEqual(r.activePreparationMarkers, ['orion']);
+  assert.deepEqual(r.files.appLog.exceptionClasses, ['HTTPError']);
+  assert(!('notes' in r.files));
+});
+
+test('métadonnées46 — marqueur illisible ou étranger n’invente pas de composant en panne', () => {
+  for (const text of ['{', 'null', '[]', '"texte"', '{"state":"origine-privee"}']) {
+    const r = resumerMetadataPreparation({ sourceReportMatched: true, pathsGuarded: true,
+      files: { ocrMarker: { fileState: 'present', text } } });
+    assert.equal(r.component, 'unknown'); assert.equal(r.activePreparationMarkers.length, 0);
+    assert(!JSON.stringify(r).includes('origine-privee'));
+  }
+});
+
+test('métadonnées46 — taille, schéma et espace disque restent bornés et entiers', () => {
+  const r = resumerMetadataPreparation({ sourceReportMatched: true, pathsGuarded: true,
+    freeDiskBytes: 1.5, files: { globalMarker: { fileState: 'present', text: 'x'.repeat(262145), sizeBytes: -1 },
+      alignmentModel: { fileState: 'present', sizeBytes: 1000 },
+      build: { fileState: 'present', text: JSON.stringify({ pythonPackageVersion: '1.0.5',
+        snapshotSha256: '3c96b465994b1b7482a1859a830634c66d02703a8b3cad190b8e439720bb89b8',
+        windowsMode: 'complet', schemaVersion: 1.2 }) } } });
+  assert.equal(r.files.globalMarker.fileState, 'tooLarge'); assert.equal(r.freeDiskBytes, null);
+  assert.equal(r.files.alignmentModel.sizeBytes, 1000); assert(!('text' in r.files.alignmentModel));
+  assert.equal(r.files.build.sourceMatches, true); assert(!('schemaVersion' in r.files.build));
+});
+
+test('métadonnées46 — absence de preuve de source et refus de chemin ne deviennent pas un succès', () => {
+  for (const brut of [null, {}, { sourceReportMatched: false, pathsGuarded: true, refusalStage: 'sourceReport' },
+    { sourceReportMatched: true, pathsGuarded: false, refusalStage: 'metadataPath' },
+    { sourceReportMatched: true, pathsGuarded: false, refusalStage: 'SECRET-46' }]) {
+    const r = resumerMetadataPreparation(brut); assert.equal(r.readCompleted, false);
+    assert.equal(r.applicationValidated, false); assert.equal(rapportValide(r), false);
+    assert(!JSON.stringify(r).includes('SECRET-46'));
+  }
+});
 
 const version = '1.0.5-beta.20261107.23';
 const sha = '8932e416a560c302e1a85c44b24d81598443daaf2151c6c8243c0f29c9c07687';

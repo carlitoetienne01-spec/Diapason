@@ -2298,13 +2298,200 @@ $apps = @(Get-Process -Name 'diapason-desktop','Diapason' -ErrorAction SilentlyC
   return rapport;
 }
 
+const ETATS_METADATA = new Set(['present', 'absent', 'unreadable', 'malformed', 'tooLarge', 'refused']);
+const MARQUEURS_METADATA = ['globalMarker', 'globalReceipt', 'ocrMarker', 'ocrReceipt',
+  'orionMarker', 'orionReceipt', 'alignmentMarker', 'alignmentReceipt', 'build'];
+const ETATS_PREPARATION = new Set(['preparing', 'prepared', 'installed', 'alreadyInstalled', 'failed', 'verified']);
+const CLASSES_PREPARATION = ['ValueError', 'CalledProcessError', 'HTTPError', 'URLError',
+  'PermissionError', 'FileNotFoundError', 'OSError', 'RuntimeError', 'TimeoutError'];
+
+/** Reçu fermé de lecture ; une métadonnée lisible ne valide jamais l'application. */
+export function resumerMetadataPreparation(brut) {
+  if (brut?.sourceReportMatched !== true || brut?.pathsGuarded !== true) {
+    return { schemaVersion: 1, kind: 'windows-preparation-metadata', readCompleted: false,
+      applicationValidated: false, sourceQaRunId: '42522756629',
+      refusalStage: ['root', 'owner', 'sourceReport', 'metadataPath', 'drive'].includes(brut?.refusalStage)
+        ? brut.refusalStage : 'unknown' };
+  }
+  const fichiers = {};
+  for (const nom of [...MARQUEURS_METADATA, 'alignmentModel', 'appLog']) {
+    const f = brut.files?.[nom];
+    const etat = ETATS_METADATA.has(f?.fileState) ? f.fileState : 'refused';
+    const r = { fileState: etat };
+    if (etat === 'present') {
+      if (Number.isSafeInteger(f.sizeBytes) && f.sizeBytes >= 0) r.sizeBytes = f.sizeBytes;
+      if (MARQUEURS_METADATA.includes(nom)) {
+        const limite = nom === 'build' ? 1048576 : nom.endsWith('Marker') ? 32768 : 262144;
+        if (typeof f.text !== 'string' || Buffer.byteLength(f.text, 'utf8') > limite) r.fileState = 'tooLarge';
+        else {
+          let j; try { j = JSON.parse(f.text.replace(/^\uFEFF/, '')); } catch { r.fileState = 'malformed'; }
+          if (r.fileState === 'present') {
+            if (!j || typeof j !== 'object' || Array.isArray(j)) r.fileState = 'malformed';
+            else {
+              const s = j.state ?? j.stage ?? j.status;
+              r.state = ETATS_PREPARATION.has(s) ? s : 'unknown';
+              if ([1, 2].includes(j.schemaVersion)) r.schemaVersion = j.schemaVersion;
+              if (nom === 'build') r.sourceMatches = j.snapshotSha256 === '3c96b465994b1b7482a1859a830634c66d02703a8b3cad190b8e439720bb89b8'
+                && j.pythonPackageVersion === '1.0.5' && j.windowsMode === 'complet';
+            }
+          }
+        }
+      }
+      if (nom === 'appLog' && typeof f.text === 'string' && Buffer.byteLength(f.text, 'utf8') <= 1048576) {
+        r.exceptionClasses = CLASSES_PREPARATION.filter(c => new RegExp('\\b' + c + '\\b').test(f.text));
+      }
+    }
+    fichiers[nom] = r;
+  }
+  return { schemaVersion: 1, kind: 'windows-preparation-metadata', readCompleted: true,
+    applicationValidated: false, sourceQaRunId: '42522756629', sourceQaAttempt: 1,
+    observedUTC: new Date().toISOString(), component: 'unknown', cause: 'unknown',
+    evidenceState: 'diagnosticsNotRecorded',
+    activePreparationMarkers: ['ocr', 'orion', 'alignment'].filter(n => fichiers[n + 'Marker'].state === 'preparing'),
+    files: fichiers,
+    freeDiskBytes: Number.isSafeInteger(brut.freeDiskBytes) && brut.freeDiskBytes >= 0 ? brut.freeDiskBytes : null };
+}
+
+// 08/11/2026 : « Orion » était le libellé de TOUT le préparateur Windows.
+// Lire seulement les reçus du profil45 échoué avant de choisir un composant.
+export const FILTRER_METADATA_QA45 = String.raw`
+function FiltrerMetadata([string]$nom, [hashtable]$r) {
+  if ($r.fileState -ne 'present' -or -not $r.ContainsKey('text')) { return }
+  $texte = [string]$r.text
+  $null = $r.Remove('text')
+  if ($nom -eq 'appLog') {
+    $classes = @('ValueError','CalledProcessError','HTTPError','URLError','PermissionError','FileNotFoundError','OSError','RuntimeError','TimeoutError')
+    $r.text = (@($classes | Where-Object { $texte -cmatch ('\b' + $_ + '\b') }) -join ' ')
+    return
+  }
+  try {
+    $j = ConvertFrom-Json -InputObject $texte -ErrorAction Stop
+    if ($null -eq $j -or $j -isnot [System.Management.Automation.PSCustomObject]) { throw 'shape' }
+    $sur = @{}
+    $etat = $j.state
+    if ($null -eq $etat) { $etat = $j.stage }
+    if ($null -eq $etat) { $etat = $j.status }
+    if ($etat -is [string] -and @('preparing','prepared','installed','alreadyInstalled','failed','verified') -ccontains $etat) { $sur.state = $etat }
+    if (($j.schemaVersion -is [int] -or $j.schemaVersion -is [long]) -and @(1,2) -contains $j.schemaVersion) { $sur.schemaVersion = [int]$j.schemaVersion }
+    if ($nom -eq 'build' -and $j.snapshotSha256 -is [string] -and $j.pythonPackageVersion -is [string] -and $j.windowsMode -is [string] -and $j.snapshotSha256 -ceq '3c96b465994b1b7482a1859a830634c66d02703a8b3cad190b8e439720bb89b8' -and $j.pythonPackageVersion -ceq '1.0.5' -and $j.windowsMode -ceq 'complet') {
+      $sur.snapshotSha256='3c96b465994b1b7482a1859a830634c66d02703a8b3cad190b8e439720bb89b8';$sur.pythonPackageVersion='1.0.5';$sur.windowsMode='complet'
+    }
+    $r.text = ConvertTo-Json -InputObject $sur -Compress
+  } catch { $r.fileState = 'malformed' }
+}
+`;
+
+export const METADATA_QA45 = String.raw`
+$ErrorActionPreference = 'Stop'
+$etape = 'root'
+${FILTRER_METADATA_QA45}
+try {
+  $racine = [IO.Path]::GetFullPath($env:DIAPASON_QA_METADATA_ROOT)
+  function SansLien([string]$p) {
+    $p = [IO.Path]::GetFullPath($p)
+    if ($p -ne $racine -and -not $p.StartsWith($racine + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'scope' }
+    $q = $p
+    while ($true) {
+      if (Test-Path -LiteralPath $q) {
+        $i = Get-Item -LiteralPath $q -Force
+        if (($i.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'linked' }
+      }
+      if ($q -eq $racine) { break }
+      $q = Split-Path -Parent $q
+      if (-not $q) { throw 'scope' }
+    }
+    return $p
+  }
+  $null = SansLien $racine
+  $etape = 'owner'
+  $owner = (Get-Acl -LiteralPath $racine).GetOwner([Security.Principal.SecurityIdentifier]).Value
+  if ($owner -ne [Security.Principal.WindowsIdentity]::GetCurrent().User.Value) { throw 'owner' }
+  $etape = 'sourceReport'
+  $rapport = SansLien (Join-Path $racine 'rapport\resultat.json')
+  if ((Get-FileHash -LiteralPath $rapport -Algorithm SHA256).Hash.ToLowerInvariant() -ne '5c575ea7896c92eacb9cfd7bee1e1332d2049003ddf07d7a28752d696f21f041') { throw 'report' }
+  $h = Join-Path $racine 'profil\.diapason'
+  $s = Join-Path $racine 'profil\AppData\Local\Diapason\runtime-complet\src'
+  $cibles = [ordered]@{
+    globalMarker=@((Join-Path $h 'runtime\windows-complet\preparing.json'),32768)
+    globalReceipt=@((Join-Path $h 'runtime\windows-complet\prepared.json'),262144)
+    ocrMarker=@((Join-Path $h 'speech\ocr-windows\preparing.json'),32768)
+    ocrReceipt=@((Join-Path $h 'speech\ocr-windows\installed.json'),262144)
+    orionMarker=@((Join-Path $h 'voices\qwen3\preparing.json'),32768)
+    orionReceipt=@((Join-Path $h 'voices\qwen3\installed.json'),262144)
+    alignmentMarker=@((Join-Path $h 'speech\whisper-torch\preparing.json'),32768)
+    alignmentReceipt=@((Join-Path $h 'speech\whisper-torch\installed.json'),262144)
+    alignmentModel=@((Join-Path $h 'speech\whisper-torch\model\large-v3-turbo.pt'),0)
+    build=@((Join-Path $s 'beta-build.json'),1048576)
+    appLog=@((Join-Path $racine 'application-prive.log'),1048576)
+  }
+  $fichiers = [ordered]@{}
+  $etape = 'metadataPath'
+  foreach ($nom in $cibles.Keys) {
+    $chemin = [string]($cibles[$nom][0])
+    $p = SansLien $chemin
+    if (-not (Test-Path -LiteralPath $p)) { $fichiers[$nom]=@{fileState='absent'}; continue }
+    $i = Get-Item -LiteralPath $p -Force
+    if ($i.PSIsContainer) { $fichiers[$nom]=@{fileState='refused'}; continue }
+    $limite = [int]($cibles[$nom][1])
+    $r = @{fileState='present';sizeBytes=[long]$i.Length}
+    if ($limite -gt 0) {
+      if ($nom -ne 'appLog' -and $i.Length -gt $limite) { $r.fileState='tooLarge' }
+      else {
+        $flux = $null
+        try {
+          $flux = [IO.File]::Open($p,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::ReadWrite)
+          if ($nom -eq 'appLog' -and $flux.Length -gt $limite) { $null=$flux.Seek(-$limite,[IO.SeekOrigin]::End) }
+          $buffer = New-Object byte[] ($limite + 1)
+          $n = 0
+          while ($n -le $limite) { $lu=$flux.Read($buffer,$n,$buffer.Length-$n); if ($lu -eq 0) { break }; $n+=$lu }
+          if ($n -gt $limite) { $r.fileState='tooLarge' } else { $r.text=[Text.Encoding]::UTF8.GetString($buffer,0,$n) }
+        } catch { $r.fileState='unreadable' }
+        finally { if ($null -ne $flux) { $flux.Dispose() } }
+      }
+    }
+    # Le transport historique ne garde que32Kio : ne lui confier que les enums.
+    FiltrerMetadata $nom $r
+    $fichiers[$nom]=$r
+  }
+  $etape = 'drive'
+  $disque = New-Object System.IO.DriveInfo -ArgumentList ([IO.Path]::GetPathRoot($racine))
+  @{sourceReportMatched=$true;pathsGuarded=$true;files=$fichiers;freeDiskBytes=[long]$disque.AvailableFreeSpace} | ConvertTo-Json -Depth 7 -Compress
+} catch { @{sourceReportMatched=$false;pathsGuarded=$false;refusalStage=$etape} | ConvertTo-Json -Compress }
+`;
+
+async function lireMetadataQa45(options) {
+  verifier(process.platform === 'win32', 'windowsRequired');
+  verifier(typeof process.env.RUNNER_TEMP === 'string' && path.isAbsolute(process.env.RUNNER_TEMP), 'qaMetadataWorkdirRefused');
+  verifier(options.version === '1.0.5-beta.20261108.33'
+    && options.sha256 === '951a9c5b39bf50b110e39d47fed7b62262b288284da16ff108a81e196673242c'
+    && !options['stop-old-backend-pid'] && !options['stop-old-backend-observed-utc'], 'qaMetadataSourceRefused');
+  const temp = fs.realpathSync(process.env.RUNNER_TEMP || '');
+  const travail = path.resolve(options.workdir || '');
+  verifier(path.dirname(travail).toLowerCase() === temp.toLowerCase()
+    && /^diapason-installation-[1-9][0-9]{0,19}-[1-9][0-9]{0,2}$/.test(path.basename(travail))
+    && path.basename(travail) !== 'diapason-installation-42522756629-1'
+    && !fs.existsSync(travail), 'qaMetadataWorkdirRefused');
+  const racine = path.join(temp, 'diapason-installation-42522756629-1');
+  const env = environnementApplication(process.env, path.join(racine, 'profil'), 9223);
+  env.DIAPASON_QA_METADATA_ROOT = racine;
+  const brut = await powershell(METADATA_QA45, env);
+  const resultat = resumerMetadataPreparation(brut);
+  fs.mkdirSync(travail, { mode: 0o700 });
+  fs.mkdirSync(path.join(travail, 'rapport'), { mode: 0o700 });
+  fs.writeFileSync(path.join(travail, 'rapport/preparation-metadata.json'), JSON.stringify(resultat, null, 2) + '\n', { flag: 'wx' });
+  console.log(JSON.stringify({ phase: 'preparationMetadataRead', readCompleted: resultat.readCompleted,
+    applicationValidated: false }));
+  return resultat;
+}
+
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const valeurs = {};
   for (let i = 2; i < process.argv.length; i += 2) valeurs[process.argv[i].replace(/^--/, '')] = process.argv[i + 1];
   const action = valeurs['restore-workdir']
     ? recupererInstallation(valeurs['restore-workdir']).then(r => ({ passed: r.restored && r.preserved }))
-    : premierLancement(valeurs);
-  action.then(r => { process.exitCode = r.passed ? 0 : 1; }).catch(() => {
+    : valeurs.scenario === 'metadata-qa45' ? lireMetadataQa45(valeurs) : premierLancement(valeurs);
+  action.then(r => { process.exitCode = r.kind === 'windows-preparation-metadata'
+    ? (r.readCompleted === true && r.applicationValidated === false ? 0 : 1) : (r.passed ? 0 : 1); }).catch(() => {
     console.error('Préparation de l’essai refusée. Aucun succès déclaré.'); process.exitCode = 1;
   });
 }
