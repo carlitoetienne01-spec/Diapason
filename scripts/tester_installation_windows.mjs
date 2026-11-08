@@ -427,10 +427,21 @@ function commandeAncienne(p, c, lanceur = false) {
   const vus = new Set();
   while (argv.length) {
     const cle = argv.shift(), valeur = argv.shift();
-    if (vus.has(cle) || !['--port', '--host'].includes(cle)
-      || (cle === '--port' ? valeur !== '8000' : valeur !== '127.0.0.1')) return false;
+    if (vus.has(cle)) return false;
+    const conforme = cle === '--port' ? valeur === '8000'
+      : cle === '--host' ? valeur === '127.0.0.1'
+        : cle === '--engine' ? valeur === 'ollama'
+          : cle === '--agent' ? valeur === 'simple'
+            : cle === '--model' ? typeof valeur === 'string' && valeur.length <= 256
+              && /^[A-Za-z0-9][A-Za-z0-9._/-]*(?::[A-Za-z0-9][A-Za-z0-9._-]*)?$/.test(valeur)
+              && !valeur.split(/[:/]/).some(x => x === '.' || x === '..') : false;
+    if (!conforme) return false;
     vus.add(cle);
   }
+  // 08/11/2026 : le lanceur Tauri héritage ajoute ensemble moteur/modèle/agent.
+  // Le run42513350281 confirme cette forme sur le seul PID déjà autorisé.
+  const trio = ['--engine', '--model', '--agent'];
+  if (trio.some(x => vus.has(x)) && !trio.every(x => vus.has(x))) return false;
   return true;
 }
 
@@ -1491,6 +1502,7 @@ export async function premierLancement(options) {
     checks: Object.fromEntries(CONTROLES.map(c => [c, false])) };
   const noter = phase => {
     console.log(JSON.stringify({ phase }));
+    if (/^[A-Za-z0-9:_-]{1,80}$/.test(phase)) console.log('::notice title=Diapason QA::' + phase);
     fs.writeFileSync(path.join(sortie, 'resultat.json'), JSON.stringify(rapport, null, 2));
   };
   let enfant; let cdp; let installe = false;

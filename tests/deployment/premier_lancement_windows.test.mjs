@@ -21,6 +21,33 @@ import {
 const version = '1.0.5-beta.20261107.23';
 const sha = '8932e416a560c302e1a85c44b24d81598443daaf2151c6c8243c0f29c9c07687';
 
+test('gel41 — les trois options de l’ancien lanceur identifient le même serveur', async () => {
+  const facts = faitsAncien();
+  const options = ' --engine ollama --model qwen3.5:9b --agent simple';
+  facts.process.commandLine += options; facts.applications[0].commandLine += options;
+  assert.equal(validerArretAncien(facts, accordAncien()), true);
+  const faux = fauxArretNatif({ facts });
+  const r = await arreterAncienBackend(accordAncien(), { platform: 'win32', systeme: { SystemRoot: 'C:\\Windows' }, lancer: faux.lancer });
+  assert.equal(r.status, 'stopped'); assert.equal(faux.etat().permis, 1);
+});
+
+test('gel41 — option inconnue, tuple partiel, moteur ou modèle hors forme refusent', async () => {
+  for (const options of [
+    ' --engine ollama', ' --model qwen3.5:9b', ' --agent simple',
+    ' --engine autre --model qwen3.5:9b --agent simple',
+    ' --engine ollama --model qwen3.5:9b --agent autre',
+    ' --engine ollama --model "qwen;commande" --agent simple',
+    ' --engine ollama --model a/../modele --agent simple',
+    ' --engine ollama --model qwen3.5:9b --agent simple --model autre',
+    ' --engine ollama --model qwen3.5:9b --agent simple --reload',
+  ]) {
+    const facts = faitsAncien(); facts.process.commandLine += options;
+    const faux = fauxArretNatif({ facts });
+    const r = await arreterAncienBackend(accordAncien(), { platform: 'win32', systeme: { SystemRoot: 'C:\\Windows' }, lancer: faux.lancer });
+    assert.equal(r.code, 'oldBackendEntryRefused'); assert.equal(faux.etat().permis, 0);
+  }
+});
+
 test('gel40 — le refus de commande expose sa structure sans argument privé', async () => {
   const facts = faitsAncien();
   facts.process.commandLine += ' --log-level info --secret "Privé-CANARI-40"';
