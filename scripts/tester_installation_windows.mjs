@@ -458,7 +458,9 @@ export function validerArretAncien(n, a) {
     ['sourceVersionNotLegacy', c.sourceVersion === '1.0.0'],
     ['markerNotAbsent', c.markerState === 'absent'],
     ['betaMetadataPresent', c.betaAbsent === true],
-    ['gitMetadataPresent', c.gitAbsent === true],
+    // L’installateur Windows historique clonait ce même produit dans cette
+    // racine. Sa présence Git n’identifie pas un autre serveur (08/11/2026).
+    ['gitMetadataUnverified', typeof c.gitAbsent === 'boolean'],
   ]) {
     if (!conforme) {
       const erreur = new Error('oldBackendVersionRefused');
@@ -490,13 +492,15 @@ const CODES_ARRET_ANCIEN = new Set(['oldBackendPidChanged', 'oldBackendOwnerRefu
   'oldBackendNativeUnavailable', 'oldBackendTimeout', 'oldBackendProtocolRefused',
   'oldBackendFinalCheckChanged', 'oldBackendStopUnconfirmed', 'oldBackendLauncherStillRunning']);
 const ETAPES_ARRET_ANCIEN = new Set(['initialization', 'processHandle', 'processIdentity', 'rootOwnership', 'markerAbsence', 'projectMetadata', 'venvMetadata', 'basePythonAcl', 'entryFiles', 'betaAbsence', 'gitAbsence', 'attestation', 'finalCheck', 'stopConfirmation']);
-const PROPRIETES_ARRET_ANCIEN = new Set(['outsideProfile', 'invalidPath', 'reparse', 'itemOwnerNotAllowed', 'ancestorOwnerNotAllowed', 'itemWriteNotAllowed', 'ancestorWriteNotAllowed', 'inspectionFailed', 'windowsAncestorLookupFailed', 'projectNameNotDiapason', 'sourceVersionNotLegacy', 'markerNotAbsent', 'betaMetadataPresent', 'gitMetadataPresent']);
+const PROPRIETES_ARRET_ANCIEN = new Set(['outsideProfile', 'invalidPath', 'reparse', 'itemOwnerNotAllowed', 'ancestorOwnerNotAllowed', 'itemWriteNotAllowed', 'ancestorWriteNotAllowed', 'inspectionFailed', 'windowsAncestorLookupFailed', 'projectNameNotDiapason', 'sourceVersionNotLegacy', 'markerNotAbsent', 'betaMetadataPresent', 'gitMetadataUnverified']);
 export function rapportArretAncien(r = {}) {
   const etape = r.refusalStage ?? r.stage, propriete = r.refusalProperty ?? r.property;
   const stage = r.requested === true && r.status === 'refused' && ETAPES_ARRET_ANCIEN.has(etape) ? etape : null;
   return { requested: r.requested === true, status: ['notRequested', 'refused', 'stopped'].includes(r.status) ? r.status : 'refused',
     code: CODES_ARRET_ANCIEN.has(r.code) ? r.code : null,
     stage, property: stage && PROPRIETES_ARRET_ANCIEN.has(propriete) ? propriete : null,
+    legacySourceHasGitMetadata: r.requested === true && r.status === 'stopped' && r.targetStopped === true
+      && r.portFree === true && r.launcherExited === true && r.legacySourceHasGitMetadata === true,
     basePythonAclWindowsAncestorVerified: r.requested === true && r.status === 'stopped' && r.targetStopped === true
       && r.portFree === true && r.launcherExited === true && r.basePythonAclWindowsAncestorVerified === true,
     basePythonAclWindowsAncestorWriterVerified: r.requested === true && r.status === 'stopped' && r.targetStopped === true
@@ -515,7 +519,7 @@ export async function arreterAncienBackend(a, { platform = process.platform, sys
   const windows = systeme.SystemRoot;
   if (!cheminAncien(windows)) return rapportArretAncien({ requested: true, status: 'refused', code: 'oldBackendNativeUnavailable' });
   return new Promise(resolve => {
-    let fini = false, enfant, taille = 0, tampon = '', autorise = false, preuveOwner = null, preuveWriter = null;
+    let fini = false, enfant, taille = 0, tampon = '', autorise = false, preuveOwner = null, preuveWriter = null, preuveGit = null;
     const finir = r => {
       if (fini) return; fini = true; demuter(delai);
       enfant?.stdin?.destroy(); enfant?.stdout?.destroy(); enfant?.stderr?.destroy(); enfant?.unref();
@@ -549,6 +553,7 @@ export async function arreterAncienBackend(a, { platform = process.platform, sys
               }
               preuveOwner = n.facts.source.basePythonAclWindowsAncestorVerified;
               preuveWriter = n.facts.source.basePythonAclWindowsAncestorWriterVerified;
+              preuveGit = n.facts.source.gitAbsent === false;
               autorise = true;
               // Le fils compare de nouveau TOUS les faits sous le même HANDLE.
               enfant.stdin.write(JSON.stringify({ permit: true, identity: n.facts.process.identity }) + '\n');
@@ -557,7 +562,7 @@ export async function arreterAncienBackend(a, { platform = process.platform, sys
               && typeof n.basePythonAclWindowsAncestorVerified === 'boolean'
               && typeof n.basePythonAclWindowsAncestorWriterVerified === 'boolean'
               && n.basePythonAclWindowsAncestorVerified === preuveOwner
-              && n.basePythonAclWindowsAncestorWriterVerified === preuveWriter) finir(n);
+              && n.basePythonAclWindowsAncestorWriterVerified === preuveWriter) finir({ ...n, legacySourceHasGitMetadata: preuveGit });
             else if (n.stage === 'result' && n.status === 'refused' && CODES_ARRET_ANCIEN.has(n.code)) finir(n);
             else finir({ code: 'oldBackendProtocolRefused' });
           } catch (e) { finir({ code: CODES_ARRET_ANCIEN.has(e.message) ? e.message : 'oldBackendProtocolRefused' }); }

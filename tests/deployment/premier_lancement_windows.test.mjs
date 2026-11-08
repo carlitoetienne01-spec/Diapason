@@ -21,6 +21,29 @@ import {
 const version = '1.0.5-beta.20261107.23';
 const sha = '8932e416a560c302e1a85c44b24d81598443daaf2151c6c8243c0f29c9c07687';
 
+test('gel39 — le clone de l’ancien installateur garde son identité de serveur', async () => {
+  for (const present of [true, false]) {
+    const facts = faitsAncien(); facts.source.gitAbsent = !present;
+    assert.equal(validerArretAncien(facts, accordAncien()), true);
+    const faux = fauxArretNatif({ facts });
+    const r = await arreterAncienBackend(accordAncien(), { platform: 'win32', systeme: { SystemRoot: 'C:\\Windows' }, lancer: faux.lancer });
+    assert.equal(r.status, 'stopped'); assert.equal(faux.etat().permis, 1);
+    assert.equal(r.legacySourceHasGitMetadata, present);
+  }
+});
+
+test('gel39 — état Git inconnu ou arrêt non confirmé ne fournit aucune preuve', async () => {
+  for (const valeur of [undefined, null, 'false', 0, {}]) {
+    const facts = faitsAncien(); facts.source.gitAbsent = valeur;
+    const faux = fauxArretNatif({ facts });
+    const r = await arreterAncienBackend(accordAncien(), { platform: 'win32', systeme: { SystemRoot: 'C:\\Windows' }, lancer: faux.lancer });
+    assert.equal(r.status, 'refused'); assert.equal(r.property, 'gitMetadataUnverified');
+    assert.equal(r.legacySourceHasGitMetadata, false); assert.equal(faux.etat().permis, 0);
+  }
+  const r = rapportArretAncien({ requested: true, status: 'refused', legacySourceHasGitMetadata: true });
+  assert.equal(r.legacySourceHasGitMetadata, false);
+});
+
 test('gel38 — la casse du nom de distribution ne change pas le produit autorisé', async () => {
   for (const nom of ['Diapason', 'diapason', 'DIAPASON', 'DiApAsOn']) {
     const facts = faitsAncien(); facts.source.projectName = nom;
@@ -39,7 +62,7 @@ test('gel38 — le refus des métadonnées publie seulement sa cause fermée san
     ['sourceVersion', '1.0.5-beta.20261108.33', 'sourceVersionNotLegacy'],
     ['markerState', 'genericManaged', 'markerNotAbsent'],
     ['betaAbsent', false, 'betaMetadataPresent'],
-    ['gitAbsent', false, 'gitMetadataPresent'],
+    ['gitAbsent', 'false', 'gitMetadataUnverified'],
   ]) {
     const facts = faitsAncien(); facts.source[champ] = valeur;
     const faux = fauxArretNatif({ facts });
@@ -141,7 +164,7 @@ test('§100 — mauvais PID, SID, session, processus réutilisé et port changé
 
 test('§100 — metadata, ACL, reparse, version récente ou projet non Diapason empêchent le permis', () => {
   for (const champ of ['rootOwned', 'metadataOwned', 'cfgOwned', 'entryOwned', 'venvPythonOwned',
-    'baseVerified', 'aclVerified', 'reparseVerified', 'betaAbsent', 'gitAbsent']) {
+    'baseVerified', 'aclVerified', 'reparseVerified', 'betaAbsent']) {
     const n = faitsAncien(); n.source[champ] = false;
     assert.throws(() => validerArretAncien(n, accordAncien()), /oldBackend(?:Source|Version)Refused/);
   }
@@ -238,6 +261,7 @@ test('§100 — sonde bornée, environnement sans modules usager ni secrets et a
   const r = await arreterAncienBackend(accordAncien(), { platform: 'win32',
     systeme: { SystemRoot: 'C:\\Windows', PSModulePath: 'C:\\privé\\Modules', TOKEN: 'canari-secret', HOME: 'C:\\privé' }, lancer: faux.lancer });
   assert.deepEqual(r, { requested: true, status: 'stopped', code: null, stage: null, property: null,
+    legacySourceHasGitMetadata: false,
     basePythonAclWindowsAncestorVerified: false, basePythonAclWindowsAncestorWriterVerified: false,
     targetStopped: true, portFree: true, launcherExited: true });
   const { capture, permis, script } = faux.etat(); assert.equal(permis, 1);
@@ -278,6 +302,7 @@ test('§100 — rapport fermé sans paths, commandes, SID, erreurs ni clé', () 
     path: canari, commandLine: canari, sid: 'S-1-5-21-secret', key: 'canari-secret', error: new Error(canari),
     targetStopped: 'true', portFree: 1, launcherExited: true });
   assert.deepEqual(Object.keys(r), ['requested', 'status', 'code', 'stage', 'property',
+    'legacySourceHasGitMetadata',
     'basePythonAclWindowsAncestorVerified', 'basePythonAclWindowsAncestorWriterVerified',
     'targetStopped', 'portFree', 'launcherExited']);
   assert.equal(r.status, 'refused'); assert.equal(r.code, null); assert.equal(r.targetStopped, false);

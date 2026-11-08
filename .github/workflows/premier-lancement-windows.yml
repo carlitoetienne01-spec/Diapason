@@ -49,8 +49,8 @@ jobs:
       STOP_OLD_BACKEND_PID: ${{ inputs.stop_old_backend_pid }}
       STOP_OLD_BACKEND_OBSERVED_UTC: ${{ inputs.stop_old_backend_observed_utc }}
       BANC_COMMIT: ${{ github.sha }}
-      BANC_SCRIPT_SHA256: 244686eca0fca7614fd5e7d7941ea84a149f9248e49b095288a05feb9b1d3ca2
-      BANC_TEST_SHA256: bfdfba1c7908cf4e04f1a71d8d6d2917ed3127446349797d5146364802635531
+      BANC_SCRIPT_SHA256: 62718c4103d31188399b8e9b6402e49023150197edf7b28bc05896e0470ded4e
+      BANC_TEST_SHA256: 87dc8c2405ec0169fdf67840060f393ffc2051aef99bd8d4b4d180503ec2c10a
 
     steps:
       - uses: actions/setup-node@v6
