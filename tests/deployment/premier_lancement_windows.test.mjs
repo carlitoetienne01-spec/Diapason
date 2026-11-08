@@ -5,6 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
 import { createHash } from 'node:crypto';
+import { EventEmitter } from 'node:events';
+import { PassThrough } from 'node:stream';
 import {
   CONTROLES, ciblePubliee, argumentsNsis, environnementApplication,
   rapportValide, urlCdpValide, origineApplication, verifierNarration,
@@ -13,6 +15,7 @@ import {
   CONTROLES_LEGACY, SCHEMA_LEGACY_SQL, SCHEMA_LEGACY_SOURCE,
   preparerDonneesLegacy, verifierDonneesLegacy, empreinteAmorcageLegacy, verifierProfilQa,
   creerAncienServeurSynthétique, verifierBlocageLegacy, verifierRefusServeurLegacy,
+  autorisationArretAncien, validerArretAncien, arreterAncienBackend, rapportArretAncien,
 } from '../../scripts/tester_installation_windows.mjs';
 
 const version = '1.0.5-beta.20261107.23';
@@ -25,6 +28,221 @@ test('le diagnostic conserve la fin de pile sans publier de chemin ni jeton', ()
   assert(!nettoye.includes('C:\\profil'));
   assert(!nettoye.includes('jeton-factice'));
   assert.equal(erreurDemarragePubliable('x'.repeat(20000)).length, 12000);
+});
+
+// §100 : chemins factices ; la forme redirecteur correspond au diagnostic du
+// runner, sans exécuter PowerShell, toucher un processus ni ouvrir son profil.
+const utcObservation = new Date(Date.now() - 60000).toISOString();
+const accordAncien = () => autorisationArretAncien({ 'stop-old-backend-pid': '48196',
+  'stop-old-backend-observed-utc': utcObservation });
+const faitsAncien = () => {
+  const root = 'C:\\Users\\Compte Fictif\\AppData\\Local\\Diapason\\src';
+  const base = 'C:\\hostedtoolcache\\windows\\Python\\3.13.9\\x64';
+  return {
+    canonicalRoot: root, interactive: true, runnerSession: 30,
+    process: { pid: 48196, sameSid: true, sameSession: true, handleAlive: true,
+      identity: '134000000000000000', createdUTC: new Date(Date.now() - 3600000).toISOString(),
+      executablePath: base + '\\python.exe', handleImage: base + '\\python.exe',
+      commandLine: `"${root}\\.venv\\Scripts\\python.exe" "${root}\\.venv\\Scripts\\diapason.exe" serve --port 8000` },
+    source: { root, rootOwned: true, metadataOwned: true, cfgOwned: true, entryOwned: true,
+      venvPythonOwned: true, baseVerified: true, aclVerified: true, reparseVerified: true,
+      cfg: `home = ${base}\r\ninclude-system-site-packages = false\r\n`, resolvedHome: base,
+      projectName: 'Diapason', sourceVersion: '1.0.0', markerState: 'absent', betaAbsent: true, gitAbsent: true },
+    listeners: [{ pid: 48196, port: 8000, address: '127.0.0.1' }],
+    applications: [{ hasWindow: false, sameSid: true, sameSession: true, createdBeforeObservation: true,
+      executablePath: root + '\\.venv\\Scripts\\diapason.exe',
+      commandLine: `"${root}\\.venv\\Scripts\\diapason.exe" serve --port 8000` }],
+  };
+};
+
+test('§100 — aucun arrêt par défaut ; ancien residual-pid toujours refusé', async () => {
+  assert.equal(autorisationArretAncien({}), null);
+  assert.equal(autorisationArretAncien({ 'stop-old-backend-pid': '', 'stop-old-backend-observed-utc': '' }), null);
+  for (const ancien of ['48196', '44676', 48196, true]) {
+    assert.throws(() => autorisationArretAncien({ 'residual-pid': ancien }), /personalProcessStopNotAuthorized/);
+    assert.throws(() => autorisationArretAncien({ residual_pid: ancien }), /personalProcessStopNotAuthorized/);
+  }
+  let lances = 0;
+  const r = await arreterAncienBackend(null, { platform: 'win32', lancer: () => lances++ });
+  assert.equal(lances, 0); assert.equal(r.status, 'notRequested'); assert.equal(r.requested, false);
+});
+
+test('§100 — accord limité au PID observé et à un horodatage UTC strict antérieur', () => {
+  const now = Date.parse('2026-11-08T15:00:00.000Z');
+  const bon = { 'stop-old-backend-pid': '48196', 'stop-old-backend-observed-utc': '2026-11-08T14:59:00Z' };
+  assert.deepEqual(autorisationArretAncien(bon, now), { pid: 48196, observedUTC: '2026-11-08T14:59:00.000Z' });
+  for (const pid of ['44676', '48197', '048196', '48196\n', '48196;Stop-Process', 48196, true, '']) {
+    assert.throws(() => autorisationArretAncien({ ...bon, 'stop-old-backend-pid': pid }, now));
+  }
+  for (const utc of ['', undefined, '2026-11-08', '2026-11-08T15:00:01Z', '2026-11-07T15:00:00Z',
+    '2026-02-30T14:59:00Z', '2026-11-08T14:59:00+00:00', '2026-11-08T14:59:00Z\n']) {
+    assert.throws(() => autorisationArretAncien({ ...bon, 'stop-old-backend-observed-utc': utc }, now));
+  }
+  assert.throws(() => autorisationArretAncien({ 'stop-old-backend-observed-utc': bon['stop-old-backend-observed-utc'] }, now));
+});
+
+test('§100 — redirecteur Python de base attesté sans imposer ExecutablePath dans le profil', () => {
+  const n = faitsAncien();
+  assert(validerArretAncien(n, accordAncien()));
+  n.process.executablePath = n.source.root + '\\.venv\\Scripts\\python.exe';
+  n.process.handleImage = n.process.executablePath;
+  n.process.commandLine = `"${n.process.executablePath}" -I -B -m diapason serve`;
+  assert(validerArretAncien(n, accordAncien()));
+});
+
+test('§100 — mauvais PID, SID, session, processus réutilisé et port changé refusent avant tout permis', () => {
+  const mutations = [
+    n => { n.process.pid++; }, n => { n.process.sameSid = false; }, n => { n.process.sameSession = false; },
+    n => { n.runnerSession = 0; }, n => { n.interactive = false; }, n => { n.process.handleAlive = false; },
+    n => { n.process.identity = ''; }, n => { n.process.createdUTC = new Date().toISOString(); },
+    n => { n.process.handleImage = 'C:\\ailleurs\\python.exe'; },
+    n => { n.listeners = []; }, n => { n.listeners[0].pid++; },
+    n => { n.listeners.push({ ...n.listeners[0], pid: 55555 }); },
+    n => { n.listeners[0].port++; }, n => { n.listeners[0].address = '0.0.0.0'; },
+  ];
+  for (const mutation of mutations) {
+    const n = faitsAncien(); mutation(n);
+    assert.throws(() => validerArretAncien(n, accordAncien()), /^Error: oldBackend/);
+  }
+});
+
+test('§100 — metadata, ACL, reparse, version récente ou projet non Diapason empêchent le permis', () => {
+  for (const champ of ['rootOwned', 'metadataOwned', 'cfgOwned', 'entryOwned', 'venvPythonOwned',
+    'baseVerified', 'aclVerified', 'reparseVerified', 'betaAbsent', 'gitAbsent']) {
+    const n = faitsAncien(); n.source[champ] = false;
+    assert.throws(() => validerArretAncien(n, accordAncien()), /oldBackend(?:Source|Version)Refused/);
+  }
+  for (const [champ, valeur] of [['projectName', 'autre'], ['projectName', 'diapason'], ['markerState', 'versioned'],
+    ['sourceVersion', '1.0.5-beta.20261108.33'], ['root', 'C:\\ailleurs\\Diapason\\src'],
+    ['cfg', 'home = C:\\ailleurs'], ['cfg', 'home = C:\\base\nhome = C:\\base']]) {
+    const n = faitsAncien(); n.source[champ] = valeur;
+    assert.throws(() => validerArretAncien(n, accordAncien()), /^Error: oldBackend/);
+  }
+});
+
+test('§100 — aucun simple contains, argument libre ou Python global -m ne suffit', () => {
+  const n = faitsAncien(), entree = n.source.root + '\\.venv\\Scripts\\diapason.exe';
+  for (const cmd of [
+    `"${n.process.executablePath}" -c "print('${entree}')" serve`,
+    `"${n.process.executablePath}" "${entree}.autre" serve`,
+    `"${n.process.executablePath}" "${entree}" serve --port 8001`,
+    `"${n.process.executablePath}" "${entree}" serve --host 0.0.0.0`,
+    `"${n.process.executablePath}" "${entree}" serve --config C:\\profil\\secret`,
+    `"${n.process.executablePath}" -m diapason serve`,
+    n.process.commandLine + ' --port 8000',
+  ]) {
+    assert.throws(() => validerArretAncien({ ...n, process: { ...n.process, commandLine: cmd } }, accordAncien()), /oldBackendEntryRefused/);
+  }
+});
+
+test('§100 — fenêtre ouverte, autre desktop ou lanceur ambigu interdisent l’arrêt', () => {
+  for (const changer of [
+    x => { x.hasWindow = true; }, x => { x.sameSid = false; }, x => { x.sameSession = false; },
+    x => { x.createdBeforeObservation = false; },
+    x => { x.executablePath = 'C:\\Programs\\Diapason\\diapason-desktop.exe'; },
+    x => { x.commandLine += ' --port 8001'; },
+  ]) {
+    const n = faitsAncien(); changer(n.applications[0]);
+    assert.throws(() => validerArretAncien(n, accordAncien()), /oldBackendUiActive/);
+  }
+  const n = faitsAncien(); n.applications.push({ ...n.applications[0] });
+  assert.throws(() => validerArretAncien(n, accordAncien()), /oldBackendUiActive/);
+});
+
+function fauxArretNatif({ facts = faitsAncien(), result, refusAvantAttestation, silencieux = false } = {}) {
+  let capture, permis = 0, script = '';
+  const lancer = (exe, args, options) => {
+    capture = { exe, args, options };
+    const p = new EventEmitter(); p.stdout = new PassThrough(); p.stderr = new PassThrough();
+    p.unref = () => {}; p.stdin = new PassThrough();
+    p.stdin.on('data', b => {
+      const ligne = b.toString().trim();
+      if (!script) {
+        script = Buffer.from(ligne, 'base64').toString('utf16le');
+        if (!silencieux) queueMicrotask(() => p.stdout.write(JSON.stringify(refusAvantAttestation ?? { stage: 'attestation', facts }) + '\n'));
+      } else {
+        const autorisation = JSON.parse(ligne); assert.equal(autorisation.permit, true);
+        assert.equal(autorisation.identity, facts.process.identity); permis++;
+        queueMicrotask(() => p.stdout.write(JSON.stringify(result ?? { stage: 'result', status: 'stopped',
+          targetStopped: true, portFree: true, launcherExited: true }) + '\n'));
+      }
+    });
+    return p;
+  };
+  return { lancer, etat: () => ({ capture, permis, script }) };
+}
+
+test('§100 — refus de plateforme et mauvais owner ne lancent aucun arrêt natif', async () => {
+  let lances = 0;
+  const r = await arreterAncienBackend(accordAncien(), { platform: 'darwin', lancer: () => lances++ });
+  assert.equal(lances, 0); assert.equal(r.status, 'refused');
+  const facts = faitsAncien(); facts.process.sameSid = false;
+  const faux = fauxArretNatif({ facts });
+  const refus = await arreterAncienBackend(accordAncien(), { platform: 'win32', systeme: { SystemRoot: 'C:\\Windows' }, lancer: faux.lancer });
+  assert.equal(refus.code, 'oldBackendOwnerRefused'); assert.equal(faux.etat().permis, 0);
+});
+
+test('§100 — les refus PID/SID/entry/version/UI/port bloquent le vrai envoi du permis', async () => {
+  for (const changer of [
+    n => { n.process.pid = 44676; }, n => { n.process.sameSid = false; },
+    n => { n.process.sameSession = false; }, n => { n.process.createdUTC = new Date().toISOString(); },
+    n => { n.process.commandLine += ' --port 9000'; },
+    n => { n.source.sourceVersion = '1.0.5-beta.20261108.33'; }, n => { n.source.betaAbsent = false; },
+    n => { n.applications[0].hasWindow = true; }, n => { n.listeners[0].pid = 12345; },
+    n => { n.source.aclVerified = false; }, n => { n.source.reparseVerified = false; },
+  ]) {
+    const facts = faitsAncien(); changer(facts); const faux = fauxArretNatif({ facts });
+    const r = await arreterAncienBackend(accordAncien(), { platform: 'win32', systeme: { SystemRoot: 'C:\\Windows' }, lancer: faux.lancer });
+    assert.equal(r.status, 'refused'); assert.equal(r.targetStopped, false);
+    assert.equal(faux.etat().permis, 0, 'le fils ne reçoit jamais la commande de terminaison');
+  }
+});
+
+test('§100 — sonde bornée, environnement sans modules usager ni secrets et arrêt confirmé', async () => {
+  const faux = fauxArretNatif();
+  const r = await arreterAncienBackend(accordAncien(), { platform: 'win32',
+    systeme: { SystemRoot: 'C:\\Windows', PSModulePath: 'C:\\privé\\Modules', TOKEN: 'canari-secret', HOME: 'C:\\privé' }, lancer: faux.lancer });
+  assert.deepEqual(r, { requested: true, status: 'stopped', code: null, targetStopped: true, portFree: true, launcherExited: true });
+  const { capture, permis, script } = faux.etat(); assert.equal(permis, 1);
+  assert.equal(capture.options.shell, false);
+  assert.equal(capture.options.env.PSModulePath, 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\Modules');
+  assert.deepEqual(Object.keys(capture.options.env).sort(), ['SystemRoot', 'WINDIR', 'PATH', 'PSModulePath', 'OLD_PID', 'OLD_OBSERVED_UTC'].sort());
+  assert(capture.args.includes('-NoProfile')); assert(capture.args.join(' ').length < 32767);
+  assert(script.includes('$env:PSModulePath=Join-Path $PSHOME'));
+  assert(!JSON.stringify(capture).includes('canari-secret'));
+  assert(script.includes('TerminateProcess(handle,1)') && script.includes('CloseHandle(handle)'));
+  assert(!/Stop-Process|taskkill|GetProcessById|\.Kill\(/.test(script.replace(/\/\/[^\n]*/g, '')));
+  assert(!/local_api_key|succes\.db|vie\.db|project_root|Get-ChildItem/.test(script));
+  assert(script.indexOf('$apres=Faits') < script.indexOf('$lease.StopChecked('));
+});
+
+test('§100 — changement final de port/identité, arrêt non confirmé ou lanceur restant restent des refus', async () => {
+  for (const code of ['oldBackendFinalCheckChanged', 'oldBackendPortChanged', 'oldBackendStopUnconfirmed', 'oldBackendLauncherStillRunning']) {
+    const faux = fauxArretNatif({ result: { stage: 'result', status: 'refused', code, targetStopped: code === 'oldBackendLauncherStillRunning', portFree: false, launcherExited: false } });
+    const r = await arreterAncienBackend(accordAncien(), { platform: 'win32', systeme: { SystemRoot: 'C:\\Windows' }, lancer: faux.lancer });
+    assert.equal(r.status, 'refused'); assert.equal(r.code, code); assert.equal(faux.etat().permis, 1);
+  }
+  const faux = fauxArretNatif({ result: { stage: 'result', status: 'stopped', targetStopped: true, portFree: false, launcherExited: true } });
+  const r = await arreterAncienBackend(accordAncien(), { platform: 'win32', systeme: { SystemRoot: 'C:\\Windows' }, lancer: faux.lancer });
+  assert.equal(r.status, 'refused'); assert.equal(r.code, 'oldBackendProtocolRefused');
+});
+
+test('§100 — timeout de sonde sans permis ni Kill de secours', async () => {
+  const faux = fauxArretNatif({ silencieux: true }); let expirer, delai, annule = false;
+  const attente = arreterAncienBackend(accordAncien(), { platform: 'win32', systeme: { SystemRoot: 'C:\\Windows' }, lancer: faux.lancer,
+    minuter: (fn, ms) => { expirer = fn; delai = ms; return 1; }, demuter: () => { annule = true; } });
+  expirer(); const r = await attente;
+  assert.equal(delai, 40000); assert(annule); assert.equal(r.code, 'oldBackendTimeout'); assert.equal(faux.etat().permis, 0);
+});
+
+test('§100 — rapport fermé sans paths, commandes, SID, erreurs ni clé', () => {
+  const canari = 'C:\\Users\\Privé\\cle-canari';
+  const r = rapportArretAncien({ requested: 'true', status: canari, code: canari,
+    path: canari, commandLine: canari, sid: 'S-1-5-21-secret', key: 'canari-secret', error: new Error(canari),
+    targetStopped: 'true', portFree: 1, launcherExited: true });
+  assert.deepEqual(Object.keys(r), ['requested', 'status', 'code', 'targetStopped', 'portFree', 'launcherExited']);
+  assert.equal(r.status, 'refused'); assert.equal(r.code, null); assert.equal(r.targetStopped, false);
+  assert(!/Privé|secret|canari|S-1-/.test(JSON.stringify(r)));
 });
 
 test('la cible ne peut sortir de la release officielle et vérifiée', () => {
@@ -400,4 +618,86 @@ test('le vrai arrêt interne réessaie les services sans oublier l’enfant ni f
   assert.equal(controle.etat().enfant, enfantInitial, 'ne pas oublier l’enfant avant confirmation complète');
   assert.equal(controle.etat().cdp, null, 'la fenêtre a été fermée');
   assert.equal(ferme, false, 'le port du stub reste protégé après les deux échecs');
+});
+
+// Gel35 : tests de décision JS/protocole simulé et contrôles statiques du PS.
+// Ni CIM, ni ACL Windows, ni API Win32 ne sont exécutés sur ce Mac.
+const faitsSansMarqueur = () => {
+  const n = faitsAncien(); delete n.source.managedMarker; n.source.markerState = 'absent'; return n;
+};
+const jouerMarqueur = async options => {
+  const faux = fauxArretNatif(options);
+  const r = await arreterAncienBackend(accordAncien(), { platform: 'win32', systeme: { SystemRoot: 'C:\\Windows' }, lancer: faux.lancer });
+  return { r, ...faux.etat() };
+};
+const sourceBancMarqueur = () => fs.readFileSync(new URL('../../scripts/tester_installation_windows.mjs', import.meta.url), 'utf8');
+
+test('gel35 — seul absent exact passe ; toute autre enum refuse sans permis', async () => {
+  assert.equal(validerArretAncien(faitsSansMarqueur(), accordAncien()), true);
+  const bon = await jouerMarqueur({ facts: faitsSansMarqueur() });
+  assert.equal(bon.r.status, 'stopped'); assert.equal(bon.permis, 1);
+  for (const etat of [undefined, null, false, true, 'ABSENT', 'absent\n', 'unreadable', 'genericManaged', 'versioned', 'present', {}]) {
+    const n = faitsSansMarqueur(); n.source.managedMarker = 'managed';
+    if (etat === undefined) delete n.source.markerState; else n.source.markerState = etat;
+    assert.throws(() => validerArretAncien(n, accordAncien()), /oldBackendVersionRefused/);
+    const refus = await jouerMarqueur({ facts: n });
+    assert.equal(refus.r.code, 'oldBackendVersionRefused'); assert.equal(refus.permis, 0);
+  }
+});
+
+test('gel35 — contrat PS statique : ItemNotFound seul, parents validés et noms de liens contrôlés', () => {
+  const code = sourceBancMarqueur();
+  const debut = code.indexOf('function Absent([string]$p) {'), fin = code.indexOf('function Processus(', debut);
+  assert(debut > 0 && fin > debut);
+  const absent = code.slice(debut, fin);
+  assert(absent.includes('Get-Item -LiteralPath $p -Force -ErrorAction Stop'));
+  assert.equal((absent.match(/catch/g) ?? []).length, 1, 'aucun catch général transformant une erreur en absence');
+  const attraper = absent.indexOf('catch [System.Management.Automation.ItemNotFoundException]');
+  assert(attraper > 0);
+  const avant = absent.slice(0, attraper), apres = absent.slice(attraper);
+  for (const bloc of [avant, apres]) {
+    assert(bloc.includes('Possede $parent') && bloc.includes('ApplicationSure $parent'), 'parent possédé et ACL/reparse vérifiés');
+  }
+  assert(apres.includes('[IO.Directory]::EnumerateFileSystemEntries($parent,[IO.Path]::GetFileName($p))'), 'ne pas prendre un lien cassé présent pour une absence');
+  assert(apres.indexOf('EnumerateFileSystemEntries') < apres.indexOf('return $true'));
+  assert(apres.lastIndexOf('ApplicationSure $parent') < apres.indexOf('return $true'));
+  const faits = code.slice(code.indexOf('function Faits {'), code.indexOf('$lease=New-Object -TypeName'));
+  assert(faits.indexOf('Possede $racine') < faits.indexOf("Absent (Join-Path $racine '.diapason-backend')"));
+  assert(faits.includes("if (-not (Absent (Join-Path $racine '.diapason-backend'))) { throw 'oldBackendVersionRefused' }"));
+  assert(faits.includes("markerState='absent'"));
+  assert(!/Petit[^\n]*\.diapason-backend|managedMarker/.test(faits), 'aucune lecture nulle ou ancien contenu traité comme absence');
+});
+
+test('gel35 — présences simulées managed/versionnée/vide/dossier/lien même cassé refusent', async () => {
+  // La sonde PS refuse avant son attestation ; ces fixtures testent le vrai
+  // parent JS, sans prétendre exercer Get-Item sur les objets Windows cités.
+  for (const presence of ['fichier managed', 'fichier versionné', 'fichier vide', 'dossier', 'lien', 'lien cassé']) {
+    const refus = await jouerMarqueur({ refusAvantAttestation: { stage: 'result', status: 'refused', code: 'oldBackendVersionRefused' } });
+    assert.equal(refus.r.status, 'refused', presence); assert.equal(refus.r.targetStopped, false, presence);
+    assert.equal(refus.permis, 0, presence);
+  }
+});
+
+test('gel35 — erreurs natives simulées accès refusé et E/S ne deviennent jamais absent', async () => {
+  for (const incident of ['accès refusé', 'erreur E/S']) {
+    const refus = await jouerMarqueur({ refusAvantAttestation: { stage: 'result', status: 'refused', code: 'oldBackendNativeUnavailable',
+      rawError: incident + ' C:\\Users\\Privé\\secret', markerState: 'absent' } });
+    assert.equal(refus.r.status, 'refused'); assert.equal(refus.r.code, 'oldBackendNativeUnavailable');
+    assert.equal(refus.permis, 0); assert.equal(refus.r.targetStopped, false);
+    assert(!JSON.stringify(refus.r).includes('Privé'));
+  }
+});
+
+test('gel35 — apparition simulée entre attestations refuse ; contrat finally libère le HANDLE', async () => {
+  const refus = await jouerMarqueur({ facts: faitsSansMarqueur(), result: { stage: 'result', status: 'refused',
+    code: 'oldBackendVersionRefused', targetStopped: false, portFree: false, launcherExited: false } });
+  assert.equal(refus.permis, 1, 'le premier accord ne dispense pas de réattester');
+  assert.equal(refus.r.status, 'refused'); assert.equal(refus.r.targetStopped, false);
+  const code = refus.script;
+  const avant = code.indexOf('$avant=Faits'), apres = code.indexOf('$apres=Faits');
+  const comparer = code.indexOf("if ($apres -cne $avant) { throw 'oldBackendFinalCheckChanged' }");
+  const absenceFinale = code.indexOf("if (-not (Absent (Join-Path $racine '.diapason-backend'))) { throw 'oldBackendVersionRefused' }", apres);
+  const terminer = code.indexOf('$stopped=$lease.StopChecked(');
+  assert(avant > 0 && apres > avant && comparer > apres && absenceFinale > comparer && terminer > absenceFinale);
+  assert(code.includes('} finally { if ($lease) { $lease.Dispose() } }'), 'libération statiquement contrôlée, pas un test Win32');
 });

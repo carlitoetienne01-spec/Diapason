@@ -26,6 +26,447 @@ export const CONTROLES_LEGACY = Object.freeze([
   'legacyOldServerPreserved', 'legacyBootstrapUnmodified', 'legacyOwnedServerStopped',
   'legacyDataAfterStartup', 'legacyDataAfterRestart', 'legacyKeyPreserved',
 ]);
+const ARRET_ANCIEN_POWERSHELL = String.raw`
+$env:PSModulePath=Join-Path $PSHOME 'Modules'
+$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'
+[Console]::OutputEncoding=New-Object Text.UTF8Encoding($false)
+$lease=$null; $stopped=$false; $portFree=$false; $launcherExited=$false
+$chrono=[Diagnostics.Stopwatch]::StartNew()
+try {
+$sid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+$session=[Diagnostics.Process]::GetCurrentProcess().SessionId
+$profil=[Environment]::GetFolderPath('UserProfile')
+$local=[Environment]::GetFolderPath('LocalApplicationData')
+$racine=Join-Path $local 'Diapason\src'
+$numero=[int]$env:OLD_PID
+if ($numero -ne 48196 -or $session -le 0 -or -not [Environment]::UserInteractive) { throw 'oldBackendOwnerRefused' }
+Add-Type -TypeDefinition @'
+using System;
+using System.Text;
+using System.Runtime.InteropServices;
+using System.Security.Principal;
+public sealed class DiapasonOldServerLease : IDisposable {
+  IntPtr handle;
+  [DllImport("kernel32.dll", SetLastError=true)] static extern IntPtr OpenProcess(uint access, bool inherit, uint pid);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern bool CloseHandle(IntPtr h);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern bool GetProcessTimes(IntPtr h, out long c, out long e, out long k, out long u);
+  [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern bool QueryFullProcessImageName(IntPtr h, uint flags, StringBuilder s, ref uint size);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern uint GetProcessId(IntPtr h);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern uint WaitForSingleObject(IntPtr h, uint ms);
+  [DllImport("kernel32.dll", SetLastError=true)] static extern bool TerminateProcess(IntPtr h, uint code);
+  [DllImport("advapi32.dll", SetLastError=true)] static extern bool OpenProcessToken(IntPtr h, uint access, out IntPtr t);
+  [DllImport("advapi32.dll", SetLastError=true)] static extern bool GetTokenInformation(IntPtr t, int type, out int session, int size, out int needed);
+  public DiapasonOldServerLease(uint pid) {
+    // PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE.
+    handle=OpenProcess(0x101001, false, pid);
+    if (handle==IntPtr.Zero || GetProcessId(handle)!=pid) { Dispose(); throw new Exception("oldBackendIdentityChanged"); }
+  }
+  public long Creation { get { long c,e,k,u; if (!GetProcessTimes(handle,out c,out e,out k,out u)) throw new Exception("oldBackendIdentityChanged"); return c; } }
+  public bool MatchesCimCreation(DateTime cim) {
+    // DMTF/CIM a six décimales ; FILETIME en a sept. Division entière, sans double.
+    return Creation/10==cim.ToUniversalTime().ToFileTimeUtc()/10;
+  }
+  public bool Alive { get { return WaitForSingleObject(handle,0)==258; } }
+  public string Image { get { var s=new StringBuilder(4096); uint n=4096; if (!QueryFullProcessImageName(handle,0,s,ref n)) throw new Exception("oldBackendIdentityChanged"); return s.ToString(); } }
+  public string Sid { get { IntPtr t; if (!OpenProcessToken(handle,8,out t)) throw new Exception("oldBackendOwnerRefused"); try { using (var i=new WindowsIdentity(t)) return i.User.Value; } finally { CloseHandle(t); } } }
+  public int Session { get { IntPtr t; int s,n; if (!OpenProcessToken(handle,8,out t)) throw new Exception("oldBackendOwnerRefused"); try { if (!GetTokenInformation(t,12,out s,4,out n)) throw new Exception("oldBackendOwnerRefused"); return s; } finally { CloseHandle(t); } } }
+  public bool StopChecked(long creation, string sid, int session, System.Diagnostics.Stopwatch clock) {
+    // Dernière identité issue du HANDLE conservé, jamais un Kill/GetProcessById.
+    if (!Alive || Creation!=creation || Sid!=sid || Session!=session || clock.ElapsedMilliseconds>=25000)
+      throw new Exception("oldBackendFinalCheckChanged");
+    if (!TerminateProcess(handle,1)) throw new Exception("oldBackendStopUnconfirmed");
+    return WaitForSingleObject(handle,5000)==0;
+  }
+  public static string ReadPermit() {
+    var read=System.Threading.Tasks.Task.Factory.StartNew(() => Console.ReadLine());
+    if (!read.Wait(5000)) throw new Exception("oldBackendTimeout");
+    return read.Result;
+  }
+  public void Dispose() { if (handle!=IntPtr.Zero) { CloseHandle(handle); handle=IntPtr.Zero; } }
+}
+'@
+# Possede/ApplicationSure/Petit/SansReparse/BaseVenv : diagnostic f0321e3,
+# SHA256 50ee6e29315718d11d2dc42669cd855b0977d90524b9343061e512192eec7d99.
+function Possede([string]$p) {
+  try {
+    $p=[IO.Path]::GetFullPath($p)
+    if (-not $p.StartsWith($profil+'\',[StringComparison]::OrdinalIgnoreCase)) { return $false }
+    $courant=$p
+    while ($courant) {
+      $i=Get-Item -LiteralPath $courant -Force
+      if ($i.Attributes -band [IO.FileAttributes]::ReparsePoint) { return $false }
+      $courant=[IO.Path]::GetDirectoryName($courant)
+    }
+    return ((Get-Acl -LiteralPath $p).GetOwner([Security.Principal.SecurityIdentifier]).Value -eq $sid)
+  } catch { return $false }
+}
+function ApplicationSure([string]$p) {
+  # Les fichiers extraits par le runner élevé appartiennent aux Administrateurs.
+  # Accepter ce propriétaire exige aussi la chaîne des ACL, jamais le nom seul.
+  try {
+    $p=[IO.Path]::GetFullPath($p)
+    if (-not $p.StartsWith($profil+'\',[StringComparison]::OrdinalIgnoreCase)) { return $false }
+    $courant=$p; $fiables=@($sid,'S-1-5-32-544','S-1-5-18')
+    while ($courant -and ($courant -ieq $profil -or $courant.StartsWith($profil+'\',[StringComparison]::OrdinalIgnoreCase))) {
+      $i=Get-Item -LiteralPath $courant -Force
+      if ($i.Attributes -band [IO.FileAttributes]::ReparsePoint) { return $false }
+      $acl=Get-Acl -LiteralPath $courant
+      if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -notin $fiables) { return $false }
+      foreach ($regle in $acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier])) {
+        if ($regle.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow -or
+          ($regle.PropagationFlags -band [Security.AccessControl.PropagationFlags]::InheritOnly)) { continue }
+        # WriteData/AppendData/WriteEA/DeleteChild/WriteAttributes/Delete/WriteDac/WriteOwner.
+        if (([int64]$regle.FileSystemRights -band 852310) -ne 0 -and $regle.IdentityReference.Value -notin $fiables) { return $false }
+      }
+      if ($courant -ieq $profil) { return $true }
+      $courant=[IO.Path]::GetDirectoryName($courant)
+    }
+    return $false
+  } catch { return $false }
+}
+function Petit([string]$p,[int]$max) {
+  if (-not (ApplicationSure $p)) { return $null }
+  if ((Get-Item -LiteralPath $p -Force).PSIsContainer) { return $null }
+  $s=[IO.File]::OpenRead($p)
+  try {
+    if ($s.Length -gt $max) { return $null }
+    $b=New-Object byte[] ($max+1); $n=0
+    while ($n -lt $b.Length) { $lus=$s.Read($b,$n,$b.Length-$n); if ($lus -eq 0) { break }; $n+=$lus }
+    if ($n -gt $max) { return $null }
+    return (New-Object System.Text.UTF8Encoding($false,$true)).GetString($b,0,$n)
+  } finally { $s.Dispose() }
+}
+function SansReparse([string]$p) {
+  try {
+    if ($p -notmatch '^[A-Za-z]:\\' -or $p -match '(?:^|\\)\.\.(?:\\|$)') { return $false }
+    $courant=[IO.Path]::GetFullPath($p)
+    while ($courant) {
+      $i=Get-Item -LiteralPath $courant -Force
+      if ($i.Attributes -band [IO.FileAttributes]::ReparsePoint) { return $false }
+      $courant=[IO.Path]::GetDirectoryName($courant)
+    }
+    return $true
+  } catch { return $false }
+}
+function BaseVenv([string]$cfg) {
+  try {
+    $valeursHome=@($cfg -split '\r?\n' | Where-Object { $_ -cmatch '^\s*home\s*=' })
+    if ($valeursHome.Count -ne 1) { return $null }
+    $baseDeclaree=($valeursHome[0] -split '=',2)[1].Trim()
+    if ($baseDeclaree -notmatch '^[A-Za-z]:\\' -or $baseDeclaree -match '(?:^|\\)\.\.(?:\\|$)') { return $null }
+    $baseDeclaree=[IO.Path]::GetFullPath($baseDeclaree); $parent=[IO.Path]::GetDirectoryName($baseDeclaree)
+    if (-not (SansReparse $parent)) { return $null }
+    $i=Get-Item -LiteralPath $baseDeclaree -Force
+    if ($i.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+      # Même alias uv mineur que l'amorçage : une seule cible patch, sœur directe.
+      if ($i.Name -cne 'cpython-3.13-windows-x86_64-none') { return $null }
+      $cibles=@($i.Target)
+      if ($cibles.Count -ne 1) { return $null }
+      $cible=[string]$cibles[0]
+      if ($cible -match '(?:^|\\)\.\.(?:\\|$)') { return $null }
+      if (-not [IO.Path]::IsPathRooted($cible)) { $cible=Join-Path $parent $cible }
+      $cible=[IO.Path]::GetFullPath($cible)
+      if ([IO.Path]::GetDirectoryName($cible) -ine $parent -or
+        [IO.Path]::GetFileName($cible) -cnotmatch '^cpython-3\.13\.\d+-windows-x86_64-none$') { return $null }
+      $baseDeclaree=$cible
+    }
+    $base=Join-Path $baseDeclaree 'python.exe'
+    if (-not (SansReparse $base) -or (Get-Item -LiteralPath $base -Force).PSIsContainer) { return $null }
+    if ([IO.File]::Exists((Join-Path $baseDeclaree 'pyvenv.cfg')) -or
+      [IO.File]::Exists((Join-Path ([IO.Path]::GetDirectoryName($baseDeclaree)) 'pyvenv.cfg'))) { return $null }
+    return $baseDeclaree
+  } catch { return $null }
+}
+
+function AclBaseSure([string]$p) {
+  # Hors profil, vérifier aussi les ACL du Python pointé par pyvenv.cfg.
+  try {
+    if (-not (SansReparse $p)) { return $false }
+    $courant=[IO.Path]::GetFullPath($p); $premier=$true
+    $fiables=@($sid,'S-1-5-32-544','S-1-5-18')
+    while ($courant) {
+      $acl=Get-Acl -LiteralPath $courant
+      if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -notin $fiables) { return $false }
+      foreach ($r in $acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier])) {
+        if ($r.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow -or
+          ($r.PropagationFlags -band [Security.AccessControl.PropagationFlags]::InheritOnly)) { continue }
+        # Les ancêtres ne doivent pas permettre de remplacer un enfant existant.
+        $masque=if ($premier) { 852310 } else { 852304 }
+        if (([int64]$r.FileSystemRights -band $masque) -ne 0 -and $r.IdentityReference.Value -notin $fiables) { return $false }
+      }
+      $premier=$false; $courant=[IO.Path]::GetDirectoryName($courant)
+    }
+    return $true
+  } catch { return $false }
+}
+function Absent([string]$p) {
+  $parent=[IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($p))
+  if ($parent -ine $racine -or -not (Possede $parent) -or -not (ApplicationSure $parent)) { throw 'oldBackendSourceRefused' }
+  try { $null=Get-Item -LiteralPath $p -Force -ErrorAction Stop; return $false }
+  catch [System.Management.Automation.ItemNotFoundException] {
+    if (-not (Possede $parent) -or -not (ApplicationSure $parent)) { throw 'oldBackendSourceRefused' }
+    # Un lien cassé reste une entrée présente, même si Get-Item ne le résout pas.
+    if (@([IO.Directory]::EnumerateFileSystemEntries($parent,[IO.Path]::GetFileName($p))).Count -ne 0) { return $false }
+    if (-not (Possede $parent) -or -not (ApplicationSure $parent)) { throw 'oldBackendSourceRefused' }
+    return $true
+  }
+}
+function Processus([int]$n) { return CimCmdlets\Get-CimInstance Win32_Process -Filter ('ProcessId='+$n) -OperationTimeoutSec 2 }
+function MemeSid($p) {
+  $o=CimCmdlets\Invoke-CimMethod -InputObject $p -MethodName GetOwnerSid -OperationTimeoutSec 2
+  return ($o.ReturnValue -eq 0 -and $o.Sid -ceq $sid)
+}
+function Ecoutes {
+  return @(CimCmdlets\Get-CimInstance -Namespace root/StandardCimv2 -ClassName MSFT_NetTCPConnection -Filter 'LocalPort=8000 AND State=2' -OperationTimeoutSec 2 |
+    Sort-Object LocalAddress,OwningProcess | ForEach-Object { [ordered]@{ pid=[int]$_.OwningProcess; port=[int]$_.LocalPort; address=[string]$_.LocalAddress } })
+}
+function Applications {
+  $apps=@(Get-Process -Name 'diapason-desktop','Diapason' -ErrorAction SilentlyContinue | Sort-Object Id)
+  if ($apps.Count -gt 1) { throw 'oldBackendUiActive' }
+  return @($apps | ForEach-Object {
+    $p=Processus $_.Id
+    if (-not $p) { throw 'oldBackendUiActive' }
+    [ordered]@{ pid=[int]$p.ProcessId; identity=$p.CreationDate.ToUniversalTime().ToFileTimeUtc().ToString();
+      hasWindow=($_.MainWindowHandle -ne 0); sameSid=[bool](MemeSid $p);
+      sameSession=([int]$p.SessionId -eq $session); executablePath=[string]$p.ExecutablePath;
+      commandLine=[string]$p.CommandLine;
+      createdBeforeObservation=($p.CreationDate.ToUniversalTime() -lt [DateTime]::Parse($env:OLD_OBSERVED_UTC).ToUniversalTime()) }
+  })
+}
+function Empreinte([string]$s) {
+  $h=[Security.Cryptography.SHA256]::Create()
+  try { return [Convert]::ToBase64String($h.ComputeHash([Text.Encoding]::UTF8.GetBytes($s))) } finally { $h.Dispose() }
+}
+function Faits {
+  if ($chrono.ElapsedMilliseconds -ge 25000) { throw 'oldBackendTimeout' }
+  $p=Processus $numero
+  if (-not $p -or -not $lease.MatchesCimCreation($p.CreationDate)) { throw 'oldBackendIdentityChanged' }
+  if (-not (Possede $racine) -or -not (ApplicationSure $racine)) { throw 'oldBackendSourceRefused' }
+  # 08/11/2026, diagnostic 42505534195 : l'ancien PID n'a aucun marqueur.
+  # Un contenu « managed », une version ou une erreur ne prouvent pas l'absence.
+  if (-not (Absent (Join-Path $racine '.diapason-backend'))) { throw 'oldBackendVersionRefused' }
+  $projet=Petit (Join-Path $racine 'pyproject.toml') 65536
+  $cfg=Petit (Join-Path $racine '.venv\pyvenv.cfg') 8192
+  if (-not $projet -or -not $cfg) { throw 'oldBackendSourceRefused' }
+  # Métadonnées [project] seulement : pas un name/version d'un autre tableau TOML.
+  $sections=[regex]::Matches($projet,'(?ms)^\[project\]\s*\r?\n(.*?)(?=^\[|\z)')
+  if ($sections.Count -ne 1) { throw 'oldBackendVersionRefused' }
+  $texte=$sections[0].Groups[1].Value
+  $noms=[regex]::Matches($texte,'(?m)^name\s*=\s*["'']([^"'']+)["'']\s*$')
+  $versions=[regex]::Matches($texte,'(?m)^version\s*=\s*["'']([^"'']+)["'']\s*$')
+  if ($noms.Count -ne 1 -or $versions.Count -ne 1) { throw 'oldBackendVersionRefused' }
+  $base=BaseVenv $cfg
+  if (-not $base -or -not (AclBaseSure (Join-Path $base 'python.exe'))) { throw 'oldBackendSourceRefused' }
+  $entree=Join-Path $racine '.venv\Scripts\diapason.exe'; $python=Join-Path $racine '.venv\Scripts\python.exe'
+  if ((Get-Item -LiteralPath $entree -Force).PSIsContainer -or (Get-Item -LiteralPath $python -Force).PSIsContainer) { throw 'oldBackendSourceRefused' }
+  $sansBeta=Absent (Join-Path $racine 'beta-build.json'); $sansGit=Absent (Join-Path $racine '.git')
+  [ordered]@{
+    canonicalRoot=$racine; interactive=[Environment]::UserInteractive; runnerSession=$session
+    process=[ordered]@{ pid=$numero; sameSid=((MemeSid $p) -and $lease.Sid -ceq $sid);
+      sameSession=([int]$p.SessionId -eq $session -and $lease.Session -eq $session);
+      handleAlive=$lease.Alive; identity=$lease.Creation.ToString();
+      createdUTC=[DateTime]::FromFileTimeUtc($lease.Creation).ToString('o');
+      executablePath=[string]$p.ExecutablePath; commandLine=[string]$p.CommandLine; handleImage=$lease.Image }
+    source=[ordered]@{ root=$racine; rootOwned=$true; metadataOwned=$true; cfgOwned=$true;
+      entryOwned=(ApplicationSure $entree); venvPythonOwned=(ApplicationSure $python);
+      cfg=$cfg; resolvedHome=$base; baseVerified=$true; aclVerified=$true; reparseVerified=$true;
+      projectName=$noms[0].Groups[1].Value; sourceVersion=$versions[0].Groups[1].Value;
+      markerState='absent'; betaAbsent=[bool]$sansBeta; gitAbsent=[bool]$sansGit;
+      metadataDigest=(Empreinte ($projet+'|absent|'+$cfg)) }
+    listeners=@(Ecoutes); applications=@(Applications)
+  }
+}
+$lease=New-Object -TypeName DiapasonOldServerLease -ArgumentList ([uint32]$numero)
+$avant=Faits | ConvertTo-Json -Depth 6 -Compress
+'{"stage":"attestation","facts":'+$avant+'}' | Write-Output
+[Console]::Out.Flush()
+$accord=ConvertFrom-Json -InputObject ([DiapasonOldServerLease]::ReadPermit())
+if ($accord.permit -isnot [bool] -or $accord.permit -ne $true -or $accord.identity -cne $lease.Creation.ToString()) { throw 'oldBackendProtocolRefused' }
+# Relire source/ACL/reparse/commande/SID/UI/socket sous le HANDLE ouvert initialement.
+$apres=Faits | ConvertTo-Json -Depth 6 -Compress
+if ($apres -cne $avant) { throw 'oldBackendFinalCheckChanged' }
+if (-not (Absent (Join-Path $racine '.diapason-backend'))) { throw 'oldBackendVersionRefused' }
+$stopped=$lease.StopChecked($lease.Creation,$sid,$session,$chrono)
+if (-not $stopped) { throw 'oldBackendStopUnconfirmed' }
+$fin=[Diagnostics.Stopwatch]::StartNew()
+do {
+  $portFree=@(Ecoutes).Count -eq 0
+  $launcherExited=@(Get-Process -Name 'diapason-desktop','Diapason' -ErrorAction SilentlyContinue).Count -eq 0
+  if ($portFree -and $launcherExited) { break }
+  Start-Sleep -Milliseconds 200
+} while ($fin.ElapsedMilliseconds -lt 5000)
+if (-not $portFree) { throw 'oldBackendPortChanged' }
+if (-not $launcherExited) { throw 'oldBackendLauncherStillRunning' }
+@{ stage='result'; status='stopped'; targetStopped=$true; portFree=$true; launcherExited=$true } | ConvertTo-Json -Compress
+} catch {
+  $code='oldBackendNativeUnavailable'
+  if ($_.Exception.Message -cmatch '^oldBackend(?:PidChanged|OwnerRefused|IdentityChanged|SourceRefused|VersionRefused|EntryRefused|PortChanged|UiActive|Timeout|ProtocolRefused|FinalCheckChanged|StopUnconfirmed|LauncherStillRunning)$') { $code=$_.Exception.Message }
+  @{ stage='result'; status='refused'; code=$code; targetStopped=[bool]$stopped; portFree=[bool]$portFree; launcherExited=[bool]$launcherExited } | ConvertTo-Json -Compress
+} finally { if ($lease) { $lease.Dispose() } }
+`;
+
+// 08/11/2026 : fermer l'UI laisse le Python 1.0.0 sur 8000. L'ancien
+// residual-pid reste interdit ; cette autorisation désigne ce seul incident.
+export function autorisationArretAncien(options, maintenant = Date.now()) {
+  verifier(['residual-pid', 'residual_pid'].every(c => [undefined, '0', 0].includes(options[c])), 'personalProcessStopNotAuthorized');
+  const pid = options['stop-old-backend-pid'], utc = options['stop-old-backend-observed-utc'];
+  if ((pid === undefined || pid === '') && (utc === undefined || utc === '')) return null;
+  verifier(pid === '48196', 'oldBackendPidNotAuthorized');
+  verifier(typeof utc === 'string' && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{3})?Z$/.test(utc), 'oldBackendObservationInvalid');
+  const ms = Date.parse(utc);
+  verifier(Number.isFinite(ms) && new Date(ms).toISOString() === utc.replace(/(?<!\.\d{3})Z$/, '.000Z')
+    // Une autorisation reste liée au diagnostic de cet incident, au plus 24 h.
+    && maintenant >= ms && maintenant - ms < 86400000, 'oldBackendObservationInvalid');
+  return Object.freeze({ pid: 48196, observedUTC: new Date(ms).toISOString() });
+}
+
+const cheminAncien = p => typeof p === 'string' && p.length <= 4096
+  && /^[A-Za-z]:\\/.test(p) && !/[\x00-\x1f"<>|?*\/]/.test(p)
+  && !p.slice(2).includes(':') && !p.split('\\').some(x => x === '.' || x === '..' || /[. ]$/.test(x))
+  ? path.win32.normalize(p).toLowerCase().replace(/\\$/, '') : null;
+
+function argvAncien(ligne) {
+  if (typeof ligne !== 'string' || ligne.length > 8192 || /[\x00-\x1f]/.test(ligne)) return null;
+  const args = []; let reste = ligne.trim();
+  while (reste) {
+    const m = /^(?:"([^"\r\n]*)"|([^\s"]+))(?:\s+|$)/.exec(reste);
+    if (!m || m[1]?.endsWith('\\')) return null;
+    args.push(m[1] ?? m[2]); reste = reste.slice(m[0].length);
+  }
+  return args;
+}
+
+function commandeAncienne(p, c, lanceur = false) {
+  const root = cheminAncien(c.root), base = cheminAncien(c.resolvedHome);
+  const exe = cheminAncien(p.executablePath), argv = argvAncien(p.commandLine);
+  if (!root || !base || !exe || !argv?.length) return false;
+  const entree = root + '\\.venv\\scripts\\diapason.exe', python = root + '\\.venv\\scripts\\python.exe';
+  const arg0 = cheminAncien(argv.shift());
+  if (lanceur) {
+    if (exe !== entree || arg0 !== entree) return false;
+  } else {
+    if (![python, base + '\\python.exe'].includes(exe) || ![exe, python].includes(arg0)) return false;
+    if (cheminAncien(argv[0]) === entree) argv.shift();
+    else {
+      if (exe !== python && arg0 !== python) return false;
+      while (['-I', '-B', '-u', '-S'].includes(argv[0])) argv.shift();
+      if (argv.shift() !== '-m' || argv.shift() !== 'diapason') return false;
+    }
+  }
+  if (argv.shift() !== 'serve') return false;
+  const vus = new Set();
+  while (argv.length) {
+    const cle = argv.shift(), valeur = argv.shift();
+    if (vus.has(cle) || !['--port', '--host'].includes(cle)
+      || (cle === '--port' ? valeur !== '8000' : valeur !== '127.0.0.1')) return false;
+    vus.add(cle);
+  }
+  return true;
+}
+
+/** Faits privés lus sous un HANDLE conservé : aucune clé/config de profil. */
+export function validerArretAncien(n, a) {
+  const p = n?.process, c = n?.source;
+  verifier(a?.pid === 48196 && p?.pid === a.pid, 'oldBackendPidChanged');
+  verifier(n.interactive === true && p.sameSid === true && p.sameSession === true
+    && Number.isInteger(n.runnerSession) && n.runnerSession > 0, 'oldBackendOwnerRefused');
+  verifier(p.handleAlive === true && typeof p.identity === 'string' && /^\d{1,20}$/.test(p.identity)
+    && typeof p.createdUTC === 'string' && Number.isFinite(Date.parse(p.createdUTC))
+    && Date.parse(p.createdUTC) < Date.parse(a.observedUTC), 'oldBackendIdentityChanged');
+  const root = cheminAncien(c?.root), attendu = cheminAncien(n.canonicalRoot);
+  verifier(root && root === attendu && c.rootOwned === true && c.metadataOwned === true
+    && c.cfgOwned === true && c.entryOwned === true && c.venvPythonOwned === true
+    && c.baseVerified === true && c.aclVerified === true && c.reparseVerified === true,
+  'oldBackendSourceRefused');
+  verifier(c.projectName === 'Diapason' && c.sourceVersion === '1.0.0'
+    && c.markerState === 'absent' && c.betaAbsent === true && c.gitAbsent === true,
+  'oldBackendVersionRefused');
+  const homes = typeof c.cfg === 'string' && Buffer.byteLength(c.cfg) <= 8192
+    ? c.cfg.split(/\r?\n/).flatMap(l => { const m = /^\s*home\s*=\s*(.*?)\s*$/.exec(l); return m ? [cheminAncien(m[1])] : []; }) : [];
+  const home = homes[0], base = cheminAncien(c.resolvedHome);
+  const aliasUv = home && base && path.win32.basename(home) === 'cpython-3.13-windows-x86_64-none'
+    && /^cpython-3\.13\.\d+-windows-x86_64-none$/.test(path.win32.basename(base))
+    && path.win32.dirname(home) === path.win32.dirname(base);
+  verifier(homes.length === 1 && home && base && (home === base || aliasUv)
+    && cheminAncien(p.executablePath) === cheminAncien(p.handleImage)
+    && commandeAncienne(p, c), 'oldBackendEntryRefused');
+  verifier(Array.isArray(n.listeners) && n.listeners.length > 0 && n.listeners.length <= 4
+    && n.listeners.every(l => l.pid === a.pid && l.port === 8000
+      && ['127.0.0.1', '::1'].includes(l.address)), 'oldBackendPortChanged');
+  verifier(Array.isArray(n.applications) && n.applications.length <= 1
+    && n.applications.every(x => x.hasWindow === false && x.sameSid === true && x.sameSession === true
+      && x.createdBeforeObservation === true && commandeAncienne(x, c, true)), 'oldBackendUiActive');
+  return true;
+}
+
+const CODES_ARRET_ANCIEN = new Set(['oldBackendPidChanged', 'oldBackendOwnerRefused',
+  'oldBackendIdentityChanged', 'oldBackendSourceRefused', 'oldBackendVersionRefused',
+  'oldBackendEntryRefused', 'oldBackendPortChanged', 'oldBackendUiActive',
+  'oldBackendNativeUnavailable', 'oldBackendTimeout', 'oldBackendProtocolRefused',
+  'oldBackendFinalCheckChanged', 'oldBackendStopUnconfirmed', 'oldBackendLauncherStillRunning']);
+export function rapportArretAncien(r = {}) {
+  return { requested: r.requested === true, status: ['notRequested', 'refused', 'stopped'].includes(r.status) ? r.status : 'refused',
+    code: CODES_ARRET_ANCIEN.has(r.code) ? r.code : null,
+    targetStopped: r.targetStopped === true, portFree: r.portFree === true,
+    launcherExited: r.launcherExited === true };
+}
+
+export async function arreterAncienBackend(a, { platform = process.platform, systeme = process.env,
+  lancer = spawn, minuter = setTimeout, demuter = clearTimeout } = {}) {
+  if (!a) return rapportArretAncien({ status: 'notRequested' });
+  // Valider aussi les appels programmatiques ; seul le couple CLI validé est admis.
+  autorisationArretAncien({ 'stop-old-backend-pid': String(a.pid), 'stop-old-backend-observed-utc': a.observedUTC });
+  if (platform !== 'win32') return rapportArretAncien({ requested: true, status: 'refused', code: 'oldBackendNativeUnavailable' });
+  const windows = systeme.SystemRoot;
+  if (!cheminAncien(windows)) return rapportArretAncien({ requested: true, status: 'refused', code: 'oldBackendNativeUnavailable' });
+  return new Promise(resolve => {
+    let fini = false, enfant, taille = 0, tampon = '', autorise = false;
+    const finir = r => {
+      if (fini) return; fini = true; demuter(delai);
+      enfant?.stdin?.destroy(); enfant?.stdout?.destroy(); enfant?.stderr?.destroy(); enfant?.unref();
+      resolve(rapportArretAncien({ status: 'refused', ...r, requested: true }));
+    };
+    // La sonde ne peut plus envoyer TerminateProcess après 25 s. Dix secondes
+    // restent pour confirmer la sortie/port ; le parent abandonne à 40 s.
+    const delai = minuter(() => finir({ code: 'oldBackendTimeout' }), 40000);
+    try {
+      const bootstrap = "[Console]::InputEncoding=[Text.Encoding]::ASCII; $s=[Console]::In.ReadLine(); & ([ScriptBlock]::Create([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String($s))))";
+      enfant = lancer(path.win32.join(windows, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
+        ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(bootstrap, 'utf16le').toString('base64')],
+        { shell: false, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], env: {
+          SystemRoot: windows, WINDIR: windows, PATH: path.win32.join(windows, 'System32'),
+          PSModulePath: path.win32.join(windows, 'System32', 'WindowsPowerShell', 'v1.0', 'Modules'),
+          OLD_PID: String(a.pid), OLD_OBSERVED_UTC: a.observedUTC,
+        } });
+      enfant.stdout.on('data', b => {
+        if (fini) return;
+        taille += b.length;
+        if (taille > 32768) return finir({ code: 'oldBackendProtocolRefused' });
+        tampon += b.toString('utf8');
+        while (tampon.includes('\n') && !fini) {
+          const i = tampon.indexOf('\n'), ligne = tampon.slice(0, i).replace(/^\uFEFF/, '').trim(); tampon = tampon.slice(i + 1);
+          try {
+            const n = JSON.parse(ligne);
+            if (n.stage === 'attestation' && !autorise) {
+              validerArretAncien(n.facts, a); autorise = true;
+              // Le fils compare de nouveau TOUS les faits sous le même HANDLE.
+              enfant.stdin.write(JSON.stringify({ permit: true, identity: n.facts.process.identity }) + '\n');
+            } else if (n.stage === 'result' && n.status === 'stopped' && autorise
+              && n.targetStopped === true && n.portFree === true && n.launcherExited === true) finir(n);
+            else if (n.stage === 'result' && n.status === 'refused' && CODES_ARRET_ANCIEN.has(n.code)) finir(n);
+            else finir({ code: 'oldBackendProtocolRefused' });
+          } catch (e) { finir({ code: CODES_ARRET_ANCIEN.has(e.message) ? e.message : 'oldBackendProtocolRefused' }); }
+        }
+      });
+      enfant.stderr.on('data', () => {});
+      enfant.on('error', () => finir({ code: 'oldBackendNativeUnavailable' }));
+      enfant.on('close', () => finir({ code: 'oldBackendProtocolRefused' }));
+      enfant.stdin.on('error', () => finir({ code: 'oldBackendProtocolRefused' }));
+      enfant.stdin.write(Buffer.from(ARRET_ANCIEN_POWERSHELL, 'utf16le').toString('base64') + '\n');
+    } catch { finir({ code: 'oldBackendNativeUnavailable' }); }
+  });
+}
+
 const DEPOT = 'https://github.com/carlitoetienne01-spec/Diapason/releases/download/';
 
 export function ciblePubliee(version, sha256) {
@@ -879,9 +1320,8 @@ async function dialogue(cdp, question, attendu, preuve = {}) {
 }
 
 export async function premierLancement(options) {
+  const autorisationAncien = autorisationArretAncien(options);
   verifier(process.platform === 'win32', 'windowsRequired');
-  verifier(options['residual-pid'] === undefined || options['residual-pid'] === '0'
-    || options['residual-pid'] === 0, 'personalProcessStopNotAuthorized');
   const cible = ciblePubliee(options.version, options.sha256);
   const travail = path.resolve(options.workdir);
   verifier(!fs.existsSync(travail), 'workdirAlreadyExists');
@@ -994,6 +1434,13 @@ export async function premierLancement(options) {
   }
   try {
     noter('preflight');
+    rapport.residualBackendStop = await arreterAncienBackend(autorisationAncien);
+    if (autorisationAncien) {
+      noter('targetedOldBackendStop');
+      verifier(rapport.residualBackendStop.status === 'stopped'
+        && rapport.residualBackendStop.targetStopped && rapport.residualBackendStop.portFree
+        && rapport.residualBackendStop.launcherExited, rapport.residualBackendStop.code || 'oldBackendStopUnconfirmed');
+    }
     const bureau = await powershell(String.raw`
 $apps = @(Get-Process -Name 'diapason-desktop','Diapason' -ErrorAction SilentlyContinue | ForEach-Object {
   $chemin = [string]$_.Path

@@ -17,6 +17,16 @@ on:
         type: choice
         default: fresh
         options: [fresh, legacy]
+      stop_old_backend_pid:
+        description: Accord distinct requis — seul ancien serveur PID 48196 (vide = aucun arrêt)
+        required: false
+        type: string
+        default: ''
+      stop_old_backend_observed_utc:
+        description: Horodatage UTC antérieur du diagnostic ayant observé ce PID (accord distinct requis)
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -36,9 +46,11 @@ jobs:
       INSTALLATION_VERSION: ${{ inputs.version }}
       INSTALLATION_SHA256: ${{ inputs.installer_sha256 }}
       INSTALLATION_SCENARIO: ${{ inputs.scenario }}
+      STOP_OLD_BACKEND_PID: ${{ inputs.stop_old_backend_pid }}
+      STOP_OLD_BACKEND_OBSERVED_UTC: ${{ inputs.stop_old_backend_observed_utc }}
       BANC_COMMIT: ${{ github.sha }}
-      BANC_SCRIPT_SHA256: 230e962ced1baf55a2380daaacb0d077cc2e844840b6e78731c7b5d917c51acb
-      BANC_TEST_SHA256: 25645cdb2268399215b5e71f9adaa4c60f83bcbaf4434cb9c9f8d612e68ba2db
+      BANC_SCRIPT_SHA256: ca1708aa00233d8f8b6cddc59efafe48d1c7602e1b4680255ea24c2201eb7cb8
+      BANC_TEST_SHA256: aba6a01b1998255d1aa2aa58ce325ee7fbeeab8e8d4379b73a77999ac30267f6
 
     steps:
       - uses: actions/setup-node@v6
@@ -80,11 +92,14 @@ jobs:
           $travail = Join-Path $env:RUNNER_TEMP ('diapason-installation-{0}-{1}' -f $env:GITHUB_RUN_ID, $env:GITHUB_RUN_ATTEMPT)
           $banc = Join-Path $env:RUNNER_TEMP ('diapason-installation-banc-{0}-{1}' -f $env:GITHUB_RUN_ID, $env:GITHUB_RUN_ATTEMPT)
           if (Test-Path -LiteralPath $travail) { throw 'Dossier d essai deja present' }
-          node (Join-Path $banc 'scripts/tester_installation_windows.mjs') `
-            --version $env:INSTALLATION_VERSION `
-            --sha256 $env:INSTALLATION_SHA256 `
-            --scenario $env:INSTALLATION_SCENARIO `
-            --workdir $travail
+          $argumentsBanc = @('--version', $env:INSTALLATION_VERSION,
+            '--sha256', $env:INSTALLATION_SHA256,
+            '--scenario', $env:INSTALLATION_SCENARIO, '--workdir', $travail)
+          if ($env:STOP_OLD_BACKEND_PID -or $env:STOP_OLD_BACKEND_OBSERVED_UTC) {
+            $argumentsBanc += @('--stop-old-backend-pid', $env:STOP_OLD_BACKEND_PID,
+              '--stop-old-backend-observed-utc', $env:STOP_OLD_BACKEND_OBSERVED_UTC)
+          }
+          node (Join-Path $banc 'scripts/tester_installation_windows.mjs') @argumentsBanc
           if ($LASTEXITCODE -ne 0) { throw 'Installation ou premier lancement refuses. Voir resultat.json' }
 
       - name: Restaurer aussi après interruption du banc
