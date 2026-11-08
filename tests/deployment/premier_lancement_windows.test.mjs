@@ -16,6 +16,7 @@ import {
   preparerDonneesLegacy, verifierDonneesLegacy, empreinteAmorcageLegacy, verifierProfilQa,
   creerAncienServeurSynthétique, verifierBlocageLegacy, verifierRefusServeurLegacy,
   autorisationArretAncien, validerArretAncien, arreterAncienBackend, rapportArretAncien,
+  exercerGestionSousQuota, preuveQuotaValide,
 } from '../../scripts/tester_installation_windows.mjs';
 
 const version = '1.0.5-beta.20261107.23';
@@ -394,6 +395,7 @@ test('l’environnement enfant ne reçoit ni clés, ni checkout, ni chemins de m
 
 test('aucun contrôle manquant ne devient une installation réussie', () => {
   const r = { installerExecuted: true, scenario: 'fresh', failureCode: null,
+    managementQuota: preuveQuotaComplete(),
     checks: Object.fromEntries(CONTROLES.map(c => [c, true])) };
   assert(rapportValide(r));
   for (const cle of CONTROLES) {
@@ -429,6 +431,222 @@ test('aucun contrôle manquant ne devient une installation réussie', () => {
   }
   assert(rapportValide(r), 'fresh reste une preuve valide pour fresh sans exiger legacy');
   assert(!rapportValide({ ...r, scenario: 'autre' }));
+});
+
+function preuveQuotaComplete() {
+  return { bursts: 1, requests: 17, confirmationRequest: 17, responses: 2, throttled: 2,
+    completed: 2, aborted: 15, failed: 0, confirmationStatus: 429,
+    confirmedImmediatelyBeforeCrud: true, businessRequests: 3, cleanupCompleted: true,
+    businessStatuses: { project: 200, note: 200, finances: 200 } };
+}
+
+function promesseQuota() {
+  let oui, non;
+  const p = new Promise((resolve, reject) => { oui = resolve; non = reject; });
+  return { p, oui, non };
+}
+const toursQuota = async () => { for (let i = 0; i < 60; i++) await Promise.resolve(); };
+function reponseQuota(status, valeur = {}, cancel = async () => {}) {
+  return { status, body: { cancel }, json: async () => valeur };
+}
+function bancQuota({ config = i => [1, 17].includes(i) ? reponseQuota(429) : null,
+  metier, ignorerAbort = false } = {}) {
+  let ms = 0, numero = 0, configNumero = 0;
+  const delais = new Map(), appels = [], suspens = [];
+  const etat = { crudTermine: false, abortAvantCrud: false, aborts: 0 };
+  const cle = 'CANARI-PRIVE-QUOTA-42';
+  const options = { base: 'http://127.0.0.1:8000', cle,
+    programmer: (fn, duree) => { assert.equal(duree, 10000); const n = ++numero; delais.set(n, { fn, fin: ms + duree }); return n; },
+    annuler: n => delais.delete(n),
+    fetcher: (url, init) => {
+      assert(url.startsWith('http://127.0.0.1:8000/'));
+      assert(init.headers.Authorization === `Bearer ${cle}`, 'authentification synthétique attendue');
+      assert.equal(init.redirect, 'error');
+      const chemin = new URL(url).pathname;
+      const appel = { chemin, methode: init.method, signal: init.signal, configNumero: chemin === '/v1/config' ? ++configNumero : null };
+      appels.push(appel);
+      let attente;
+      init.signal.addEventListener('abort', () => {
+        etat.aborts++; if (!etat.crudTermine) etat.abortAvantCrud = true;
+        if (!ignorerAbort) attente?.non(new Error(cle));
+      }, { once: true });
+      let r;
+      if (appel.configNumero) r = config(appel.configNumero, appel);
+      else {
+        const corps = init.body ? JSON.parse(init.body) : null;
+        r = metier?.(appel, corps);
+        if (r === undefined) {
+          const valeur = chemin === '/v1/vie/projects' ? { project: { id: 'projet-qa' } }
+            : chemin === '/v1/vie/notes' ? { note: { id: 'note-qa', ...corps } } : {};
+          r = reponseQuota(200, valeur);
+          if (chemin === '/v1/vie/finances/overview') r.json = async () => { etat.crudTermine = true; return valeur; };
+        }
+      }
+      if (r !== null) return Promise.resolve(r);
+      attente = promesseQuota(); suspens.push({ appel, ...attente }); return attente.p;
+    },
+  };
+  return { options, appels, etat, suspens, delais,
+    avancer: duree => { ms += duree; for (const [n, d] of [...delais]) if (d.fin <= ms) { delais.delete(n); d.fn(); } } };
+}
+
+test('gel42 — 429 rapide et quinze 200 lents lancent le CRUD sans attendre le remplissage', async () => {
+  const b = bancQuota();
+  const p = exercerGestionSousQuota(b.options);
+  await toursQuota();
+  assert.equal(b.appels.filter(a => a.chemin === '/v1/vie/projects').length, 1, 'la sonde17 doit déjà avoir déclenché le POST');
+  const r = await p;
+  assert(preuveQuotaValide(r.quota)); assert.equal(r.quota.requests, 17); assert.equal(r.quota.throttled, 2);
+  assert.equal(r.quota.aborted, 15); assert.equal(b.etat.abortAvantCrud, false);
+  assert.equal(b.etat.aborts, 15); assert.equal(b.delais.size, 0);
+  assert.deepEqual(b.appels.slice(16).map(a => [a.chemin, a.methode]), [
+    ['/v1/config', 'GET'], ['/v1/vie/projects', 'POST'], ['/v1/vie/notes', 'POST'], ['/v1/vie/finances/overview', 'GET']]);
+});
+
+test('gel42 — le corps lent du premier 429 et de sa confirmation ne retarde pas le POST', async () => {
+  const b = bancQuota({ config: i => [1, 17].includes(i) ? reponseQuota(429, {}, () => new Promise(() => {})) : null });
+  const p = exercerGestionSousQuota(b.options); await toursQuota();
+  assert.equal(b.etat.crudTermine, true); const r = await p;
+  assert(preuveQuotaValide(r.quota)); assert.equal(r.quota.aborted, 17); assert.equal(b.delais.size, 0);
+});
+
+test('gel42 — une confirmation rechargée relance une rafale et exige un nouveau 429 frais', async () => {
+  const b = bancQuota({ config: i => [1, 18, 34].includes(i) ? reponseQuota(429) : i === 17 ? reponseQuota(200) : null });
+  const r = await exercerGestionSousQuota(b.options);
+  assert.equal(r.quota.bursts, 2); assert.equal(r.quota.requests, 34); assert.equal(r.quota.confirmationRequest, 34);
+  assert.equal(b.appels.findIndex(a => a.chemin === '/v1/vie/projects'), 34); assert(preuveQuotaValide(r.quota));
+});
+
+test('gel42 — deux rafales et trois appels métier restent sous le budget total de51', async () => {
+  const b = bancQuota({ config: i => [1, 18, 34].includes(i) ? reponseQuota(429) : i === 17 ? reponseQuota(200) : null });
+  const r = await exercerGestionSousQuota(b.options);
+  assert.equal(r.quota.requests, 34); assert.equal(r.quota.bursts, 2); assert.equal(r.quota.businessRequests, 3);
+  assert.equal(b.appels.length, 37); assert(b.appels.length <= 51); assert(preuveQuotaValide(r.quota)); assert.equal(b.delais.size, 0);
+});
+
+test('gel42 — confirmations200 répétées refusent sans CRUD ni dépassement du budget', async () => {
+  const b = bancQuota({ config: i => [1, 18, 35].includes(i) ? reponseQuota(429) : [17, 34, 51].includes(i) ? reponseQuota(200) : null });
+  await assert.rejects(exercerGestionSousQuota(b.options), e => {
+    assert.equal(e.message, 'quotaRefilledBeforeCrud'); assert.equal(e.quota.requests, 34);
+    assert.equal(e.quota.businessRequests, 0); assert(!preuveQuotaValide(e.quota)); return true;
+  });
+  assert.equal(b.appels.length, 34); assert.equal(b.delais.size, 0);
+});
+
+test('gel42 — seize200 sans aucun429 restent un refus sans appel métier', async () => {
+  const b = bancQuota({ config: () => reponseQuota(200) });
+  await assert.rejects(exercerGestionSousQuota(b.options), e => {
+    assert.equal(e.message, 'quotaNotExercised'); assert.equal(e.quota.requests, 16);
+    assert.equal(e.quota.throttled, 0); assert.equal(e.quota.businessRequests, 0); return true;
+  });
+  assert.equal(b.delais.size, 0);
+});
+
+test('gel42 — délai virtuel de dix secondes sans429 refuse et nettoie ses requêtes privées', async () => {
+  const b = bancQuota({ config: () => null });
+  const p = exercerGestionSousQuota(b.options); const verdict = assert.rejects(p, /quotaProbeTimeout/);
+  b.avancer(9999); await toursQuota(); assert.equal(b.etat.aborts, 0);
+  b.avancer(1); await verdict;
+  assert.equal(b.appels.length, 16); assert.equal(b.etat.aborts, 16); assert.equal(b.delais.size, 0);
+});
+
+test('gel42 — un ancien429 sans réponse fraîche de confirmation ne permet aucun POST', async () => {
+  const b = bancQuota({ config: i => i === 17 ? null : reponseQuota(i === 1 ? 429 : 200) });
+  const p = exercerGestionSousQuota(b.options);
+  const verdict = assert.rejects(p, e => {
+    assert.equal(e.message, 'quotaProbeTimeout'); assert.equal(e.quota.requests, 17);
+    assert.equal(e.quota.throttled, 1); assert.equal(e.quota.businessRequests, 0);
+    assert.equal(e.quota.confirmedImmediatelyBeforeCrud, false); return true;
+  });
+  await toursQuota(); assert.equal(b.appels.length, 17); b.avancer(10000); await verdict;
+  assert.equal(b.delais.size, 0);
+});
+
+test('gel42 — refus de fetch ne publie jamais sa clé ni son erreur brute', async () => {
+  const b = bancQuota({ config: () => { throw new Error('CANARI-PRIVE-QUOTA-42'); } });
+  await assert.rejects(exercerGestionSousQuota(b.options), e => {
+    assert.equal(e.message, 'quotaProbeRequestFailed'); assert(!JSON.stringify({ message: e.message, ...e }).includes(b.options.cle));
+    assert.equal(e.quota.businessRequests, 0); assert(e.quota.cleanupCompleted); return true;
+  });
+  assert.equal(b.delais.size, 0);
+});
+
+test('gel42 — statut de sonde inattendu ou redirection ne deviennent pas un quota exercé', async () => {
+  for (const status of [302, 401, 500, 599, NaN]) {
+    const b = bancQuota({ config: () => reponseQuota(status) });
+    await assert.rejects(exercerGestionSousQuota(b.options), e => {
+      assert.equal(e.message, 'quotaProbeUnexpectedStatus'); assert.equal(e.quota.businessRequests, 0); return true;
+    });
+    assert.equal(b.delais.size, 0);
+  }
+});
+
+test('gel42 — projet note et finances exigent chacun exactement200', async () => {
+  for (const chemin of ['/v1/vie/projects', '/v1/vie/notes', '/v1/vie/finances/overview']) {
+    for (const status of [201, 429, 500]) {
+      const b = bancQuota({ metier: a => a.chemin === chemin ? reponseQuota(status) : undefined });
+      await assert.rejects(exercerGestionSousQuota(b.options), e => {
+        assert.equal(e.message, 'managementCrudUnexpectedStatus'); assert(!preuveQuotaValide(e.quota)); return true;
+      });
+      assert.equal(b.delais.size, 0);
+    }
+  }
+});
+
+test('gel42 — un200 métier mal formé ou une note non sauvegardée restent des échecs', async () => {
+  for (const chemin of ['/v1/vie/projects', '/v1/vie/notes']) {
+    const b = bancQuota({ metier: a => a.chemin === chemin ? reponseQuota(200, {}) : undefined });
+    await assert.rejects(exercerGestionSousQuota(b.options), e => {
+      assert.equal(e.message, chemin.endsWith('projects') ? 'managementProjectInvalid' : 'noteSaveFailed'); return true;
+    });
+  }
+});
+
+test('gel42 — une erreur de sonde arrivée pendant le POST refuse et annule ce qui lui appartient', async () => {
+  const b = bancQuota({ metier: () => null });
+  const p = exercerGestionSousQuota(b.options); const verdict = assert.rejects(p, /quotaProbeUnexpectedStatus/);
+  await toursQuota(); assert(b.appels.some(a => a.chemin === '/v1/vie/projects'));
+  b.suspens.find(r => r.appel.configNumero === 2).oui(reponseQuota(500)); await verdict;
+  assert(!b.appels.some(a => a.chemin === '/v1/vie/notes')); assert.equal(b.delais.size, 0);
+});
+
+test('gel42 — le corps métier est lui aussi borné à dix secondes virtuelles', async () => {
+  const b = bancQuota({ config: i => reponseQuota([1, 17].includes(i) ? 429 : 200),
+    metier: () => ({ status: 200, json: () => new Promise(() => {}) }) });
+  const p = exercerGestionSousQuota(b.options); const verdict = assert.rejects(p, /managementCrudTimeout/);
+  await toursQuota(); b.avancer(10000); await verdict; assert.equal(b.delais.size, 0);
+});
+
+test('gel42 — origine hors127.0.0.1:8000 ou clé invalide refuse avant fetch', async () => {
+  const b = bancQuota();
+  for (const base of ['https://127.0.0.1:8000', 'http://localhost:8000', 'http://127.0.0.1:8001', 'http://example.com', 'http://127.0.0.1:8000/autre']) {
+    await assert.rejects(exercerGestionSousQuota({ ...b.options, base }), /unexpectedApiOrigin/);
+  }
+  for (const cle of ['', null, 'prive\nsecret']) await assert.rejects(exercerGestionSousQuota({ ...b.options, cle }), /localAuthenticationMissing/);
+  assert.equal(b.appels.length, 0);
+});
+
+test('gel42 — enfin ne touche pas un signal externe et traite les refus tardifs sans rejet orphelin', async () => {
+  const externe = new AbortController(); const b = bancQuota({ ignorerAbort: true });
+  const r = await exercerGestionSousQuota(b.options); assert(preuveQuotaValide(r.quota));
+  assert.equal(externe.signal.aborted, false); assert.equal(new Set(b.appels.map(a => a.signal)).size, b.appels.length);
+  for (const p of b.suspens) p.non(new Error(b.options.cle));
+  await new Promise(resolve => setImmediate(resolve)); assert.equal(b.delais.size, 0);
+});
+
+test('gel42 — check vert sans preuve fraîche ou200 métier ne valide aucun rapport', () => {
+  const q = preuveQuotaComplete(); assert(preuveQuotaValide(q));
+  const r = { installerExecuted: true, scenario: 'fresh', failureCode: null,
+    checks: Object.fromEntries(CONTROLES.map(c => [c, true])), managementQuota: q };
+  assert(rapportValide(r)); assert(!rapportValide({ ...r, managementQuota: undefined }));
+  for (const k of Object.keys(q)) {
+    const incomplet = { ...q }; delete incomplet[k]; assert(!rapportValide({ ...r, managementQuota: incomplet }), k);
+  }
+  for (const delta of [{ bursts: 4, requests: 68 }, { requests: 52 }, { confirmationStatus: 200 },
+    { confirmationRequest: 16 }, { throttled: 0 }, { failed: 1 }, { completed: 17, aborted: 1 },
+    { confirmedImmediatelyBeforeCrud: false }, { businessStatuses: { project: 200, note: 201, finances: 200 } }]) {
+    assert(!rapportValide({ ...r, managementQuota: { ...q, ...delta } }));
+  }
 });
 
 test('une santé générique ou un ancien backend ne valide pas le nouvel installateur', () => {

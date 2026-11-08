@@ -684,9 +684,130 @@ export function environnementApplication(systeme, profil, port) {
   return env;
 }
 
+export function preuveQuotaValide(q) {
+  return !!q && Number.isSafeInteger(q.bursts) && q.bursts >= 1 && q.bursts <= 2
+    && q.requests === q.bursts * 17 && q.confirmationRequest === q.requests
+    && ['responses', 'throttled', 'completed', 'aborted'].every(k => Number.isSafeInteger(q[k]) && q[k] >= 0)
+    && q.throttled >= 2 && q.throttled <= q.responses && q.responses <= q.requests
+    && q.completed + q.aborted === q.requests && q.failed === 0
+    && q.confirmationStatus === 429 && q.confirmedImmediatelyBeforeCrud === true
+    && q.businessRequests === 3 && q.requests + q.businessRequests <= 51 && q.cleanupCompleted === true
+    && ['project', 'note', 'finances'].every(k => q.businessStatuses?.[k] === 200);
+}
+
+export async function exercerGestionSousQuota({ base, cle, fetcher = fetch,
+  programmer = setTimeout, annuler = clearTimeout } = {}) {
+  verifier(base === 'http://127.0.0.1:8000', 'unexpectedApiOrigin');
+  verifier(typeof cle === 'string' && cle.length > 0 && !/[\r\n]/.test(cle), 'localAuthenticationMissing');
+  const requetes = [], mesures = { requests: 0, responses: 0, throttled: 0, bursts: 0,
+    businessRequests: 0, businessStatuses: {}, confirmedImmediatelyBeforeCrud: false };
+  let nettoyage = false, erreur = null, rejeter;
+  const interrompu = new Promise((_, non) => { rejeter = non; });
+  interrompu.catch(() => {});
+  const surveiller = promesse => Promise.race([promesse, interrompu]);
+  function requete(chemin, { methode = 'GET', corps, sonde = false, statutRecu, metier } = {}) {
+    const controleur = new AbortController();
+    let ouiEntete, nonEntete, ouiFin, nonFin;
+    const entete = new Promise((oui, non) => { ouiEntete = oui; nonEntete = non; });
+    const fin = new Promise((oui, non) => { ouiFin = oui; nonFin = non; });
+    entete.catch(() => {}); fin.catch(() => {});
+    const r = { controleur, fin, etat: 'pending', sonde };
+    requetes.push(r);
+    if (sonde) mesures.requests++; else mesures.businessRequests++;
+    function terminer(e, valeur) {
+      if (r.etat !== 'pending') return;
+      r.etat = e ? (nettoyage ? 'aborted' : 'failed') : 'completed';
+      annuler(r.delai);
+      if (e) { nonEntete(e); nonFin(e); } else ouiFin(valeur);
+    }
+    function echouer(code) {
+      if (r.etat !== 'pending') return;
+      const e = new Error(code);
+      terminer(e);
+      if (!nettoyage && !erreur) { erreur = e; rejeter(e); }
+      controleur.abort();
+    }
+    r.abandonner = () => echouer('quotaOwnedRequestAborted');
+    // 08/11/2026 : le lot41 attendait les 200 lents et laissait le bucket
+    // se remplir. Dix secondes bornent aussi le corps, pas seulement l'en-tête.
+    r.delai = programmer(() => echouer(sonde ? 'quotaProbeTimeout' : 'managementCrudTimeout'), 10000);
+    (async () => {
+      const res = await fetcher(base + chemin, { method: methode, redirect: 'error',
+        headers: { Authorization: `Bearer ${cle}`, ...(corps ? { 'Content-Type': 'application/json' } : {}) },
+        ...(corps ? { body: JSON.stringify(corps) } : {}), signal: controleur.signal });
+      if (r.etat !== 'pending') { await res.body?.cancel(); return; }
+      if (!Number.isInteger(res.status) || !(sonde ? ((res.status >= 200 && res.status < 300) || res.status === 429) : res.status === 200)) {
+        echouer(sonde ? 'quotaProbeUnexpectedStatus' : 'managementCrudUnexpectedStatus'); return;
+      }
+      if (sonde) {
+        mesures.responses++;
+        if (res.status === 429) mesures.throttled++;
+      } else mesures.businessStatuses[metier] = res.status;
+      ouiEntete(res.status);
+      statutRecu?.(res.status);
+      // La preuve du statut est disponible avant d'attendre l'annulation du corps.
+      const valeur = sonde ? (await res.body?.cancel(), res.status) : await res.json();
+      terminer(null, valeur);
+    })().catch(() => echouer(sonde ? 'quotaProbeRequestFailed' : 'managementCrudResponseFailed'));
+    return { entete, fin };
+  }
+  let resultat, echec;
+  try {
+    // Deux rafales de 17 + trois appels métier = 37, sous le budget total
+    // de 51 ; une troisième complète ferait 54 requêtes avec le CRUD.
+    for (let rafale = 1; rafale <= 2; rafale++) {
+      mesures.bursts = rafale;
+      let refuser;
+      const premier429 = new Promise(oui => { refuser = oui; });
+      const vol = Array.from({ length: 16 }, () => requete('/v1/config', {
+        sonde: true, statutRecu: statut => { if (statut === 429) refuser(); },
+      }));
+      await surveiller(Promise.race([premier429, Promise.all(vol.map(r => r.entete)).then(() => {
+        throw new Error('quotaNotExercised');
+      })]));
+      const confirmation = requete('/v1/config', { sonde: true });
+      const statut = await surveiller(confirmation.entete);
+      if (statut !== 429) continue;
+      if (erreur) throw erreur;
+      mesures.confirmationStatus = statut;
+      mesures.confirmationRequest = mesures.requests;
+      mesures.confirmedImmediatelyBeforeCrud = true;
+      // Aucun await entre ce 429 frais et le premier POST. Les autres GET
+      // restent en vol ; seul finally les annule, après les appels métier.
+      const projet = (await surveiller(requete('/v1/vie/projects', { methode: 'POST',
+        corps: { name: 'Essai installation Windows' }, metier: 'project' }).fin))?.project;
+      verifier(typeof projet?.id === 'string' && projet.id.length > 0, 'managementProjectInvalid');
+      const contenu = 'Note créée dans le profil d’essai. Trente-sept pages sont prêtes.';
+      const note = (await surveiller(requete('/v1/vie/notes', { methode: 'POST',
+        corps: { title: 'Note de contrôle', content: contenu, projectId: projet.id }, metier: 'note' }).fin))?.note;
+      verifier(note?.content === contenu && note.projectId === projet.id, 'noteSaveFailed');
+      await surveiller(requete('/v1/vie/finances/overview', { metier: 'finances' }).fin);
+      if (erreur) throw erreur;
+      resultat = { projet, note, contenu };
+      break;
+    }
+    verifier(resultat, 'quotaRefilledBeforeCrud');
+  } catch (e) {
+    const permis = ['quotaNotExercised', 'quotaRefilledBeforeCrud', 'managementProjectInvalid', 'noteSaveFailed'];
+    echec = erreur || new Error(permis.includes(e?.message) ? e.message : 'managementQuotaFailed');
+  } finally {
+    nettoyage = true;
+    for (const r of requetes) if (r.etat === 'pending') r.abandonner();
+    await Promise.allSettled(requetes.map(r => r.fin));
+  }
+  const sondes = requetes.filter(r => r.sonde);
+  const quota = { ...mesures, completed: sondes.filter(r => r.etat === 'completed').length,
+    aborted: sondes.filter(r => r.etat === 'aborted').length, failed: sondes.filter(r => r.etat === 'failed').length,
+    cleanupCompleted: requetes.every(r => r.etat !== 'pending') };
+  if (echec || erreur) { const e = echec || erreur; e.quota = quota; throw e; }
+  verifier(preuveQuotaValide(quota), 'quotaEvidenceInvalid');
+  return { ...resultat, quota };
+}
+
 export function rapportValide(rapport) {
   return rapport?.installerExecuted === true
     && CONTROLES.every(c => rapport.checks?.[c] === true)
+    && preuveQuotaValide(rapport.managementQuota)
     && ['fresh', 'legacy'].includes(rapport.scenario)
     && (rapport.scenario !== 'legacy' || (
       CONTROLES_LEGACY.every(c => rapport.checks?.[c] === true)
@@ -1753,30 +1874,11 @@ $apps = @(Get-Process -Name 'diapason-desktop','Diapason' -ErrorAction SilentlyC
     await capture(cdp, path.join(sortie, '02-discussion-reelle.png'));
     noter('saveSyntheticNote');
     noter('managementAfterQuota');
-    const quotas = await Promise.allSettled(Array.from({ length: 16 }, async () => {
-      const res = await fetch(base + '/v1/config', { headers: { Authorization: `Bearer ${cle}` },
-        signal: AbortSignal.timeout(10000) });
-      await res.body?.cancel();
-      return res.status;
-    }));
-    verifier(quotas.every(r => r.status === 'fulfilled'
-      && ((r.value >= 200 && r.value < 300) || r.value === 429)), 'quotaProbeUnexpectedStatus');
-    const refusQuota = quotas.filter(r => r.status === 'fulfilled' && r.value === 429).length;
-    verifier(refusQuota > 0, 'quotaNotExercised');
-    // Les premières réponses peuvent dater de plusieurs secondes : confirmer
-    // le refus juste avant le POST, après la fin de toute la rafale.
-    const encoreLimite = await fetch(base + '/v1/config', { headers: { Authorization: `Bearer ${cle}` },
-      signal: AbortSignal.timeout(10000) });
-    await encoreLimite.body?.cancel();
-    verifier(encoreLimite.status === 429, 'quotaRefilledBeforeCrud');
-    rapport.managementQuota = { requests: 17, throttled: refusQuota + 1, confirmedImmediatelyBeforeCrud: true };
-    const projet = (await api('/v1/vie/projects', 'POST', { name: 'Essai installation Windows' })).project;
-    const contenu = 'Note créée dans le profil d’essai. Trente-sept pages sont prêtes.';
-    const note = (await api('/v1/vie/notes', 'POST', {
-      title: 'Note de contrôle', content: contenu, projectId: projet.id,
-    })).note;
-    verifier(note.content === contenu, 'noteSaveFailed');
-    await api('/v1/vie/finances/overview');
+    let gestion;
+    try { gestion = await exercerGestionSousQuota({ base, cle }); }
+    catch (e) { if (e.quota) rapport.managementQuota = e.quota; throw e; }
+    const { projet, note, contenu, quota } = gestion;
+    rapport.managementQuota = quota;
     rapport.checks.managementCrudAfterQuota = true;
     noter('narrationAndWordTimings');
     const parole = await api('/v1/speech/narrate', 'POST', {
