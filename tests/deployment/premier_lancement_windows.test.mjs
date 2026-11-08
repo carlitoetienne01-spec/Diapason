@@ -355,3 +355,49 @@ test('un arrêt de fenêtre non confirmé ne libère pas le port du stub', async
   assert.equal(arrets, 2, 'un second essai de fermeture de la seule fenêtre possédée');
   assert(await stub.verifierVivant(), 'port encore protégé tant que la fenêtre peut repartir');
 });
+
+test('le vrai arrêt interne réessaie les services sans oublier l’enfant ni fermer le stub', async () => {
+  const texte = fs.readFileSync(new URL('../../scripts/tester_installation_windows.mjs', import.meta.url), 'utf8');
+  const debut = texte.indexOf('  async function arreter({ garderStub = false } = {}) {');
+  const fin = texte.indexOf('  async function preparerEnvironnement()', debut);
+  assert(debut > 0 && fin > debut, 'extraire le corps interne exact, pas un double de son état');
+  const fonctionExacte = texte.slice(debut, fin);
+  let ferme = false, controlesArret = 0;
+  const enfantInitial = { exitCode: 0, signalCode: null };
+  const stub = {
+    verifierVivant: async () => !ferme,
+    mesures: () => ({ appHealthRequests: 1 }),
+    fermer: async () => { ferme = true; },
+  };
+  // Aucun processus/socket : fenêtre déjà sortie, service QA encore vivant.
+  const fabrique = new Function('dep', `
+    let enfant = dep.enfantInitial;
+    let cdp = { invoquer: async () => {}, fermer: () => {} };
+    const ollamaExistant = null;
+    const { attendre, path } = dep;
+    const portOccupe = async () => true;
+    const inferenceOriginalePreservee = async () => false;
+    const verifier = (ok, code) => { if (!ok) throw new Error(code); };
+    const executer = async () => { throw new Error('aucun processus autorisé'); };
+    ${fonctionExacte}
+    return { arreter, etat: () => ({ enfant, cdp }) };
+  `);
+  const controle = fabrique({ path, enfantInitial, attendre: async (action, delai, code) => {
+    controlesArret++;
+    assert.equal(delai, 30000);
+    assert.equal(code, 'testProcessesNotStopped');
+    assert.equal(await action(), false, 'le service QA empêche la confirmation');
+    throw new Error(code);
+  } });
+  const versionLegacy = '1.0.5-beta.20261108.33';
+  await assert.rejects(verifierBlocageLegacy({
+    version: versionLegacy, empreinte: () => 'identique', creerStub: async () => stub,
+    lancer: async () => etatRefuse(),
+    lireLog: () => 'DIAPASON_WINDOWS_BACKEND_MISMATCH expectedVersion=' + versionLegacy,
+    arreter: s => controle.arreter({ garderStub: s }),
+  }), erreur => erreur.message === 'testProcessesNotStopped');
+  assert.equal(controlesArret, 2, 'le second arrêt doit refaire la confirmation des services');
+  assert.equal(controle.etat().enfant, enfantInitial, 'ne pas oublier l’enfant avant confirmation complète');
+  assert.equal(controle.etat().cdp, null, 'la fenêtre a été fermée');
+  assert.equal(ferme, false, 'le port du stub reste protégé après les deux échecs');
+});

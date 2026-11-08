@@ -937,10 +937,10 @@ export async function premierLancement(options) {
       await attendre(() => enfant.exitCode !== null || enfant.signalCode !== null,
         10000, 'testApplicationStillRunning', 100);
     }
-    enfant = null;
     await attendre(async () => (garderStub ? await garderStub.verifierVivant() : !(await portOccupe(8000))) && (ollamaExistant
       ? await inferenceOriginalePreservee() : !(await portOccupe(11434))),
       30000, 'testProcessesNotStopped');
+    enfant = null;
   }
   async function preparerEnvironnement() {
     port = await portLibre();

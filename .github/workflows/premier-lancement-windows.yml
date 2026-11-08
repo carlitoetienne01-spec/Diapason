@@ -37,8 +37,8 @@ jobs:
       INSTALLATION_SHA256: ${{ inputs.installer_sha256 }}
       INSTALLATION_SCENARIO: ${{ inputs.scenario }}
       BANC_COMMIT: ${{ github.sha }}
-      BANC_SCRIPT_SHA256: 8c78ca329319fea4c6d1f38f8c6679bf97ca9a77c99cbaaf2b31f388b6aef41a
-      BANC_TEST_SHA256: 9bbe8fd52ec8d1a68fae51c7cd04b41740d471d6e962758a9af742c832ef83f5
+      BANC_SCRIPT_SHA256: 230e962ced1baf55a2380daaacb0d077cc2e844840b6e78731c7b5d917c51acb
+      BANC_TEST_SHA256: 25645cdb2268399215b5e71f9adaa4c60f83bcbaf4434cb9c9f8d612e68ba2db
 
     steps:
       - uses: actions/setup-node@v6
