@@ -19,6 +19,7 @@ const ISSUES = new Set(['notRequested', 'http', 'timeout', 'connectionRefused',
   'networkError', 'redirectRefused', 'ownerChanged', 'bodyTooLarge', 'invalidTarget']);
 const CODES = new Set(['unsupportedPlatform', 'nativeUnavailable', 'ownerNotAttributed',
   'healthUnrecognized', 'keyUnavailable', 'ownerChanged', 'reportWriteFailed', 'invalidArguments']);
+const MARQUEURS = new Set(['absent', 'genericManaged', 'versioned', 'other', 'unreadable']);
 const ETAPES_NATIVES = new Set(['initialization', 'registry', 'applications', 'listener', 'backend', 'attestation']);
 const ISSUES_NATIVES = new Set(['completed', 'commandFailed', 'launchFailed', 'timeout', 'invalidOutput']);
 const ETAPES_ATTRIBUTION = new Set(['rootUnavailable', 'projectUnreadable', 'legacyProject', 'projectUnrecognized', 'venvUnavailable', 'baseUnverified', 'candidatePrepared']);
@@ -103,7 +104,7 @@ export function attribuerInventaire(n) {
     const c = candidats[0];
     n.backend = { version: versionPublique(c.publicVersions), sourceVersion: version(c.sourceVersion),
       rootKind: c.managedPath === true ? 'managedLocation' : 'otherLocation',
-      metadataOwned: true, crudExemption: c.crudExemption };
+      metadataOwned: true, crudExemption: c.crudExemption, markerState: MARQUEURS.has(c.markerState) ? c.markerState : 'unreadable' };
   }
   return n;
 }
@@ -157,6 +158,7 @@ export function nettoyerRapport(r = {}) {
       sameUser: typeof r.listener?.sameSid === 'boolean' ? r.listener.sameSid
         : typeof r.listener?.sameUser === 'boolean' ? r.listener.sameUser : null },
     backend: { version: version(r.backend?.version), sourceVersion: version(r.backend?.sourceVersion),
+      markerState: MARQUEURS.has(r.backend?.markerState) ? r.backend.markerState : 'unreadable',
       rootKind: ['managedLocation', 'otherLocation'].includes(r.backend?.rootKind) ? r.backend.rootKind : null,
       metadataOwned: r.backend?.metadataOwned === true,
       crudExemption: ['patternPresent', 'patternNotFound', 'unreadable'].includes(r.backend?.crudExemption)
@@ -517,8 +519,17 @@ if ($ids.Count -eq 1) {
           ($code -match 'if path\.startswith\(_VIE_SANS_LIMITE\) and not path\.startswith\(_VIE_SYNC_LIMITEE\):\s*return await call_next\(request\)')
         $exemption= if ($present) { 'patternPresent' } else { 'patternNotFound' }
       }
+      $etatMarqueur='absent'
+      if (Test-Path -LiteralPath (Join-Path $racine '.diapason-backend')) {
+        $texteMarqueur=Petit (Join-Path $racine '.diapason-backend') 256
+        $etatMarqueur= if ($null -eq $texteMarqueur) { 'unreadable' } elseif ($texteMarqueur.Trim() -ceq 'managed') {
+          'genericManaged'
+        } elseif ($texteMarqueur.Trim() -match '^[0-9]+\.[0-9]+\.[0-9]+(?:-beta\.[0-9]+(?:\.[0-9]+)*)?$') {
+          'versioned'
+        } else { 'other' }
+      }
       $resultat.candidates+=@{ root=$racine; metadataOwned=$true; cfgOwned=$true; cfg=$cfg;
-        sourceVersion=$versionSource; managedPath=($racine -ieq (Join-Path $local 'Diapason\src'));
+        sourceVersion=$versionSource; markerState=$etatMarqueur; managedPath=($racine -ieq (Join-Path $local 'Diapason\src'));
         resolvedHome=$baseDeclaree; baseVerified=$true; entryOwned=(ApplicationSure $entree); venvPythonOwned=(ApplicationSure $python);
         betaOwned=(ApplicationSure (Join-Path $racine 'deploy\windows\beta_backend.py'));
         publicVersions=(VersionsPubliques $racine); crudExemption=$exemption }

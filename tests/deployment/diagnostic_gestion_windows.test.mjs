@@ -166,7 +166,10 @@ test('§5 — spawn PowerShell reçoit seulement les modules système et aucune 
     assert(code.startsWith("\n$env:PSModulePath=Join-Path $PSHOME 'Modules'"));
     assert(code.includes("Petit (Join-Path $racine 'beta-build.json') 1048576"));
     assert(code.includes('snapshotBetaVersion=$meta.snapshot.betaVersion'));
-    assert(!code.includes('.diapason-backend')); assert(!code.includes('Possede $p.ExecutablePath'));
+    const lectureVersions = code.split('function VersionsPubliques(')[1]?.split('function MemeSid(')[0];
+    assert(lectureVersions, 'la collecte des versions publiques doit rester identifiable');
+    assert(!lectureVersions.includes('.diapason-backend'), 'le témoin de gestion ne doit jamais devenir une version');
+    assert(!code.includes('Possede $p.ExecutablePath'));
   } finally {
     for (const [nom, ancien] of Object.entries(anciens)) {
       if (ancien === undefined) delete process.env[nom]; else process.env[nom] = ancien;
@@ -455,4 +458,17 @@ test('§5 — le workflow ne reçoit que deux fichiers épinglés et ne publie q
   assert(yml.includes("node-version: '22'")); assert(yml.includes('DIAGNOSTIC_COMMIT: ${{ github.sha }}'));
   assert(yml.includes('/rapport.json')); assert(!/actions\/checkout|workflow_call|schedule:|contents: write/.test(yml));
   assert(!/taskkill|Stop-Process|diapason serve|uv sync|install-desktop|npm install|uninstall\.exe/.test(yml));
+});
+
+test('§5 — le témoin de gestion est classé sans publier son texte ni le confondre avec une version', () => {
+  for (const etat of ['absent', 'genericManaged', 'versioned', 'other', 'unreadable']) {
+    const brut = redirecteur(); brut.candidates[0].markerState = etat;
+    const r = nettoyerRapport(attribuerInventaire(brut));
+    assert.equal(r.backend.markerState, etat);
+    assert.equal(r.backend.version, '1.0.5-beta.20261108.31');
+  }
+  const brut = redirecteur(); brut.candidates[0].markerState = PRIVE + CLE;
+  const r = nettoyerRapport(attribuerInventaire(brut));
+  assert.equal(r.backend.markerState, 'unreadable');
+  assert(!JSON.stringify(r).includes(PRIVE)); assert(!JSON.stringify(r).includes(CLE));
 });
