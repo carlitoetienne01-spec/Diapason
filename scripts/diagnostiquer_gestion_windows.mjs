@@ -139,6 +139,10 @@ export function nettoyerRapport(r = {}) {
       processKind: ['python', 'diapasonLauncher', 'other'].includes(r.attribution?.processKind) ? r.attribution.processKind : null,
       candidateStages: Array.isArray(r.attribution?.candidateStages)
         ? r.attribution.candidateStages.slice(0, 2).map(s => ETAPES_ATTRIBUTION.has(s) ? s : 'rootUnavailable') : [],
+      projectFiles: Array.isArray(r.attribution?.projectFiles) ? r.attribution.projectFiles.slice(0, 2).map(p => ({
+        exists: p?.exists === true, withinLimit: p?.withinLimit === true,
+        ownerClass: ['currentSid', 'administrators', 'system', 'other'].includes(p?.ownerClass) ? p.ownerClass : 'unknown',
+      })) : [],
       matched: r.attribution?.matched === true,
     },
     installations: liste.map(i => ({ productVersion: version(i?.productVersion),
@@ -227,7 +231,7 @@ export async function diagnostiquer({ platform = process.platform, collectNative
   try { n = await collectNative(); r.native = { outcome: 'completed' }; }
   catch (e) { r.codes.push('nativeUnavailable'); r.native = nettoyerNatif(e?.nativeDiagnostic); }
   r.installations = n?.installations; r.listener = { ...n?.listener, ownership: 'unknown' }; r.backend = n?.backend;
-  r.attribution = { processKind: n?.listener?.processKind, candidateStages: n?.candidateStages,
+  r.attribution = { processKind: n?.listener?.processKind, candidateStages: n?.candidateStages, projectFiles: n?.projectFiles,
     matched: n?.listener?.knownEntryPoint === true };
   if (n?.listener?.absent === true) r.listener.ownership = 'absent';
   try { r.health = await probe({ url: ORIGINE + '/health' }); } catch { r.health = { outcome: 'networkError' }; }
@@ -384,6 +388,17 @@ function ExecutableInstalle([string]$dir) {
     return [IO.Path]::Combine($dir,'Diapason.exe')
   } catch { return $null }
 }
+function EtatProjet([string]$p) {
+  $r=@{ exists=[IO.File]::Exists($p); withinLimit=$false; ownerClass='unknown' }
+  if ($r.exists) {
+    try {
+      $r.withinLimit=(Get-Item -LiteralPath $p -Force).Length -le 65536
+      $o=(Get-Acl -LiteralPath $p).GetOwner([Security.Principal.SecurityIdentifier]).Value
+      $r.ownerClass=if ($o -eq $sid) { 'currentSid' } elseif ($o -eq 'S-1-5-32-544') { 'administrators' } elseif ($o -eq 'S-1-5-18') { 'system' } else { 'other' }
+    } catch {}
+  }
+  return $r
+}
 function Processus([int]$numero) {
   return CimCmdlets\Get-CimInstance Win32_Process -Filter ('ProcessId='+$numero) -OperationTimeoutSec 2
 }
@@ -432,7 +447,7 @@ foreach ($exe in @($executables | Select-Object -Unique | Select-Object -First 8
 $etape='listener'
 $ecoutes=@(NetTCPIP\Get-NetTCPConnection -State Listen -LocalPort 8000 -ErrorAction SilentlyContinue | Where-Object { $_.LocalAddress -in @('127.0.0.1','0.0.0.0') })
 $ids=@($ecoutes | Select-Object -ExpandProperty OwningProcess -Unique)
-$resultat=@{ installations=@($installations | Select-Object -First 4); listener=@{ absent=($ids.Count -eq 0) }; candidates=@(); candidateStages=@(); private=@{} }
+$resultat=@{ installations=@($installations | Select-Object -First 4); listener=@{ absent=($ids.Count -eq 0) }; candidates=@(); candidateStages=@(); projectFiles=@(); private=@{} }
 if ($ids.Count -eq 1) {
   $etape='backend'
   $p=Processus ([int]$ids[0]); $propre=$p -and (MemeSid $p)
@@ -450,6 +465,7 @@ if ($ids.Count -eq 1) {
     $resultat.private=@{ identity=$p.CreationDate.ToUniversalTime().Ticks.ToString(); keyPath=$cle; keyOwned=(Possede $cle) }
     foreach ($racine in @($racines | Select-Object -Unique | Select-Object -First 2)) {
       if (-not (Possede $racine)) { $resultat.candidateStages+='rootUnavailable'; continue }
+      $resultat.projectFiles+=EtatProjet (Join-Path $racine 'pyproject.toml')
       $projet=Petit (Join-Path $racine 'pyproject.toml') 65536
       if (-not $projet) { $resultat.candidateStages+='projectUnreadable'; continue }
       if ($projet -match '(?im)^name\s*=\s*["''](?:OpenJarvis|Jarvis)["'']\s*$') { $resultat.candidateStages+='legacyProject'; continue }

@@ -406,8 +406,10 @@ test('§5 — un échec PowerShell garde seulement son étape et sa ligne statiq
 });
 
 test('§5 — le diagnostic natif refuse une étape ou une ligne reçue en texte privé', () => {
-  const r = nettoyerRapport({ native: { outcome: CLE, stage: PRIVE, line: 1001, secret: CLE } });
+  const r = nettoyerRapport({ native: { outcome: CLE, stage: PRIVE, line: 1001, secret: CLE },
+    attribution: { processKind: PRIVE, candidateStages: [CLE], projectFiles: [{ ownerClass: PRIVE, exists: true, path: CLE }] } });
   assert.deepEqual(r.native, { outcome: 'invalidOutput', stage: null, line: null });
+  assert.deepEqual(r.attribution.projectFiles, [{ ownerClass: 'unknown', exists: true, withinLimit: false }]);
   assert(!JSON.stringify(r).includes(CLE)); assert(!JSON.stringify(r).includes(PRIVE));
 });
 
