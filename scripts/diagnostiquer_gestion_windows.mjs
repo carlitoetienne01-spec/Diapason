@@ -11,12 +11,22 @@ export const SONDES = Object.freeze({
   notes: '/v1/vie/notes/resumes', projects: '/v1/vie/projects',
   finances: '/v1/vie/finances/overview', config: '/v1/config',
 });
-const URLS = new Set(['/health', ...Object.values(SONDES)].map(p => ORIGINE + p));
+export const SONDES_HISTORIQUES = Object.freeze(Object.fromEntries(Object.entries(SONDES)
+  .map(([nom, route]) => [nom, route.replace('/v1/vie/', '/v1/succes/')])));
+const URLS = new Set(['/health', ...Object.values(SONDES), ...Object.values(SONDES_HISTORIQUES)].map(p => ORIGINE + p));
 export const DELAI_HTTP_MS = 6000;
 const ISSUES = new Set(['notRequested', 'http', 'timeout', 'connectionRefused',
   'networkError', 'redirectRefused', 'ownerChanged', 'bodyTooLarge', 'invalidTarget']);
 const CODES = new Set(['unsupportedPlatform', 'nativeUnavailable', 'ownerNotAttributed',
   'healthUnrecognized', 'keyUnavailable', 'ownerChanged', 'reportWriteFailed', 'invalidArguments']);
+const ETAPES_NATIVES = new Set(['initialization', 'registry', 'applications', 'listener', 'backend', 'attestation']);
+const ISSUES_NATIVES = new Set(['completed', 'commandFailed', 'launchFailed', 'timeout', 'invalidOutput']);
+const ETAPES_ATTRIBUTION = new Set(['rootUnavailable', 'projectUnreadable', 'legacyProject', 'projectUnrecognized', 'venvUnavailable', 'baseUnverified', 'candidatePrepared']);
+const nettoyerNatif = n => ({
+  outcome: ISSUES_NATIVES.has(n?.outcome) ? n.outcome : 'invalidOutput',
+  stage: ETAPES_NATIVES.has(n?.stage) ? n.stage : null,
+  line: Number.isInteger(n?.line) && n.line > 0 && n.line <= 1000 ? n.line : null,
+});
 const INCONNU = () => ({ status: null, outcome: 'notRequested', authenticated: false });
 const version = v => typeof v === 'string' && v.length <= 80
   && /^\d{1,4}\.\d{1,4}\.\d{1,4}(?:\.\d{1,9}|-beta\.\d{8}(?:\.\d{1,9})?)?$/.test(v) ? v : null;
@@ -91,7 +101,9 @@ export function attribuerInventaire(n) {
   n.backend = {};
   if (candidats.length === 1) {
     const c = candidats[0];
-    n.backend = { version: versionPublique(c.publicVersions), metadataOwned: true, crudExemption: c.crudExemption };
+    n.backend = { version: versionPublique(c.publicVersions), sourceVersion: version(c.sourceVersion),
+      rootKind: c.managedPath === true ? 'managedLocation' : 'otherLocation',
+      metadataOwned: true, crudExemption: c.crudExemption };
   }
   return n;
 }
@@ -125,14 +137,28 @@ export function nettoyerRapport(r = {}) {
     schemaVersion: 1, kind: 'windowsGestionReadOnly',
     platform: ['win32', 'windows'].includes(r.platform) ? 'windows' : 'unsupported',
     status: ['completed', 'partial', 'refused'].includes(r.status) ? r.status : 'refused',
+    routeFamily: r.routeFamily === 'succes' ? 'succes' : 'vie',
     codes: Array.isArray(r.codes) ? [...new Set(r.codes.filter(c => CODES.has(c)))].slice(0, 8) : [],
+    native: nettoyerNatif(r.native),
+    attribution: {
+      processKind: ['python', 'diapasonLauncher', 'other'].includes(r.attribution?.processKind) ? r.attribution.processKind : null,
+      candidateStages: Array.isArray(r.attribution?.candidateStages)
+        ? r.attribution.candidateStages.slice(0, 2).map(s => ETAPES_ATTRIBUTION.has(s) ? s : 'rootUnavailable') : [],
+      projectFiles: Array.isArray(r.attribution?.projectFiles) ? r.attribution.projectFiles.slice(0, 2).map(p => ({
+        exists: p?.exists === true, withinLimit: p?.withinLimit === true,
+        ownerClass: ['currentSid', 'administrators', 'system', 'other'].includes(p?.ownerClass) ? p.ownerClass : 'unknown',
+      })) : [],
+      matched: r.attribution?.matched === true,
+    },
     installations: liste.map(i => ({ productVersion: version(i?.productVersion),
       fileVersion: version(i?.fileVersion), running: i?.running === true })),
     listener: { port: 8000, pid: pidValide(r.listener?.pid) ? r.listener.pid : null,
       ownership: ['diapason', 'unknown', 'absent'].includes(r.listener?.ownership) ? r.listener.ownership : 'unknown',
       sameUser: typeof r.listener?.sameSid === 'boolean' ? r.listener.sameSid
         : typeof r.listener?.sameUser === 'boolean' ? r.listener.sameUser : null },
-    backend: { version: version(r.backend?.version), metadataOwned: r.backend?.metadataOwned === true,
+    backend: { version: version(r.backend?.version), sourceVersion: version(r.backend?.sourceVersion),
+      rootKind: ['managedLocation', 'otherLocation'].includes(r.backend?.rootKind) ? r.backend.rootKind : null,
+      metadataOwned: r.backend?.metadataOwned === true,
       crudExemption: ['patternPresent', 'patternNotFound', 'unreadable'].includes(r.backend?.crudExemption)
         ? r.backend.crudExemption : 'unreadable' },
     credential: ['used', 'unavailable', 'refused', 'notSent'].includes(r.credential) ? r.credential : 'refused',
@@ -202,19 +228,33 @@ export function creerSondeHttp({ connecter = net.createConnection, demander = ht
 }
 
 export async function diagnostiquer({ platform = process.platform, collectNative = collecterNatif,
-  attestNative = attesterNatif, readKey = lireCle, probe = creerSondeHttp() } = {}) {
-  const r = { platform, status: 'partial', codes: [], credential: 'notSent',
+  attestNative = attesterNatif, readKey = lireCle, probe = creerSondeHttp(), legacy = false } = {}) {
+  const sondes = legacy === true ? SONDES_HISTORIQUES : SONDES;
+  const r = { platform, status: 'partial', codes: [], credential: 'notSent', routeFamily: legacy === true ? 'succes' : 'vie',
     health: INCONNU(), probes: Object.fromEntries(Object.keys(SONDES).map(n => [n, INCONNU()])) };
   if (platform !== 'win32') {
     r.status = 'refused'; r.codes.push('unsupportedPlatform'); return nettoyerRapport(r);
   }
   let n;
-  try { n = await collectNative(); } catch { r.codes.push('nativeUnavailable'); }
+  try { n = await collectNative(); r.native = { outcome: 'completed' }; }
+  catch (e) { r.codes.push('nativeUnavailable'); r.native = nettoyerNatif(e?.nativeDiagnostic); }
   r.installations = n?.installations; r.listener = { ...n?.listener, ownership: 'unknown' }; r.backend = n?.backend;
+  r.attribution = { processKind: n?.listener?.processKind, candidateStages: n?.candidateStages, projectFiles: n?.projectFiles,
+    matched: n?.listener?.knownEntryPoint === true };
   if (n?.listener?.absent === true) r.listener.ownership = 'absent';
   try { r.health = await probe({ url: ORIGINE + '/health' }); } catch { r.health = { outcome: 'networkError' }; }
   if (!proprietaireAttribuable(n)) {
-    r.credential = 'refused'; r.codes.push('ownerNotAttributed'); return nettoyerRapport(r);
+    r.credential = 'refused'; r.codes.push('ownerNotAttributed');
+    // Les statuts publics des quatre GET autorisés restent observables sans
+    // lire ni transmettre une clé. Leur contenu n'est jamais conservé.
+    if (n?.listener?.sameSid === true && r.health.outcome === 'http'
+      && ['compatible', 'windowsBetaGestion', 'engineUnhealthy'].includes(r.health.signature)) {
+      for (const [nom, route] of Object.entries(sondes)) {
+        try { r.probes[nom] = await probe({ url: ORIGINE + route, key: '' }); }
+        catch { r.probes[nom] = { outcome: 'networkError' }; }
+      }
+    }
+    return nettoyerRapport(r);
   }
   r.listener.ownership = 'diapason';
   if (r.health.outcome !== 'http' || !['compatible', 'windowsBetaGestion', 'engineUnhealthy'].includes(r.health.signature)) {
@@ -224,7 +264,7 @@ export async function diagnostiquer({ platform = process.platform, collectNative
   try { const lue = await readKey(n); if (cleValide(lue)) key = lue; } catch { /* Refus fermé. */ }
   r.credential = key ? 'notSent' : 'unavailable';
   if (!key) r.codes.push('keyUnavailable');
-  for (const [nom, route] of Object.entries(SONDES)) {
+  for (const [nom, route] of Object.entries(sondes)) {
     try {
       r.probes[nom] = await probe({ url: ORIGINE + route, key,
         attestSocket: port => attesterBorne(n, port, attestNative) });
@@ -262,6 +302,8 @@ const POWERSHELL = String.raw`
 $env:PSModulePath=Join-Path $PSHOME 'Modules'
 $ErrorActionPreference='Stop'
 $ProgressPreference='SilentlyContinue'
+$etape='initialization'
+try {
 [Console]::OutputEncoding=New-Object System.Text.UTF8Encoding($false)
 $sid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 $profil=[Environment]::GetFolderPath('UserProfile')
@@ -279,8 +321,32 @@ function Possede([string]$p) {
     return ((Get-Acl -LiteralPath $p).GetOwner([Security.Principal.SecurityIdentifier]).Value -eq $sid)
   } catch { return $false }
 }
+function ApplicationSure([string]$p) {
+  # Les fichiers extraits par le runner élevé appartiennent aux Administrateurs.
+  # Accepter ce propriétaire exige aussi la chaîne des ACL, jamais le nom seul.
+  try {
+    $p=[IO.Path]::GetFullPath($p)
+    if (-not $p.StartsWith($profil+'\',[StringComparison]::OrdinalIgnoreCase)) { return $false }
+    $courant=$p; $fiables=@($sid,'S-1-5-32-544','S-1-5-18')
+    while ($courant -and ($courant -ieq $profil -or $courant.StartsWith($profil+'\',[StringComparison]::OrdinalIgnoreCase))) {
+      $i=Get-Item -LiteralPath $courant -Force
+      if ($i.Attributes -band [IO.FileAttributes]::ReparsePoint) { return $false }
+      $acl=Get-Acl -LiteralPath $courant
+      if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -notin $fiables) { return $false }
+      foreach ($regle in $acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier])) {
+        if ($regle.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow -or
+          ($regle.PropagationFlags -band [Security.AccessControl.PropagationFlags]::InheritOnly)) { continue }
+        # WriteData/AppendData/WriteEA/DeleteChild/WriteAttributes/Delete/WriteDac/WriteOwner.
+        if (([int64]$regle.FileSystemRights -band 852310) -ne 0 -and $regle.IdentityReference.Value -notin $fiables) { return $false }
+      }
+      if ($courant -ieq $profil) { return $true }
+      $courant=[IO.Path]::GetDirectoryName($courant)
+    }
+    return $false
+  } catch { return $false }
+}
 function Petit([string]$p,[int]$max) {
-  if (-not (Possede $p)) { return $null }
+  if (-not (ApplicationSure $p)) { return $null }
   if ((Get-Item -LiteralPath $p -Force).PSIsContainer) { return $null }
   $s=[IO.File]::OpenRead($p)
   try {
@@ -345,10 +411,31 @@ function MemeSid($p) {
   $o=CimCmdlets\Invoke-CimMethod -InputObject $p -MethodName GetOwnerSid -OperationTimeoutSec 2
   return ($o.ReturnValue -eq 0 -and $o.Sid -eq $sid)
 }
+function ExecutableInstalle([string]$dir) {
+  # Une ancienne valeur InstallLocation invalide ne doit pas annuler l'inventaire.
+  try {
+    $dir=$dir.Trim()
+    if ($dir.Length -ge 2 -and $dir[0] -eq '"' -and $dir[$dir.Length-1] -eq '"') { $dir=$dir.Substring(1,$dir.Length-2) }
+    if ($dir -notmatch '^[A-Za-z]:\\' -or $dir -match '[\x00-\x1f"<>|?*]' -or $dir.Substring(2).Contains(':')) { return $null }
+    return [IO.Path]::Combine($dir,'Diapason.exe')
+  } catch { return $null }
+}
+function EtatProjet([string]$p) {
+  $r=@{ exists=[IO.File]::Exists($p); withinLimit=$false; ownerClass='unknown' }
+  if ($r.exists) {
+    try {
+      $r.withinLimit=(Get-Item -LiteralPath $p -Force).Length -le 65536
+      $o=(Get-Acl -LiteralPath $p).GetOwner([Security.Principal.SecurityIdentifier]).Value
+      $r.ownerClass=if ($o -eq $sid) { 'currentSid' } elseif ($o -eq 'S-1-5-32-544') { 'administrators' } elseif ($o -eq 'S-1-5-18') { 'system' } else { 'other' }
+    } catch {}
+  }
+  return $r
+}
 function Processus([int]$numero) {
   return CimCmdlets\Get-CimInstance Win32_Process -Filter ('ProcessId='+$numero) -OperationTimeoutSec 2
 }
 if ($env:DIAG_MODE -eq 'attest') {
+  $etape='attestation'
   $numero=[int]$env:DIAG_PID; $portClient=[int]$env:DIAG_CLIENT_PORT
   $p=Processus $numero
   $ok=$p -and (MemeSid $p) -and ($p.CreationDate.ToUniversalTime().Ticks.ToString() -eq $env:DIAG_IDENTITY)
@@ -361,6 +448,7 @@ $racines=@((Join-Path $local 'Diapason\src'))
 $memo=Petit (Join-Path $profil '.diapason\project_root') 4096
 if ($memo) { $racines+= $memo.Trim() }
 $installations=@(); $executables=@((Join-Path $local 'Programs\Diapason\Diapason.exe'),(Join-Path $local 'Diapason\Diapason.exe'))
+$etape='registry'
 $reg=[Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Software\Microsoft\Windows\CurrentVersion\Uninstall',$false)
 if ($reg) {
   try {
@@ -369,12 +457,14 @@ if ($reg) {
       try {
         if ($k -and ([string]$k.GetValue('DisplayName')) -match '^Diapason(?:\s|$)') {
           $dir=[string]$k.GetValue('InstallLocation')
-          if ($dir) { $executables+=Join-Path $dir 'Diapason.exe' }
+          $exeInstalle=ExecutableInstalle $dir
+          if ($exeInstalle) { $executables+=$exeInstalle }
         }
       } finally { if ($k) { $k.Dispose() } }
     }
   } finally { $reg.Dispose() }
 }
+$etape='applications'
 $apps=@(CimCmdlets\Get-CimInstance Win32_Process -Filter "Name='Diapason.exe' OR Name='diapason-desktop.exe'" -OperationTimeoutSec 2)
 $executables=@($apps | Select-Object -ExpandProperty ExecutablePath)+$executables
 foreach ($exe in @($executables | Select-Object -Unique | Select-Object -First 8)) {
@@ -386,10 +476,12 @@ foreach ($exe in @($executables | Select-Object -Unique | Select-Object -First 8
     }
   }
 }
+$etape='listener'
 $ecoutes=@(NetTCPIP\Get-NetTCPConnection -State Listen -LocalPort 8000 -ErrorAction SilentlyContinue | Where-Object { $_.LocalAddress -in @('127.0.0.1','0.0.0.0') })
 $ids=@($ecoutes | Select-Object -ExpandProperty OwningProcess -Unique)
-$resultat=@{ installations=@($installations | Select-Object -First 4); listener=@{ absent=($ids.Count -eq 0) }; candidates=@(); private=@{} }
+$resultat=@{ installations=@($installations | Select-Object -First 4); listener=@{ absent=($ids.Count -eq 0) }; candidates=@(); candidateStages=@(); projectFiles=@(); private=@{} }
 if ($ids.Count -eq 1) {
+  $etape='backend'
   $p=Processus ([int]$ids[0]); $propre=$p -and (MemeSid $p)
   $genre='other'
   if ($p) {
@@ -404,15 +496,21 @@ if ($ids.Count -eq 1) {
     $cle=Join-Path $profil '.diapason\auth\local_api_key'
     $resultat.private=@{ identity=$p.CreationDate.ToUniversalTime().Ticks.ToString(); keyPath=$cle; keyOwned=(Possede $cle) }
     foreach ($racine in @($racines | Select-Object -Unique | Select-Object -First 2)) {
-      if (-not (Possede $racine)) { continue }
+      if (-not (Possede $racine)) { $resultat.candidateStages+='rootUnavailable'; continue }
+      $resultat.projectFiles+=EtatProjet (Join-Path $racine 'pyproject.toml')
       $projet=Petit (Join-Path $racine 'pyproject.toml') 65536
-      if (-not $projet -or $projet -notmatch '(?im)^name\s*=\s*["'']Diapason["'']\s*$') { continue }
+      if (-not $projet) { $resultat.candidateStages+='projectUnreadable'; continue }
+      if ($projet -match '(?im)^name\s*=\s*["''](?:OpenJarvis|Jarvis)["'']\s*$') { $resultat.candidateStages+='legacyProject'; continue }
+      if ($projet -notmatch '(?im)^name\s*=\s*["'']Diapason["'']\s*$') { $resultat.candidateStages+='projectUnrecognized'; continue }
+      $versionSource=$null
+      if ($projet -match '(?im)^version\s*=\s*["'']([0-9A-Za-z.\-]+)["'']\s*$') { $versionSource=$Matches[1] }
       $entree=Join-Path $racine '.venv\Scripts\diapason.exe'
       $python=Join-Path $racine '.venv\Scripts\python.exe'
       $cfg=Petit (Join-Path $racine '.venv\pyvenv.cfg') 8192
-      if (-not $cfg) { continue }
+      if (-not $cfg) { $resultat.candidateStages+='venvUnavailable'; continue }
       $baseDeclaree=BaseVenv $cfg
-      if (-not $baseDeclaree) { continue }
+      if (-not $baseDeclaree) { $resultat.candidateStages+='baseUnverified'; continue }
+      $resultat.candidateStages+='candidatePrepared'
       $code=Petit (Join-Path $racine 'src\diapason\server\auth_middleware.py') 131072
       $exemption='unreadable'
       if ($code) {
@@ -421,13 +519,17 @@ if ($ids.Count -eq 1) {
         $exemption= if ($present) { 'patternPresent' } else { 'patternNotFound' }
       }
       $resultat.candidates+=@{ root=$racine; metadataOwned=$true; cfgOwned=$true; cfg=$cfg;
-        resolvedHome=$baseDeclaree; baseVerified=$true; entryOwned=(Possede $entree); venvPythonOwned=(Possede $python);
-        betaOwned=(Possede (Join-Path $racine 'deploy\windows\beta_backend.py'));
+        sourceVersion=$versionSource; managedPath=($racine -ieq (Join-Path $local 'Diapason\src'));
+        resolvedHome=$baseDeclaree; baseVerified=$true; entryOwned=(ApplicationSure $entree); venvPythonOwned=(ApplicationSure $python);
+        betaOwned=(ApplicationSure (Join-Path $racine 'deploy\windows\beta_backend.py'));
         publicVersions=(VersionsPubliques $racine); crudExemption=$exemption }
     }
   }
 }
 $resultat | ConvertTo-Json -Depth 5 -Compress
+} catch {
+  @{ diagnosticFailure=$true; stage=$etape; line=$_.InvocationInfo.ScriptLineNumber } | ConvertTo-Json -Compress
+}
 `;
 
 async function sondeNative(mode, valeurs = {}, { platform = process.platform, lancer = spawn } = {}) {
@@ -437,27 +539,39 @@ async function sondeNative(mode, valeurs = {}, { platform = process.platform, la
   const executable = path.win32.join(windows, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
   return new Promise((resolve, reject) => {
     let fini = false, taille = 0; const blocs = [];
+    // Le script de vérification complet dépasse la ligne CreateProcessW de
+    // 32 767 caractères. Seul ce bootstrap fixe voyage dans la commande ;
+    // le script UTF-16 base64 reste dans le pipe privé, sans fichier temporaire.
+    const bootstrap = "[Console]::InputEncoding=[Text.Encoding]::ASCII; $s=[Console]::In.ReadToEnd(); & ([ScriptBlock]::Create([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String($s))))";
     const enfant = lancer(executable, ['-NoProfile', '-NonInteractive', '-EncodedCommand',
-      Buffer.from(POWERSHELL, 'utf16le').toString('base64')], { shell: false, windowsHide: true,
-      stdio: ['ignore', 'pipe', 'pipe'], env: { SystemRoot: windows, WINDIR: windows,
+      Buffer.from(bootstrap, 'utf16le').toString('base64')], { shell: false, windowsHide: true,
+      stdio: ['pipe', 'pipe', 'pipe'], env: { SystemRoot: windows, WINDIR: windows,
         PATH: path.win32.join(windows, 'System32'),
         PSModulePath: path.win32.join(windows, 'System32', 'WindowsPowerShell', 'v1.0', 'Modules'),
         DIAG_MODE: mode, ...valeurs } });
-    const finir = (valeur, erreur = false) => {
+    const finir = (valeur, erreur = false, detail = {}) => {
       if (fini) return; fini = true; clearTimeout(minuteur);
-      enfant.stdout?.destroy(); enfant.stderr?.destroy(); enfant.unref();
-      if (erreur) reject(new Error('nativeUnavailable')); else resolve(valeur);
+      enfant.stdin?.destroy(); enfant.stdout?.destroy(); enfant.stderr?.destroy(); enfant.unref();
+      if (erreur) {
+        const e = new Error('nativeUnavailable'); e.nativeDiagnostic = nettoyerNatif(detail); reject(e);
+      } else resolve(valeur);
     };
     // Aucun taskkill/Stop-Process : seul le pipe de notre sonde est abandonné.
-    const minuteur = setTimeout(() => finir(null, true), 6500);
+    const minuteur = setTimeout(() => finir(null, true, { outcome: 'timeout' }), 6500);
     enfant.stdout.on('data', b => { taille += b.length; if (taille > 32768) finir(null, true); else blocs.push(b); });
     enfant.stderr.on('data', () => {});
-    enfant.on('error', () => finir(null, true));
+    enfant.stdin.on('error', () => finir(null, true, { outcome: 'launchFailed' }));
+    enfant.on('error', () => finir(null, true, { outcome: 'launchFailed' }));
     enfant.on('close', code => {
-      if (code !== 0) return finir(null, true);
-      try { finir(JSON.parse(Buffer.concat(blocs).toString('utf8').replace(/^\uFEFF/, '').trim())); }
+      if (code !== 0) return finir(null, true, { outcome: 'commandFailed' });
+      try {
+        const r = JSON.parse(Buffer.concat(blocs).toString('utf8').replace(/^\uFEFF/, '').trim());
+        if (r?.diagnosticFailure === true) finir(null, true, { outcome: 'commandFailed', stage: r.stage, line: r.line });
+        else finir(r);
+      }
       catch { finir(null, true); }
     });
+    enfant.stdin.end(Buffer.from(POWERSHELL, 'utf16le').toString('base64'));
   });
 }
 
@@ -471,10 +585,11 @@ async function attesterNatif({ pid, identity, port }) {
 async function main() {
   let rapport;
   try {
-    if (process.argv.length !== 4 || process.argv[2] !== '--output' || !path.isAbsolute(process.argv[3])) {
+    if (![4, 5].includes(process.argv.length) || (process.argv.length === 5 && process.argv[4] !== '--legacy')
+      || process.argv[2] !== '--output' || !path.isAbsolute(process.argv[3])) {
       throw new Error('invalidArguments');
     }
-    rapport = await diagnostiquer();
+    rapport = await diagnostiquer({ legacy: process.argv[4] === '--legacy' });
     const texte = JSON.stringify(nettoyerRapport(rapport), null, 2) + '\n';
     if (Buffer.byteLength(texte) > 8192) throw new Error('reportWriteFailed');
     await fs.writeFile(process.argv[3], texte, { flag: 'wx', mode: 0o600 });
