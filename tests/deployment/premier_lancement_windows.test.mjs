@@ -21,6 +21,38 @@ import {
 const version = '1.0.5-beta.20261107.23';
 const sha = '8932e416a560c302e1a85c44b24d81598443daaf2151c6c8243c0f29c9c07687';
 
+test('gel38 — la casse du nom de distribution ne change pas le produit autorisé', async () => {
+  for (const nom of ['Diapason', 'diapason', 'DIAPASON', 'DiApAsOn']) {
+    const facts = faitsAncien(); facts.source.projectName = nom;
+    assert.equal(validerArretAncien(facts, accordAncien()), true, nom);
+    const faux = fauxArretNatif({ facts });
+    const r = await arreterAncienBackend(accordAncien(), { platform: 'win32', systeme: { SystemRoot: 'C:\\Windows' }, lancer: faux.lancer });
+    assert.equal(r.status, 'stopped'); assert.equal(faux.etat().permis, 1);
+  }
+});
+
+test('gel38 — le refus des métadonnées publie seulement sa cause fermée sans permis', async () => {
+  for (const [champ, valeur, attendu] of [
+    ['projectName', 'Privé-CANARI-38', 'projectNameNotDiapason'],
+    ['projectName', 'diapason\n', 'projectNameNotDiapason'],
+    ['projectName', 'diapason-autre', 'projectNameNotDiapason'],
+    ['sourceVersion', '1.0.5-beta.20261108.33', 'sourceVersionNotLegacy'],
+    ['markerState', 'genericManaged', 'markerNotAbsent'],
+    ['betaAbsent', false, 'betaMetadataPresent'],
+    ['gitAbsent', false, 'gitMetadataPresent'],
+  ]) {
+    const facts = faitsAncien(); facts.source[champ] = valeur;
+    const faux = fauxArretNatif({ facts });
+    const r = await arreterAncienBackend(accordAncien(), { platform: 'win32', systeme: { SystemRoot: 'C:\\Windows' }, lancer: faux.lancer });
+    assert.equal(r.code, 'oldBackendVersionRefused'); assert.equal(r.stage, 'attestation');
+    assert.equal(r.property, attendu); assert.equal(faux.etat().permis, 0);
+    assert(!JSON.stringify(r).includes('Privé-CANARI-38'));
+  }
+  const r = rapportArretAncien({ requested: true, status: 'refused', code: 'oldBackendVersionRefused',
+    refusalStage: 'attestation', refusalProperty: 'Privé-CANARI-38' });
+  assert.equal(r.property, null);
+});
+
 test('le diagnostic conserve la fin de pile sans publier de chemin ni jeton', () => {
   const pile = 'x'.repeat(1800) + '\nC:\\profil\\runtime\\serve.py\nBearer jeton-factice\nUnicodeDecodeError: cp1252';
   const nettoye = erreurDemarragePubliable(pile);
@@ -113,7 +145,7 @@ test('§100 — metadata, ACL, reparse, version récente ou projet non Diapason 
     const n = faitsAncien(); n.source[champ] = false;
     assert.throws(() => validerArretAncien(n, accordAncien()), /oldBackend(?:Source|Version)Refused/);
   }
-  for (const [champ, valeur] of [['projectName', 'autre'], ['projectName', 'diapason'], ['markerState', 'versioned'],
+  for (const [champ, valeur] of [['projectName', 'autre'], ['markerState', 'versioned'],
     ['sourceVersion', '1.0.5-beta.20261108.33'], ['root', 'C:\\ailleurs\\Diapason\\src'],
     ['cfg', 'home = C:\\ailleurs'], ['cfg', 'home = C:\\base\nhome = C:\\base']]) {
     const n = faitsAncien(); n.source[champ] = valeur;

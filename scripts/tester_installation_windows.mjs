@@ -451,9 +451,21 @@ export function validerArretAncien(n, a) {
   verifier(typeof c.basePythonAclWindowsAncestorVerified === 'boolean'
     && typeof c.basePythonAclWindowsAncestorWriterVerified === 'boolean'
     && (!c.basePythonAclWindowsAncestorWriterVerified || c.basePythonAclWindowsAncestorVerified), 'oldBackendSourceRefused');
-  verifier(c.projectName === 'Diapason' && c.sourceVersion === '1.0.0'
-    && c.markerState === 'absent' && c.betaAbsent === true && c.gitAbsent === true,
-  'oldBackendVersionRefused');
+  // 08/11/2026 : le diagnostic acceptait le nom PyPA sans casse ; le banc
+  // rejetait pourtant « diapason ». Les autres métadonnées restent strictes.
+  for (const [propriete, conforme] of [
+    ['projectNameNotDiapason', typeof c.projectName === 'string' && c.projectName.toLowerCase() === 'diapason'],
+    ['sourceVersionNotLegacy', c.sourceVersion === '1.0.0'],
+    ['markerNotAbsent', c.markerState === 'absent'],
+    ['betaMetadataPresent', c.betaAbsent === true],
+    ['gitMetadataPresent', c.gitAbsent === true],
+  ]) {
+    if (!conforme) {
+      const erreur = new Error('oldBackendVersionRefused');
+      erreur.refusalProperty = propriete;
+      throw erreur;
+    }
+  }
   const homes = typeof c.cfg === 'string' && Buffer.byteLength(c.cfg) <= 8192
     ? c.cfg.split(/\r?\n/).flatMap(l => { const m = /^\s*home\s*=\s*(.*?)\s*$/.exec(l); return m ? [cheminAncien(m[1])] : []; }) : [];
   const home = homes[0], base = cheminAncien(c.resolvedHome);
@@ -478,7 +490,7 @@ const CODES_ARRET_ANCIEN = new Set(['oldBackendPidChanged', 'oldBackendOwnerRefu
   'oldBackendNativeUnavailable', 'oldBackendTimeout', 'oldBackendProtocolRefused',
   'oldBackendFinalCheckChanged', 'oldBackendStopUnconfirmed', 'oldBackendLauncherStillRunning']);
 const ETAPES_ARRET_ANCIEN = new Set(['initialization', 'processHandle', 'processIdentity', 'rootOwnership', 'markerAbsence', 'projectMetadata', 'venvMetadata', 'basePythonAcl', 'entryFiles', 'betaAbsence', 'gitAbsence', 'attestation', 'finalCheck', 'stopConfirmation']);
-const PROPRIETES_ARRET_ANCIEN = new Set(['outsideProfile', 'invalidPath', 'reparse', 'itemOwnerNotAllowed', 'ancestorOwnerNotAllowed', 'itemWriteNotAllowed', 'ancestorWriteNotAllowed', 'inspectionFailed', 'windowsAncestorLookupFailed']);
+const PROPRIETES_ARRET_ANCIEN = new Set(['outsideProfile', 'invalidPath', 'reparse', 'itemOwnerNotAllowed', 'ancestorOwnerNotAllowed', 'itemWriteNotAllowed', 'ancestorWriteNotAllowed', 'inspectionFailed', 'windowsAncestorLookupFailed', 'projectNameNotDiapason', 'sourceVersionNotLegacy', 'markerNotAbsent', 'betaMetadataPresent', 'gitMetadataPresent']);
 export function rapportArretAncien(r = {}) {
   const etape = r.refusalStage ?? r.stage, propriete = r.refusalProperty ?? r.property;
   const stage = r.requested === true && r.status === 'refused' && ETAPES_ARRET_ANCIEN.has(etape) ? etape : null;
@@ -532,7 +544,8 @@ export async function arreterAncienBackend(a, { platform = process.platform, sys
             const n = JSON.parse(ligne);
             if (n.stage === 'attestation' && !autorise) {
               try { validerArretAncien(n.facts, a); } catch (e) {
-                return finir({ code: CODES_ARRET_ANCIEN.has(e.message) ? e.message : 'oldBackendProtocolRefused', refusalStage: 'attestation' });
+                return finir({ code: CODES_ARRET_ANCIEN.has(e.message) ? e.message : 'oldBackendProtocolRefused',
+                  refusalStage: 'attestation', refusalProperty: e.refusalProperty });
               }
               preuveOwner = n.facts.source.basePythonAclWindowsAncestorVerified;
               preuveWriter = n.facts.source.basePythonAclWindowsAncestorWriterVerified;
