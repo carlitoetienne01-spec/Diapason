@@ -1,7 +1,8 @@
 /** Premier lancement du véritable installateur publié, sans amorçage simulé. */
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import fs from 'node:fs';
+import http from 'node:http';
 import net from 'node:net';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
@@ -19,6 +20,11 @@ export const CONTROLES = Object.freeze([
   'uninstallSucceeded', 'registryRestored', 'processesStopped',
   'originalInstallationPreserved',
   'originalInferenceServerPreserved',
+]);
+export const CONTROLES_LEGACY = Object.freeze([
+  'legacySourcePreserved', 'legacyFixtureSeeded', 'legacyOldServerRejected',
+  'legacyOldServerPreserved', 'legacyBootstrapUnmodified', 'legacyOwnedServerStopped',
+  'legacyDataAfterStartup', 'legacyDataAfterRestart', 'legacyKeyPreserved',
 ]);
 const DEPOT = 'https://github.com/carlitoetienne01-spec/Diapason/releases/download/';
 
@@ -70,10 +76,21 @@ export function environnementApplication(systeme, profil, port) {
 }
 
 export function rapportValide(rapport) {
-  return rapport.installerExecuted === true
-    && CONTROLES.every(c => rapport.checks[c] === true)
-    && ['fresh', 'legacy'].includes(rapport.scenario || 'fresh')
-    && (rapport.scenario !== 'legacy' || rapport.checks.legacySourcePreserved === true)
+  return rapport?.installerExecuted === true
+    && CONTROLES.every(c => rapport.checks?.[c] === true)
+    && ['fresh', 'legacy'].includes(rapport.scenario)
+    && (rapport.scenario !== 'legacy' || (
+      CONTROLES_LEGACY.every(c => rapport.checks?.[c] === true)
+      && rapport.legacyRefusal?.observed === true
+      && rapport.legacyRefusal?.ownedServerAlive === true
+      && rapport.legacyRefusal?.bootstrapUnchanged === true
+      && rapport.legacyRefusal?.ownedServerStopped === true
+      && Number.isSafeInteger(rapport.legacyRefusal?.appHealthRequests)
+      && rapport.legacyRefusal?.appHealthRequests > 0
+      && rapport.legacyPersistence?.seededBeforeLaunch === true
+      && rapport.legacyPersistence?.afterStartup === true
+      && rapport.legacyPersistence?.afterRestart === true
+      && rapport.legacyPersistence?.sameKey === true))
     && rapport.failureCode === null && !rapport.cleanupFailed;
 }
 
@@ -98,6 +115,209 @@ export function preparerAncienneSourceSynthétique(env) {
   fs.writeFileSync(memoire, racine, { flag: 'wx' });
   return () => fichiers.every(([fichier, contenu]) => fs.existsSync(fichier)
     && fs.readFileSync(fichier, 'utf8') === contenu);
+}
+
+// Six tables extraites des constantes SQL de la source33 gelée ; seul le
+// préfixe vie_ devient succes_ pour exercer la migration du véritable serveur.
+export const SCHEMA_LEGACY_SOURCE = {"sha256": "ffd46e8b0fe31b207bfef318dde80c2a8c9d9e9be611ad2746b20e95cf65b359", "snapshotSha256": "3c96b465994b1b7482a1859a830634c66d02703a8b3cad190b8e439720bb89b8", "files": {"src/diapason/vie/store.py": "26428951291e05445f5fb831d959852be61d99622cc22dd012e6b982c6a4092c", "src/diapason/vie/workspace.py": "9b90b2ab665fc1a7e4708ae000ec88439fd36be97953ca23691ea53b19bb9d78", "src/diapason/vie/finances.py": "cf2954512efdca434925f994056d681fa50996ab0d28a36e47d073c6c0e9c051"}};
+export const SCHEMA_LEGACY_SQL = "CREATE TABLE IF NOT EXISTS succes_meta (\n    key TEXT PRIMARY KEY,\n    value TEXT NOT NULL\n);\n\nCREATE TABLE IF NOT EXISTS succes_projects (\n    id TEXT PRIMARY KEY,\n    name TEXT NOT NULL,\n    description TEXT NOT NULL DEFAULT '',\n    color TEXT NOT NULL DEFAULT '#6366f1',\n    icon TEXT NOT NULL DEFAULT '',\n    start_date TEXT NOT NULL DEFAULT '',\n    end_date TEXT NOT NULL DEFAULT '',\n    created_date TEXT NOT NULL DEFAULT '',\n    updated_at_ms INTEGER NOT NULL,\n    deleted_at_ms INTEGER,\n    order_index INTEGER NOT NULL DEFAULT 0\n);\n\nCREATE TABLE IF NOT EXISTS succes_notes (\n    id TEXT PRIMARY KEY,\n    title TEXT NOT NULL,\n    content TEXT NOT NULL DEFAULT '',\n    created_at TEXT NOT NULL,\n    updated_at TEXT NOT NULL,\n    updated_at_ms INTEGER NOT NULL,\n    deleted_at_ms INTEGER,\n    page_format TEXT NOT NULL DEFAULT 'a4',\n    page_size TEXT NOT NULL DEFAULT 'a4',\n    page_orientation TEXT NOT NULL DEFAULT 'portrait',\n    page_margins TEXT NOT NULL DEFAULT 'normales',\n    page_background TEXT NOT NULL DEFAULT 'default',\n    font_family TEXT NOT NULL DEFAULT 'Special Elite',\n    doc_lang TEXT NOT NULL DEFAULT 'fr',\n    color TEXT NOT NULL DEFAULT '#6366f1',\n    reading_mark INTEGER NOT NULL DEFAULT 0,\n    category TEXT NOT NULL DEFAULT '',\n    project_id TEXT NOT NULL DEFAULT '',\n    order_index INTEGER NOT NULL DEFAULT 0\n);\n\nCREATE TABLE IF NOT EXISTS succes_accounts (\n    id TEXT PRIMARY KEY,\n    name TEXT NOT NULL,\n    account_type TEXT NOT NULL DEFAULT 'checking',\n    currency TEXT NOT NULL DEFAULT 'CAD',\n    opening_balance_cents INTEGER NOT NULL DEFAULT 0,\n    color TEXT NOT NULL DEFAULT '#6366f1',\n    icon TEXT NOT NULL DEFAULT '🏦',\n    archived INTEGER NOT NULL DEFAULT 0,\n    updated_at_ms INTEGER NOT NULL,\n    deleted_at_ms INTEGER\n);\n\nCREATE TABLE IF NOT EXISTS succes_finance_categories (\n    id TEXT PRIMARY KEY,\n    name TEXT NOT NULL,\n    kind TEXT NOT NULL DEFAULT 'expense',\n    color TEXT NOT NULL DEFAULT '#6366f1',\n    icon TEXT NOT NULL DEFAULT '📦',\n    system INTEGER NOT NULL DEFAULT 0,\n    updated_at_ms INTEGER NOT NULL,\n    deleted_at_ms INTEGER\n);\n\nCREATE TABLE IF NOT EXISTS succes_transactions (\n    id TEXT PRIMARY KEY,\n    account_id TEXT NOT NULL,\n    category_id TEXT NOT NULL DEFAULT '',\n    txn_type TEXT NOT NULL DEFAULT 'expense',\n    amount_cents INTEGER NOT NULL,\n    currency TEXT NOT NULL DEFAULT 'CAD',\n    txn_date TEXT NOT NULL,\n    payee TEXT NOT NULL DEFAULT '',\n    notes TEXT NOT NULL DEFAULT '',\n    transfer_account_id TEXT NOT NULL DEFAULT '',\n    subscription_id TEXT NOT NULL DEFAULT '',\n    import_hash TEXT NOT NULL DEFAULT '',\n    updated_at_ms INTEGER NOT NULL,\n    deleted_at_ms INTEGER\n);\n";
+
+export function verifierProfilQa(env, travail) {
+  const racine = fs.realpathSync(travail);
+  verifier(!fs.lstatSync(travail).isSymbolicLink(), 'qaWorkdirLinked');
+  verifier(path.relative(racine, path.resolve(env.HOME)) === 'profil'
+    && path.resolve(env.USERPROFILE) === path.resolve(env.HOME), 'qaProfileOutsideWorkdir');
+  for (const valeur of [env.HOME, env.LOCALAPPDATA, env.APPDATA, env.UV_CACHE_DIR,
+    env.UV_PYTHON_INSTALL_DIR, env.OLLAMA_MODELS, env.HF_HOME]) {
+    const relatif = path.relative(racine, path.resolve(valeur));
+    verifier(relatif && !relatif.startsWith('..') && !path.isAbsolute(relatif), 'qaPathOutsideWorkdir');
+    let courant = path.resolve(valeur);
+    while (path.relative(racine, courant) !== '') {
+      try {
+        verifier(!fs.lstatSync(courant).isSymbolicLink(), 'qaPathLinked');
+      } catch (e) { if (e.code !== 'ENOENT') throw e; }
+      courant = path.dirname(courant);
+    }
+  }
+  verifier(!env.DIAPASON_HOME && !env.DIAPASON_ROOT && !env.DIAPASON_API_KEY, 'qaEnvironmentOverride');
+  return racine;
+}
+
+export async function preparerDonneesLegacy(env, travail) {
+  verifierProfilQa(env, travail);
+  const home = path.join(env.HOME, '.diapason');
+  const base = path.join(home, 'succes.db'), clePath = path.join(home, 'auth', 'local_api_key');
+  verifier(!fs.existsSync(base) && !fs.existsSync(path.join(home, 'vie.db'))
+    && !fs.existsSync(clePath), 'legacyDataAlreadyExists');
+  const { DatabaseSync } = await import('node:sqlite');
+  fs.mkdirSync(path.dirname(clePath), { recursive: true });
+  const cle = 'diapason_sk_' + randomBytes(32).toString('base64url');
+  fs.writeFileSync(clePath, cle + '\n', { flag: 'wx', mode: 0o600 });
+  fs.closeSync(fs.openSync(base, 'wx', 0o600));
+  const id = 'qa-' + randomUUID();
+  const date = new Date().toISOString().slice(0, 10), stamp = Date.now() - 1000;
+  const fixture = {
+    home, base, clePath, cle,
+    deviceId: id + '-device',
+    project: { id: id + '-project', name: 'Projet antérieur synthétique', description: 'Créé avant le premier EXE33' },
+    note: { id: id + '-note', title: 'Note antérieure synthétique', content: 'Ce texte existait avant la réparation et doit rester identique.' },
+    account: { id: id + '-account', name: 'Compte synthétique antérieur', openingCents: 100000 },
+    categoryId: id + '-category',
+    transaction: { id: id + '-transaction', amountCents: 3537, date, payee: 'Commerce synthétique antérieur' },
+  };
+  const db = new DatabaseSync(base);
+  try {
+    db.exec('PRAGMA journal_mode=DELETE; PRAGMA user_version=5; BEGIN IMMEDIATE;');
+    db.exec(SCHEMA_LEGACY_SQL);
+    db.prepare('INSERT INTO succes_meta(key,value) VALUES (?,?)').run('device_id', fixture.deviceId);
+    db.prepare('INSERT INTO succes_projects(id,name,description,created_date,updated_at_ms) VALUES (?,?,?,?,?)')
+      .run(fixture.project.id, fixture.project.name, fixture.project.description, date, stamp);
+    db.prepare('INSERT INTO succes_notes(id,title,content,created_at,updated_at,updated_at_ms,project_id) VALUES (?,?,?,?,?,?,?)')
+      .run(fixture.note.id, fixture.note.title, fixture.note.content, new Date(stamp).toISOString(), new Date(stamp).toISOString(), stamp, fixture.project.id);
+    db.prepare('INSERT INTO succes_accounts(id,name,opening_balance_cents,updated_at_ms) VALUES (?,?,?,?)')
+      .run(fixture.account.id, fixture.account.name, fixture.account.openingCents, stamp);
+    db.prepare('INSERT INTO succes_finance_categories(id,name,kind,updated_at_ms) VALUES (?,?,?,?)')
+      .run(fixture.categoryId, 'Dépense synthétique', 'expense', stamp);
+    db.prepare('INSERT INTO succes_transactions(id,account_id,category_id,txn_type,amount_cents,txn_date,payee,updated_at_ms) VALUES (?,?,?,?,?,?,?,?)')
+      .run(fixture.transaction.id, fixture.account.id, fixture.categoryId, 'expense', fixture.transaction.amountCents, date, fixture.transaction.payee, stamp);
+    db.exec('COMMIT;');
+    verifier(db.prepare('PRAGMA integrity_check').get().integrity_check === 'ok', 'legacyFixtureInvalid');
+  } finally { db.close(); }
+  return fixture;
+}
+
+export async function verifierDonneesLegacy(fixture, api, cle) {
+  verifier(cle === fixture.cle && fs.readFileSync(fixture.clePath, 'utf8').trim() === fixture.cle, 'legacyKeyChanged');
+  const projets = await api('/v1/vie/projects');
+  const projet = projets.projects?.find(p => p.id === fixture.project.id);
+  verifier(projet?.name === fixture.project.name && projet.description === fixture.project.description, 'legacyProjectChanged');
+  const note = (await api('/v1/vie/notes/' + encodeURIComponent(fixture.note.id))).note;
+  verifier(note?.title === fixture.note.title && note.content === fixture.note.content
+    && note.projectId === fixture.project.id, 'legacyNoteChanged');
+  const comptes = await api('/v1/vie/finances/accounts');
+  const compte = comptes.accounts?.find(c => c.id === fixture.account.id);
+  verifier(compte?.name === fixture.account.name && compte.currency === 'CAD'
+    && Math.round(compte.openingBalance * 100) === fixture.account.openingCents
+    && Math.round(compte.balance * 100) === fixture.account.openingCents - fixture.transaction.amountCents, 'legacyAccountChanged');
+  const transactions = await api('/v1/vie/finances/transactions?accountId=' + encodeURIComponent(fixture.account.id));
+  const txn = transactions.transactions?.find(t => t.id === fixture.transaction.id);
+  verifier(txn?.accountId === fixture.account.id && txn.categoryId === fixture.categoryId
+    && txn.type === 'expense' && txn.currency === 'CAD' && txn.date === fixture.transaction.date
+    && txn.payee === fixture.transaction.payee
+    && Math.round(txn.amount * 100) === fixture.transaction.amountCents, 'legacyTransactionChanged');
+  const finances = await api('/v1/vie/finances/overview?period=month&anchor=' + fixture.transaction.date);
+  verifier(finances.transactionCount === 1 && Math.round(finances.expense * 100) === fixture.transaction.amountCents,
+    'legacyFinanceOverviewChanged');
+  return { matches: true, sameKey: true };
+}
+
+export function empreinteAmorcageLegacy(env, travail) {
+  verifierProfilQa(env, travail);
+  const resultat = [];
+  const racines = [path.join(env.LOCALAPPDATA, 'Diapason'), path.join(env.HOME, '.diapason'),
+    env.UV_CACHE_DIR, env.UV_PYTHON_INSTALL_DIR, env.OLLAMA_MODELS, env.HF_HOME];
+  const visiter = (racine, relatif = '') => {
+    const fichier = path.join(racine, relatif);
+    if (!fs.existsSync(fichier)) return;
+    const stat = fs.lstatSync(fichier);
+    verifier(!stat.isSymbolicLink(), 'legacySnapshotLinked');
+    verifier(resultat.length < 20000, 'legacySnapshotTooLarge');
+    if (stat.isDirectory()) {
+      resultat.push([racines.indexOf(racine), relatif, 'directory']);
+      for (const nom of fs.readdirSync(fichier).sort()) visiter(racine, path.join(relatif, nom));
+    } else {
+      verifier(stat.isFile(), 'legacySnapshotNotRegular');
+      // Un mauvais amorçage pourrait déjà télécharger des Go : constater
+      // leur apparition suffit, sans charger ces fichiers dans le banc.
+      const hash = stat.size <= 64 * 1024 * 1024
+        ? createHash('sha256').update(fs.readFileSync(fichier)).digest('hex') : 'oversized';
+      resultat.push([racines.indexOf(racine), relatif, 'file', stat.size, stat.mtimeMs, hash]);
+    }
+  };
+  for (const racine of racines) visiter(racine);
+  return createHash('sha256').update(JSON.stringify(resultat)).digest('hex');
+}
+
+export async function creerAncienServeurSynthétique(port = 8000) {
+  verifier(Number.isInteger(port) && port >= 0 && port < 65536, 'legacyStubPortInvalid');
+  const nonce = randomBytes(32).toString('hex'), sockets = new Set();
+  let appHealthRequests = 0, ferme = false;
+  const serveur = http.createServer((req, res) => {
+    if (req.url === '/health' && req.method === 'GET') {
+      if (req.headers['x-diapason-qa-owner'] !== nonce) appHealthRequests++;
+      res.writeHead(200, { 'Content-Type': 'application/json', 'X-Diapason-QA-Owner': nonce });
+      res.end('{"status":"ok"}');
+    } else { res.writeHead(404); res.end('{}'); }
+  });
+  serveur.on('connection', socket => { sockets.add(socket); socket.once('close', () => sockets.delete(socket)); });
+  await new Promise((resolve, reject) => {
+    serveur.once('error', reject); serveur.listen({ host: '127.0.0.1', port, exclusive: true }, resolve);
+  });
+  const adresse = serveur.address();
+  return Object.freeze({
+    port: adresse.port,
+    mesures: () => ({ appHealthRequests, listening: serveur.listening && !ferme }),
+    async verifierVivant() {
+      verifier(serveur.listening && !ferme, 'legacyStubStoppedUnexpectedly');
+      const r = await fetch(`http://127.0.0.1:${adresse.port}/health`, {
+        headers: { 'X-Diapason-QA-Owner': nonce }, signal: AbortSignal.timeout(2000), redirect: 'error',
+      });
+      verifier(r.status === 200 && r.headers.get('X-Diapason-QA-Owner') === nonce
+        && (await r.json()).status === 'ok', 'legacyStubOwnershipChanged');
+      return true;
+    },
+    async fermer() {
+      if (ferme) return;
+      ferme = true;
+      await new Promise((resolve, reject) => {
+        serveur.close(e => e ? reject(e) : resolve());
+        for (const socket of sockets) socket.destroy();
+        serveur.closeAllConnections();
+      });
+    },
+  });
+}
+
+export function verifierRefusServeurLegacy(etat, log, version, faits) {
+  verifier(typeof etat?.error === 'string' && etat.error.length > 0
+    && etat.server_ready === false && etat.backend_ready === false
+    && etat.ollama_ready === false && etat.model_ready === false, 'legacyServerNotRejected');
+  verifier(log.split(/\r?\n/).some(ligne => {
+    const champs = ligne.trim().split(/\s+/);
+    return champs[0] === 'DIAPASON_WINDOWS_BACKEND_MISMATCH'
+      && champs.includes('expectedVersion=' + version);
+  }), 'legacyRefusalReasonUnproven');
+  verifier(faits.ownedServerAlive === true && Number.isSafeInteger(faits.appHealthRequests)
+    && faits.appHealthRequests > 0, 'legacyServerNotPreserved');
+  verifier(faits.bootstrapUnchanged === true, 'legacyBootstrapMutated');
+  return true;
+}
+
+export async function verifierBlocageLegacy({ version, empreinte, lancer, arreter, lireLog,
+  creerStub = () => creerAncienServeurSynthétique() }) {
+  const avant = empreinte();
+  const stub = await creerStub();
+  let applicationArretee = false, preuve;
+  try {
+    const etat = await lancer(stub);
+    const faits = { ownedServerAlive: await stub.verifierVivant(),
+      appHealthRequests: stub.mesures().appHealthRequests,
+      bootstrapUnchanged: empreinte() === avant };
+    verifierRefusServeurLegacy(etat, lireLog(), version, faits);
+    await arreter(stub); applicationArretee = true;
+    await stub.verifierVivant();
+    verifier(empreinte() === avant, 'legacyCleanupMutatedBootstrap');
+    preuve = { ...faits, observed: true, ownedServerStopped: false };
+  } finally {
+    // Fermer la fenêtre QA avant de libérer le port du stub, même en échec :
+    // une app encore vivante ne doit pas repartir en amorçage à cet instant.
+    // Si l'arrêt de la fenêtre échoue, garder le port occupé : le nettoyage
+    // extérieur réessaiera. Le libérer ici autoriserait un amorçage tardif.
+    if (!applicationArretee) await arreter(stub);
+    await stub.fermer();
+  }
+  preuve.ownedServerStopped = true;
+  return preuve;
 }
 
 export function erreurDemarragePubliable(erreur) {
@@ -660,6 +880,8 @@ async function dialogue(cdp, question, attendu, preuve = {}) {
 
 export async function premierLancement(options) {
   verifier(process.platform === 'win32', 'windowsRequired');
+  verifier(options['residual-pid'] === undefined || options['residual-pid'] === '0'
+    || options['residual-pid'] === 0, 'personalProcessStopNotAuthorized');
   const cible = ciblePubliee(options.version, options.sha256);
   const travail = path.resolve(options.workdir);
   verifier(!fs.existsSync(travail), 'workdirAlreadyExists');
@@ -676,10 +898,17 @@ export async function premierLancement(options) {
   };
   let enfant; let cdp; let installe = false;
   let envApp; let exe; let port; let regEnv; let ollamaExistant;
-  const scenario = options.scenario || 'fresh';
+  const scenario = options.scenario ?? 'fresh';
   verifier(['fresh', 'legacy'].includes(scenario), 'invalidInstallationScenario');
   rapport.scenario = scenario;
-  let ancienneSourcePreservee;
+  let ancienneSourcePreservee; let fixtureLegacy; let stubLegacy;
+  if (scenario === 'legacy') {
+    for (const controle of CONTROLES_LEGACY) rapport.checks[controle] = false;
+    rapport.legacyRefusal = { observed: false, ownedServerAlive: false, bootstrapUnchanged: false,
+      ownedServerStopped: false, appHealthRequests: 0 };
+    rapport.legacyPersistence = { seededBeforeLaunch: false, afterStartup: false,
+      afterRestart: false, sameKey: false };
+  }
   async function inferenceOriginalePreservee() {
     if (!ollamaExistant) return true;
     const { listeners } = await lirePorts();
@@ -693,31 +922,37 @@ export async function premierLancement(options) {
 `);
     verifier(actif.count === 0, 'applicationRunningBeforeUninstall');
   }
-  async function arreter() {
+  async function arreter({ garderStub = false } = {}) {
     if (!enfant && !cdp) return;
     if (cdp) {
       try { await cdp.invoquer('stop_backend'); } catch { /* récolte par PID ensuite */ }
       cdp.fermer(); cdp = null;
     }
     if (enfant && enfant.exitCode === null) {
-      await executer(path.join(process.env.SystemRoot, 'System32', 'taskkill.exe'),
-        ['/PID', String(enfant.pid), '/T', '/F']);
+      if (enfant.signalCode === null) {
+        verifier(Number.isSafeInteger(enfant.pid) && enfant.pid > 0, 'testApplicationPidMissing');
+        await executer(path.join(process.env.SystemRoot, 'System32', 'taskkill.exe'),
+          ['/PID', String(enfant.pid), '/T', '/F']);
+      }
+      await attendre(() => enfant.exitCode !== null || enfant.signalCode !== null,
+        10000, 'testApplicationStillRunning', 100);
     }
     enfant = null;
-    await attendre(async () => !(await portOccupe(8000)) && (ollamaExistant
+    await attendre(async () => (garderStub ? await garderStub.verifierVivant() : !(await portOccupe(8000))) && (ollamaExistant
       ? await inferenceOriginalePreservee() : !(await portOccupe(11434))),
       30000, 'testProcessesNotStopped');
   }
-  async function lancer() {
-    const debut = Date.now();
+  async function preparerEnvironnement() {
     port = await portLibre();
     envApp = environnementApplication(process.env, path.join(travail, 'profil'), port);
     for (const cle of ['HOME', 'APPDATA', 'LOCALAPPDATA', 'TEMP', 'WEBVIEW2_USER_DATA_FOLDER']) {
       fs.mkdirSync(envApp[cle], { recursive: true });
     }
-    if (scenario === 'legacy' && !ancienneSourcePreservee) {
-      ancienneSourcePreservee = preparerAncienneSourceSynthétique(envApp);
-    }
+    verifierProfilQa(envApp, travail);
+  }
+  async function lancer({ attendreRefus = false } = {}) {
+    const debut = Date.now();
+    await preparerEnvironnement();
     const log = fs.openSync(path.join(travail, 'application-prive.log'), 'a');
     enfant = spawn(exe, [], { cwd: path.dirname(exe), env: envApp, shell: false,
       stdio: ['ignore', log, log], windowsHide: false });
@@ -733,11 +968,16 @@ export async function premierLancement(options) {
     verifier(await cdp.invoquer('plugin:app|version') === cible.version, 'installedVersionMismatch');
     rapport.checks.versionMatches = true;
     let phase = '';
-    await attendre(async () => {
+    const etatFinal = await attendre(async () => {
       verifier(enfant.exitCode === null, 'appExitedDuringStartup');
       const etat = await cdp.invoquer('get_setup_status');
       if (etat.phase !== phase) {
         phase = etat.phase; noter(/^[a-z_]+$/.test(phase) ? `startup:${phase}` : 'startup');
+      }
+      if (attendreRefus) {
+        verifier(!etat.server_ready && !etat.backend_ready && !etat.ollama_ready && !etat.model_ready,
+          'legacyServerNotRejected');
+        return etat.error ? etat : false;
       }
       if (etat.error) {
         // Uniquement le profil neuf, sans conserver de clé ou d'environnement.
@@ -745,7 +985,9 @@ export async function premierLancement(options) {
         throw new Error('firstLaunchStartupError');
       }
       return etat.backend_ready && etat.ollama_ready && etat.model_ready && etat.server_ready;
-    }, options.startupTimeoutMs || 7200000, 'firstLaunchTimeout', 2000);
+    }, attendreRefus ? 45000 : (options.startupTimeoutMs || 7200000),
+    attendreRefus ? 'legacyRefusalTimeout' : 'firstLaunchTimeout', 2000);
+    if (attendreRefus) return etatFinal;
     rapport.startupDurationsSeconds ??= [];
     rapport.startupDurationsSeconds.push(Math.round((Date.now() - debut) / 1000));
     return cdp;
@@ -771,22 +1013,9 @@ $apps = @(Get-Process -Name 'diapason-desktop','Diapason' -ErrorAction SilentlyC
     rapport.preflight = bureau;
     rapport.preflight.existingInstallationKeys = (await powershell(SONDE_REGISTRE)).existingKeys;
     verifier(bureau.sessionId > 0 && bureau.interactive, 'interactiveRunnerRequired');
-    if (bureau.appRunning && Number(options['residual-pid'])) {
-      const pid = Number(options['residual-pid']);
-      verifier(residuFermable(bureau, pid), 'residualProcessNotOwnedOrHasWindow');
-      verifier(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/.test(options['residual-before'] || ''), 'residualProcessCutoffRequired');
-      await powershell(String.raw`
-$p = Get-Process -Id ([int]$env:DIAPASON_E2E_PID)
-if ($p.ProcessName -ine 'diapason' -or $p.MainWindowHandle -ne 0 -or $p.SessionId -ne [Diagnostics.Process]::GetCurrentProcess().SessionId -or
-    $p.StartTime.ToUniversalTime() -ge [datetime]::Parse($env:DIAPASON_E2E_BEFORE).ToUniversalTime()) { throw 'residualProcessChanged' }
-& (Join-Path $env:SystemRoot 'System32\taskkill.exe') /PID $p.Id /T /F | Out-Null
-if ($LASTEXITCODE -ne 0) { throw 'residualProcessStopFailed' }
-@{ stopped=$true } | ConvertTo-Json -Compress
-`, { ...process.env, DIAPASON_E2E_PID: String(pid), DIAPASON_E2E_BEFORE: options['residual-before'] });
-      rapport.stoppedResidualProcessId = pid;
-      await verifierAucuneApp();
-    } else verifier(!bureau.appRunning, 'preexistingAppRunning');
+    verifier(!bureau.appRunning, 'preexistingAppRunning');
     rapport.preflight.listeners = (await lirePorts()).listeners;
+    verifier(!rapport.preflight.listeners.some(p => p.port === 8000), 'preexistingDiapasonServerPort');
     verifier(!(await portOccupe(8000)), 'preexistingDiapasonServerPort');
     if (await portOccupe(11434)) {
       const infer = rapport.preflight.listeners.filter(p => p.port === 11434);
@@ -826,6 +1055,40 @@ if ($LASTEXITCODE -ne 0) { throw 'residualProcessStopFailed' }
     verifier(fs.existsSync(exe) && fs.existsSync(path.join(dossierApp, 'uninstall.exe')), 'installedFilesMissing');
     rapport.checks.installedExecutablePresent = true;
     verifier(!fs.existsSync(path.join(travail, 'profil')), 'firstLaunchProfileNotEmpty');
+    if (scenario === 'legacy') {
+      await preparerEnvironnement();
+      ancienneSourcePreservee = preparerAncienneSourceSynthétique(envApp);
+      fixtureLegacy = await preparerDonneesLegacy(envApp, travail);
+      rapport.checks.legacyFixtureSeeded = true;
+      rapport.legacyPersistence.seededBeforeLaunch = true;
+      rapport.fixtureSchema = SCHEMA_LEGACY_SOURCE;
+      const avantRefus = empreinteAmorcageLegacy(envApp, travail);
+      noter('legacyOwnedServerRefusal');
+      rapport.legacyRefusal = await verifierBlocageLegacy({
+        version: cible.version,
+        empreinte: () => empreinteAmorcageLegacy(envApp, travail),
+        creerStub: async () => { stubLegacy = await creerAncienServeurSynthétique(); return stubLegacy; },
+        lancer: () => lancer({ attendreRefus: true }),
+        arreter: stub => arreter({ garderStub: stub }),
+        lireLog: () => {
+          const fd = fs.openSync(path.join(travail, 'application-prive.log'), 'r');
+          try {
+            const taille = fs.fstatSync(fd).size, debut = Math.max(0, taille - 65536);
+            const fin = Buffer.alloc(taille - debut);
+            const lus = fs.readSync(fd, fin, 0, fin.length, debut);
+            return fin.subarray(0, lus).toString('utf8');
+          } finally { fs.closeSync(fd); }
+        },
+      });
+      stubLegacy = null;
+      verifier(empreinteAmorcageLegacy(envApp, travail) === avantRefus, 'legacyCleanupMutatedBootstrap');
+      rapport.checks.legacyOldServerRejected = true;
+      rapport.checks.legacyOldServerPreserved = true;
+      rapport.checks.legacyBootstrapUnmodified = true;
+      verifier(!(await portOccupe(8000)), 'legacyOwnedServerNotStopped');
+      rapport.legacyRefusal.ownedServerStopped = true;
+      rapport.checks.legacyOwnedServerStopped = true;
+    }
     noter('firstLaunch'); await lancer(); rapport.checks.firstLaunchReady = true;
     const gere = path.join(envApp.LOCALAPPDATA, 'Diapason');
     const marqueurComplet = path.join(gere, 'runtime-complet', 'src', '.diapason-backend');
@@ -851,6 +1114,11 @@ if ($LASTEXITCODE -ne 0) { throw 'residualProcessStopFailed' }
     };
     verifierBackendCourant(await api('/health'), cible.version);
     rapport.checks.backendVersionMatches = true;
+    if (scenario === 'legacy') {
+      await verifierDonneesLegacy(fixtureLegacy, api, cle);
+      rapport.checks.legacyDataAfterStartup = true;
+      rapport.legacyPersistence.afterStartup = true;
+    }
     noter('twoTurnConversation');
     rapport.dialogue = [{}, {}];
     await dialogue(cdp, 'Combien font 12 plus 25 ? Réponds en une phrase.', /37|trente[ -]sept/i, rapport.dialogue[0]);
@@ -932,6 +1200,13 @@ if ($LASTEXITCODE -ne 0) { throw 'residualProcessStopFailed' }
     rapport.checks.backendVersionMatches = false;
     verifierBackendCourant(await api('/health'), cible.version);
     rapport.checks.backendVersionMatches = true;
+    if (scenario === 'legacy') {
+      await verifierDonneesLegacy(fixtureLegacy, api, cle);
+      rapport.checks.legacyDataAfterRestart = true;
+      rapport.checks.legacyKeyPreserved = true;
+      rapport.legacyPersistence.afterRestart = true;
+      rapport.legacyPersistence.sameKey = true;
+    }
     const relue = (await api(`/v1/vie/notes/${encodeURIComponent(note.id)}`)).note;
     verifier(relue.content === contenu && relue.projectId === projet.id, 'noteLostAfterRestart');
     rapport.checks.notePersistedAfterRestart = true;
@@ -962,7 +1237,10 @@ if ($LASTEXITCODE -ne 0) { throw 'residualProcessStopFailed' }
     rapport.failureCode = /^[A-Za-z0-9_:<>/-]{1,180}$/.test(e.message) ? e.message : 'unexpectedTestFailure';
     try { if (cdp) await capture(cdp, path.join(sortie, 'echec-application.png')); } catch { /* facultatif */ }
   } finally {
-    try { await arreter(); } catch { rapport.cleanupFailed = true; }
+    try { await arreter({ garderStub: stubLegacy }); } catch { rapport.cleanupFailed = true; }
+    try {
+      if (stubLegacy && !enfant && !cdp) await stubLegacy.fermer();
+    } catch { rapport.cleanupFailed = true; }
     if (regEnv) {
       try {
         rapport.registryRestoration = await recupererInstallation(travail);

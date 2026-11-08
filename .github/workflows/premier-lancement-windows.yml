@@ -12,20 +12,11 @@ on:
         required: true
         type: string
       scenario:
-        description: Profil neuf ou ancienne source synthétique à conserver
+        description: Profil neuf ou reprise synthétique avec données et ancien serveur
         required: true
         type: choice
         default: fresh
         options: [fresh, legacy]
-      residual_pid:
-        description: 'PID résiduel sans fenêtre, déjà identifié après fermeture de Diapason ; zéro laisse tous les processus existants intacts'
-        required: false
-        type: string
-        default: '0'
-      residual_before:
-        description: 'Date UTC de son observation antérieure, obligatoire si residual_pid est fourni'
-        required: false
-        type: string
 
 permissions:
   contents: read
@@ -44,17 +35,15 @@ jobs:
     env:
       INSTALLATION_VERSION: ${{ inputs.version }}
       INSTALLATION_SHA256: ${{ inputs.installer_sha256 }}
-      INSTALLATION_SCENARIO: ${{ inputs.scenario || 'fresh' }}
-      INSTALLATION_RESIDUAL_PID: ${{ inputs.residual_pid }}
-      INSTALLATION_RESIDUAL_BEFORE: ${{ inputs.residual_before }}
+      INSTALLATION_SCENARIO: ${{ inputs.scenario }}
       BANC_COMMIT: ${{ github.sha }}
-      BANC_SCRIPT_SHA256: 78565402217d234e078c448e97cb77d71fedd7c7dd48bf22eeea460c0612dd81
-      BANC_TEST_SHA256: 8f2c6026079a1104bdbda8fefc9fe8bdcb06e1d2e5006a86efec182d58815943
+      BANC_SCRIPT_SHA256: 8c78ca329319fea4c6d1f38f8c6679bf97ca9a77c99cbaaf2b31f388b6aef41a
+      BANC_TEST_SHA256: 9bbe8fd52ec8d1a68fae51c7cd04b41740d471d6e962758a9af742c832ef83f5
 
     steps:
       - uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version: '22.23.4'
 
       - name: Recevoir les deux fichiers vérifiés du banc
         timeout-minutes: 5
@@ -85,7 +74,7 @@ jobs:
           node --test (Join-Path $banc 'tests/deployment/premier_lancement_windows.test.mjs')
           if ($LASTEXITCODE -ne 0) { throw 'Contrats du banc refuses' }
 
-      - name: Installer le véritable EXE et démarrer un profil neuf
+      - name: Installer le véritable EXE et vérifier le scénario choisi
         run: |
           $ErrorActionPreference = 'Stop'
           $travail = Join-Path $env:RUNNER_TEMP ('diapason-installation-{0}-{1}' -f $env:GITHUB_RUN_ID, $env:GITHUB_RUN_ATTEMPT)
@@ -95,9 +84,7 @@ jobs:
             --version $env:INSTALLATION_VERSION `
             --sha256 $env:INSTALLATION_SHA256 `
             --scenario $env:INSTALLATION_SCENARIO `
-            --workdir $travail `
-            --residual-pid $env:INSTALLATION_RESIDUAL_PID `
-            --residual-before $env:INSTALLATION_RESIDUAL_BEFORE
+            --workdir $travail
           if ($LASTEXITCODE -ne 0) { throw 'Installation ou premier lancement refuses. Voir resultat.json' }
 
       - name: Restaurer aussi après interruption du banc
