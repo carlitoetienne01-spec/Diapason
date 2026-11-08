@@ -11,6 +11,7 @@ export const CONTROLES = Object.freeze([
   'preflightPassed', 'installerHashVerified', 'installerExecuted',
   'installedExecutablePresent', 'versionMatches', 'firstLaunchReady',
   'newManagedBackendPrepared', 'twoTurnUiConversation',
+  'backendVersionMatches',
   'initialModelMatchesValidatedPlan',
   'notePersistedAfterRestart', 'narrationWithWordTimings',
   'updateButtonVisible', 'updateCatalogueMatches',
@@ -70,7 +71,32 @@ export function environnementApplication(systeme, profil, port) {
 export function rapportValide(rapport) {
   return rapport.installerExecuted === true
     && CONTROLES.every(c => rapport.checks[c] === true)
+    && ['fresh', 'legacy'].includes(rapport.scenario || 'fresh')
+    && (rapport.scenario !== 'legacy' || rapport.checks.legacySourcePreserved === true)
     && rapport.failureCode === null && !rapport.cleanupFailed;
+}
+
+export function verifierBackendCourant(sante, version) {
+  assert.equal(sante?.status, 'ok');
+  assert.equal(sante.managementApiVersion, 1);
+  assert.equal(sante.backendVersion, version);
+}
+
+export function preparerAncienneSourceSynthétique(env) {
+  const racine = path.join(env.LOCALAPPDATA, 'Diapason', 'src');
+  const fichiers = [
+    [path.join(racine, 'pyproject.toml'), '[project]\nname = "Diapason"\nversion = "1.0.0"\n'],
+    [path.join(racine, 'temoin-ancienne-source.txt'), 'Corpus synthétique : ancienne source à conserver.\n'],
+  ];
+  for (const [fichier, contenu] of fichiers) {
+    fs.mkdirSync(path.dirname(fichier), { recursive: true });
+    fs.writeFileSync(fichier, contenu, { flag: 'wx' });
+  }
+  const memoire = path.join(env.HOME, '.diapason', 'project_root');
+  fs.mkdirSync(path.dirname(memoire), { recursive: true });
+  fs.writeFileSync(memoire, racine, { flag: 'wx' });
+  return () => fichiers.every(([fichier, contenu]) => fs.existsSync(fichier)
+    && fs.readFileSync(fichier, 'utf8') === contenu);
 }
 
 export function erreurDemarragePubliable(erreur) {
@@ -649,6 +675,10 @@ export async function premierLancement(options) {
   };
   let enfant; let cdp; let installe = false;
   let envApp; let exe; let port; let regEnv; let ollamaExistant;
+  const scenario = options.scenario || 'fresh';
+  verifier(['fresh', 'legacy'].includes(scenario), 'invalidInstallationScenario');
+  rapport.scenario = scenario;
+  let ancienneSourcePreservee;
   async function inferenceOriginalePreservee() {
     if (!ollamaExistant) return true;
     const { listeners } = await lirePorts();
@@ -683,6 +713,9 @@ export async function premierLancement(options) {
     envApp = environnementApplication(process.env, path.join(travail, 'profil'), port);
     for (const cle of ['HOME', 'APPDATA', 'LOCALAPPDATA', 'TEMP', 'WEBVIEW2_USER_DATA_FOLDER']) {
       fs.mkdirSync(envApp[cle], { recursive: true });
+    }
+    if (scenario === 'legacy' && !ancienneSourcePreservee) {
+      ancienneSourcePreservee = preparerAncienneSourceSynthétique(envApp);
     }
     const log = fs.openSync(path.join(travail, 'application-prive.log'), 'a');
     enfant = spawn(exe, [], { cwd: path.dirname(exe), env: envApp, shell: false,
@@ -794,10 +827,16 @@ if ($LASTEXITCODE -ne 0) { throw 'residualProcessStopFailed' }
     verifier(!fs.existsSync(path.join(travail, 'profil')), 'firstLaunchProfileNotEmpty');
     noter('firstLaunch'); await lancer(); rapport.checks.firstLaunchReady = true;
     const gere = path.join(envApp.LOCALAPPDATA, 'Diapason');
-    const marqueurs = [path.join(gere, 'src', '.diapason-backend'), path.join(gere, '.diapason-backend')];
+    const marqueurComplet = path.join(gere, 'runtime-complet', 'src', '.diapason-backend');
+    const marqueurs = [marqueurComplet, path.join(gere, 'src', '.diapason-backend'), path.join(gere, '.diapason-backend')];
     verifier(marqueurs.some(p => fs.existsSync(p) && fs.readFileSync(p, 'utf8').trim() === cible.version),
       'downloadedBackendMarkerMissing');
     rapport.checks.newManagedBackendPrepared = true;
+    if (scenario === 'legacy') {
+      verifier(fs.existsSync(marqueurComplet)
+        && fs.readFileSync(marqueurComplet, 'utf8').trim() === cible.version, 'legacySourceReused');
+      verifier(ancienneSourcePreservee(), 'legacySourceOverwritten');
+    }
     await capture(cdp, path.join(sortie, '01-premier-demarrage.png'));
     const base = await cdp.invoquer('get_api_base');
     verifier(base === 'http://127.0.0.1:8000', 'unexpectedApiOrigin');
@@ -809,6 +848,8 @@ if ($LASTEXITCODE -ne 0) { throw 'residualProcessStopFailed' }
       verifier(res.ok, `apiFailed:${methode}:${chemin.replace(/[a-f0-9-]{20,}/gi, '<id>')}:${res.status}`);
       return res.json();
     };
+    verifierBackendCourant(await api('/health'), cible.version);
+    rapport.checks.backendVersionMatches = true;
     noter('twoTurnConversation');
     rapport.dialogue = [{}, {}];
     await dialogue(cdp, 'Combien font 12 plus 25 ? Réponds en une phrase.', /37|trente[ -]sept/i, rapport.dialogue[0]);
@@ -856,9 +897,16 @@ if ($LASTEXITCODE -ne 0) { throw 'residualProcessStopFailed' }
     noter('restartInstalledApplication');
     await arreter(); await lancer();
     cle = await cdp.invoquer('get_local_api_key');
+    rapport.checks.backendVersionMatches = false;
+    verifierBackendCourant(await api('/health'), cible.version);
+    rapport.checks.backendVersionMatches = true;
     const relue = (await api(`/v1/vie/notes/${encodeURIComponent(note.id)}`)).note;
     verifier(relue.content === contenu && relue.projectId === projet.id, 'noteLostAfterRestart');
     rapport.checks.notePersistedAfterRestart = true;
+    if (scenario === 'legacy') {
+      verifier(ancienneSourcePreservee(), 'legacySourceOverwrittenAfterRestart');
+      rapport.checks.legacySourcePreserved = true;
+    }
     await capture(cdp, path.join(sortie, '03-apres-relance.png'));
     // 07/11/2026 : le site reste en attente pendant le premier essai réel.
     // Après conversation, voix et relance validées, attendre sa publication

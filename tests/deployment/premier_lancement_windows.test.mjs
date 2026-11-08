@@ -1,9 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import {
   CONTROLES, ciblePubliee, argumentsNsis, environnementApplication,
   rapportValide, urlCdpValide, origineApplication, verifierNarration,
   residuFermable, ollamaPartageable, erreurDemarragePubliable,
+  verifierBackendCourant, preparerAncienneSourceSynthétique,
 } from '../../scripts/tester_installation_windows.mjs';
 
 const version = '1.0.5-beta.20261107.23';
@@ -66,6 +70,32 @@ test('aucun contrôle manquant ne devient une installation réussie', () => {
   assert(!rapportValide({ ...r, installerExecuted: false }));
   assert(!rapportValide({ ...r, failureCode: 'notInstalled' }));
   assert(!rapportValide({ ...r, cleanupFailed: true }));
+  assert(!rapportValide({ ...r, scenario: 'legacy' }));
+  assert(rapportValide({ ...r, scenario: 'legacy', checks: { ...r.checks, legacySourcePreserved: true } }));
+  assert(!rapportValide({ ...r, scenario: 'autre' }));
+});
+
+test('une santé générique ou un ancien backend ne valide pas le nouvel installateur', () => {
+  const courant = { status: 'ok', managementApiVersion: 1, backendVersion: version };
+  assert.doesNotThrow(() => verifierBackendCourant(courant, version));
+  for (const sante of [{ status: 'ok' }, { ...courant, backendVersion: '1.0.0' },
+    { ...courant, managementApiVersion: '1' }, { ...courant, managementApiVersion: true },
+    { ...courant, backendVersion: version + '.autre' }, { ...courant, status: 'failed' }]) {
+    assert.throws(() => verifierBackendCourant(sante, version));
+  }
+});
+
+test('la source ancienne synthétique reste détectable sans être écrasée par une seconde préparation', () => {
+  const profil = fs.mkdtempSync(path.join(os.tmpdir(), 'diapason-ancienne-source-'));
+  try {
+    const env = { HOME: profil, LOCALAPPDATA: path.join(profil, 'LocalAppData') };
+    const preservee = preparerAncienneSourceSynthétique(env);
+    assert(preservee());
+    assert.throws(() => preparerAncienneSourceSynthétique(env));
+    assert(preservee(), 'un second essai ne doit pas écraser la fixture existante');
+    fs.writeFileSync(path.join(env.LOCALAPPDATA, 'Diapason', 'src', 'pyproject.toml'), 'modifié');
+    assert(!preservee(), 'une ancienne source remplacée doit faire échouer le contrôle');
+  } finally { fs.rmSync(profil, { recursive: true, force: true }); }
 });
 
 test('le serveur résiduel ne permet pas de fermer une autre fenêtre ou session', () => {

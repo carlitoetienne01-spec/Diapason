@@ -11,6 +11,12 @@ on:
         description: Empreinte du véritable installateur publié
         required: true
         type: string
+      scenario:
+        description: Profil neuf ou ancienne source synthétique à conserver
+        required: true
+        type: choice
+        default: fresh
+        options: [fresh, legacy]
       residual_pid:
         description: 'PID résiduel sans fenêtre, déjà identifié après fermeture de Diapason ; zéro laisse tous les processus existants intacts'
         required: false
@@ -38,11 +44,12 @@ jobs:
     env:
       INSTALLATION_VERSION: ${{ inputs.version }}
       INSTALLATION_SHA256: ${{ inputs.installer_sha256 }}
+      INSTALLATION_SCENARIO: ${{ inputs.scenario || 'fresh' }}
       INSTALLATION_RESIDUAL_PID: ${{ inputs.residual_pid }}
       INSTALLATION_RESIDUAL_BEFORE: ${{ inputs.residual_before }}
       BANC_COMMIT: ${{ github.sha }}
-      BANC_SCRIPT_SHA256: 04a834a5f45afa761762d301f702626321df3581b82e14c799e3d734a572f2b6
-      BANC_TEST_SHA256: b3df7fdd2f2062e35eaae0d120a79e9db23aabcb13b1ac8df8ebaae369631a3a
+      BANC_SCRIPT_SHA256: 4ac6ea07e33bb10d9740ba451a2eee45bc9c5bcd498633bfc66c98b0e704ffff
+      BANC_TEST_SHA256: 8f2c6026079a1104bdbda8fefc9fe8bdcb06e1d2e5006a86efec182d58815943
 
     steps:
       - uses: actions/setup-node@v6
@@ -87,6 +94,7 @@ jobs:
           node (Join-Path $banc 'scripts/tester_installation_windows.mjs') `
             --version $env:INSTALLATION_VERSION `
             --sha256 $env:INSTALLATION_SHA256 `
+            --scenario $env:INSTALLATION_SCENARIO `
             --workdir $travail `
             --residual-pid $env:INSTALLATION_RESIDUAL_PID `
             --residual-before $env:INSTALLATION_RESIDUAL_BEFORE
