@@ -313,8 +313,32 @@ function Possede([string]$p) {
     return ((Get-Acl -LiteralPath $p).GetOwner([Security.Principal.SecurityIdentifier]).Value -eq $sid)
   } catch { return $false }
 }
+function ApplicationSure([string]$p) {
+  # Les fichiers extraits par le runner élevé appartiennent aux Administrateurs.
+  # Accepter ce propriétaire exige aussi la chaîne des ACL, jamais le nom seul.
+  try {
+    $p=[IO.Path]::GetFullPath($p)
+    if (-not $p.StartsWith($profil+'\',[StringComparison]::OrdinalIgnoreCase)) { return $false }
+    $courant=$p; $fiables=@($sid,'S-1-5-32-544','S-1-5-18')
+    while ($courant -and ($courant -ieq $profil -or $courant.StartsWith($profil+'\',[StringComparison]::OrdinalIgnoreCase))) {
+      $i=Get-Item -LiteralPath $courant -Force
+      if ($i.Attributes -band [IO.FileAttributes]::ReparsePoint) { return $false }
+      $acl=Get-Acl -LiteralPath $courant
+      if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -notin $fiables) { return $false }
+      foreach ($regle in $acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier])) {
+        if ($regle.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow -or
+          ($regle.PropagationFlags -band [Security.AccessControl.PropagationFlags]::InheritOnly)) { continue }
+        # WriteData/AppendData/WriteEA/DeleteChild/WriteAttributes/Delete/WriteDac/WriteOwner.
+        if (([int64]$regle.FileSystemRights -band 852310) -ne 0 -and $regle.IdentityReference.Value -notin $fiables) { return $false }
+      }
+      if ($courant -ieq $profil) { return $true }
+      $courant=[IO.Path]::GetDirectoryName($courant)
+    }
+    return $false
+  } catch { return $false }
+}
 function Petit([string]$p,[int]$max) {
-  if (-not (Possede $p)) { return $null }
+  if (-not (ApplicationSure $p)) { return $null }
   if ((Get-Item -LiteralPath $p -Force).PSIsContainer) { return $null }
   $s=[IO.File]::OpenRead($p)
   try {
@@ -485,8 +509,8 @@ if ($ids.Count -eq 1) {
         $exemption= if ($present) { 'patternPresent' } else { 'patternNotFound' }
       }
       $resultat.candidates+=@{ root=$racine; metadataOwned=$true; cfgOwned=$true; cfg=$cfg;
-        resolvedHome=$baseDeclaree; baseVerified=$true; entryOwned=(Possede $entree); venvPythonOwned=(Possede $python);
-        betaOwned=(Possede (Join-Path $racine 'deploy\windows\beta_backend.py'));
+        resolvedHome=$baseDeclaree; baseVerified=$true; entryOwned=(ApplicationSure $entree); venvPythonOwned=(ApplicationSure $python);
+        betaOwned=(ApplicationSure (Join-Path $racine 'deploy\windows\beta_backend.py'));
         publicVersions=(VersionsPubliques $racine); crudExemption=$exemption }
     }
   }
@@ -504,15 +528,19 @@ async function sondeNative(mode, valeurs = {}, { platform = process.platform, la
   const executable = path.win32.join(windows, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
   return new Promise((resolve, reject) => {
     let fini = false, taille = 0; const blocs = [];
+    // Le script de vérification complet dépasse la ligne CreateProcessW de
+    // 32 767 caractères. Seul ce bootstrap fixe voyage dans la commande ;
+    // le script UTF-16 base64 reste dans le pipe privé, sans fichier temporaire.
+    const bootstrap = "[Console]::InputEncoding=[Text.Encoding]::ASCII; $s=[Console]::In.ReadToEnd(); & ([ScriptBlock]::Create([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String($s))))";
     const enfant = lancer(executable, ['-NoProfile', '-NonInteractive', '-EncodedCommand',
-      Buffer.from(POWERSHELL, 'utf16le').toString('base64')], { shell: false, windowsHide: true,
-      stdio: ['ignore', 'pipe', 'pipe'], env: { SystemRoot: windows, WINDIR: windows,
+      Buffer.from(bootstrap, 'utf16le').toString('base64')], { shell: false, windowsHide: true,
+      stdio: ['pipe', 'pipe', 'pipe'], env: { SystemRoot: windows, WINDIR: windows,
         PATH: path.win32.join(windows, 'System32'),
         PSModulePath: path.win32.join(windows, 'System32', 'WindowsPowerShell', 'v1.0', 'Modules'),
         DIAG_MODE: mode, ...valeurs } });
     const finir = (valeur, erreur = false, detail = {}) => {
       if (fini) return; fini = true; clearTimeout(minuteur);
-      enfant.stdout?.destroy(); enfant.stderr?.destroy(); enfant.unref();
+      enfant.stdin?.destroy(); enfant.stdout?.destroy(); enfant.stderr?.destroy(); enfant.unref();
       if (erreur) {
         const e = new Error('nativeUnavailable'); e.nativeDiagnostic = nettoyerNatif(detail); reject(e);
       } else resolve(valeur);
@@ -521,6 +549,7 @@ async function sondeNative(mode, valeurs = {}, { platform = process.platform, la
     const minuteur = setTimeout(() => finir(null, true, { outcome: 'timeout' }), 6500);
     enfant.stdout.on('data', b => { taille += b.length; if (taille > 32768) finir(null, true); else blocs.push(b); });
     enfant.stderr.on('data', () => {});
+    enfant.stdin.on('error', () => finir(null, true, { outcome: 'launchFailed' }));
     enfant.on('error', () => finir(null, true, { outcome: 'launchFailed' }));
     enfant.on('close', code => {
       if (code !== 0) return finir(null, true, { outcome: 'commandFailed' });
@@ -531,6 +560,7 @@ async function sondeNative(mode, valeurs = {}, { platform = process.platform, la
       }
       catch { finir(null, true); }
     });
+    enfant.stdin.end(Buffer.from(POWERSHELL, 'utf16le').toString('base64'));
   });
 }
 

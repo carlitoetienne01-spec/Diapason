@@ -142,10 +142,13 @@ test('§5 — spawn PowerShell reçoit seulement les modules système et aucune 
   process.env.SystemRoot = 'C:\\Windows'; process.env.PSModulePath = PRIVE + '\\Modules'; process.env.TOKEN = CLE;
   let code;
   const lancer = mock.fn((_exe, argv) => {
-    code = Buffer.from(argv.at(-1), 'base64').toString('utf16le');
-    const enfant = new EventEmitter(); enfant.stdout = new EventEmitter(); enfant.stderr = new EventEmitter();
-    enfant.stdout.destroy = mock.fn(); enfant.stderr.destroy = mock.fn(); enfant.unref = mock.fn();
-    queueMicrotask(() => { enfant.stdout.emit('data', Buffer.from(JSON.stringify(redirecteur()))); enfant.emit('close', 0); });
+    assert(Buffer.from(argv.at(-1), 'base64').toString('utf16le').includes('FromBase64String'));
+    const enfant = new EventEmitter(); enfant.stdin = new EventEmitter(); enfant.stdout = new EventEmitter(); enfant.stderr = new EventEmitter();
+    enfant.stdin.destroy = mock.fn(); enfant.stdout.destroy = mock.fn(); enfant.stderr.destroy = mock.fn(); enfant.unref = mock.fn();
+    enfant.stdin.end = payload => {
+      code = Buffer.from(payload, 'base64').toString('utf16le');
+      queueMicrotask(() => { enfant.stdout.emit('data', Buffer.from(JSON.stringify(redirecteur()))); enfant.emit('close', 0); });
+    };
     return enfant;
   });
   try {
@@ -159,6 +162,7 @@ test('§5 — spawn PowerShell reçoit seulement les modules système et aucune 
     assert.equal(options.env.PSModulePath, 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\Modules');
     assert(!JSON.stringify(options.env).includes(PRIVE)); assert(!JSON.stringify(options.env).includes(CLE));
     assert.deepEqual(Object.keys(options.env).sort(), ['DIAG_MODE', 'PATH', 'PSModulePath', 'SystemRoot', 'WINDIR'].sort());
+    assert.deepEqual(options.stdio, ['pipe', 'pipe', 'pipe']);
     assert(code.startsWith("\n$env:PSModulePath=Join-Path $PSHOME 'Modules'"));
     assert(code.includes("Petit (Join-Path $racine 'beta-build.json') 1048576"));
     assert(code.includes('snapshotBetaVersion=$meta.snapshot.betaVersion'));
@@ -379,13 +383,13 @@ test('§5 — exceptions natives/réseau brutes remplacées par des codes fermé
 test('§5 — un échec PowerShell garde seulement son étape et sa ligne statique', async () => {
   const ancien = process.env.SystemRoot; process.env.SystemRoot = 'C:\\Windows';
   const lancer = (_exe, argv) => {
-    const code = Buffer.from(argv.at(-1), 'base64').toString('utf16le');
-    const lignes = code.split('\n');
-    const ligne = lignes.findIndex(l => l.startsWith('$apps=@(')) + 1;
-    assert(ligne > 0); assert(code.includes('} catch {'));
-    const enfant = new EventEmitter(); enfant.stdout = new EventEmitter(); enfant.stderr = new EventEmitter();
-    enfant.stdout.destroy = mock.fn(); enfant.stderr.destroy = mock.fn(); enfant.unref = mock.fn();
-    queueMicrotask(() => {
+    assert(Buffer.from(argv.at(-1), 'base64').toString('utf16le').includes('ReadToEnd'));
+    const enfant = new EventEmitter(); enfant.stdin = new EventEmitter(); enfant.stdout = new EventEmitter(); enfant.stderr = new EventEmitter();
+    enfant.stdin.destroy = mock.fn(); enfant.stdout.destroy = mock.fn(); enfant.stderr.destroy = mock.fn(); enfant.unref = mock.fn();
+    enfant.stdin.end = payload => queueMicrotask(() => {
+      const code = Buffer.from(payload, 'base64').toString('utf16le');
+      const ligne = code.split('\n').findIndex(l => l.startsWith('$apps=@(')) + 1;
+      assert(ligne > 0); assert(code.includes('} catch {'));
       enfant.stderr.emit('data', Buffer.from(PRIVE + CLE));
       enfant.stdout.emit('data', Buffer.from(JSON.stringify({ diagnosticFailure: true,
         stage: 'applications', line: ligne, message: PRIVE + CLE })));
