@@ -32,6 +32,7 @@ $ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'
 [Console]::OutputEncoding=New-Object Text.UTF8Encoding($false)
 $lease=$null; $stopped=$false; $portFree=$false; $launcherExited=$false
 $script:refusalStage='initialization'; $script:refusalProperty=$null
+$script:basePythonAclWindowsAncestorVerified=$false; $script:basePythonAclWindowsAncestorWriterVerified=$false
 $chrono=[Diagnostics.Stopwatch]::StartNew()
 try {
 $sid=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
@@ -187,25 +188,50 @@ function BaseVenv([string]$cfg) {
   } catch { return $null }
 }
 
+function RegleServiceAncetre([bool]$premier,[bool]$ownerService,[bool]$writerService) {
+  return (-not $premier -and $ownerService -and $writerService)
+}
 function AclBaseSure([string]$p) {
   Point 'basePythonAcl'
+  $script:basePythonAclWindowsAncestorVerified=$false; $script:basePythonAclWindowsAncestorWriterVerified=$false
   # Hors profil, vérifier aussi les ACL du Python pointé par pyvenv.cfg.
   try {
     if (-not (SansReparse $p)) { return $false }
     $courant=[IO.Path]::GetFullPath($p); $premier=$true
     $fiables=@($sid,'S-1-5-32-544','S-1-5-18')
+    $service=$null; $ownerRencontre=$false; $writerRencontre=$false
     while ($courant) {
       $acl=Get-Acl -LiteralPath $courant
-      if ($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -notin $fiables) { $script:refusalProperty=if ($premier) { 'itemOwnerNotAllowed' } else { 'ancestorOwnerNotAllowed' }; return $false }
+      $owner=$acl.GetOwner([Security.Principal.SecurityIdentifier]); $ownerService=$false
+      if ($owner.Value -notin $fiables) {
+        if ($premier) { $script:refusalProperty='itemOwnerNotAllowed'; return $false }
+        if ($null -eq $service) {
+          try {
+            # 08/11/2026 : aucun SID deviné ni recherche par nom partiel.
+            $compte=[Security.Principal.NTAccount]::new('NT SERVICE','TrustedInstaller')
+            $service=$compte.Translate([Security.Principal.SecurityIdentifier])
+            if ($service -isnot [Security.Principal.SecurityIdentifier] -or
+              $service.Value -cnotmatch '^S-1-5-80-(?:[0-9]+-){4}[0-9]+$') { $script:refusalProperty='windowsAncestorLookupFailed'; return $false }
+          } catch { $script:refusalProperty='windowsAncestorLookupFailed'; return $false }
+        }
+        if (-not $owner.Equals($service)) { $script:refusalProperty='ancestorOwnerNotAllowed'; return $false }
+        $ownerService=$true; $ownerRencontre=$true
+      }
       foreach ($r in $acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier])) {
         if ($r.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow -or
           ($r.PropagationFlags -band [Security.AccessControl.PropagationFlags]::InheritOnly)) { continue }
         # Les ancêtres ne doivent pas permettre de remplacer un enfant existant.
         $masque=if ($premier) { 852310 } else { 852304 }
-        if (([int64]$r.FileSystemRights -band $masque) -ne 0 -and $r.IdentityReference.Value -notin $fiables) { $script:refusalProperty=if ($premier) { 'itemWriteNotAllowed' } else { 'ancestorWriteNotAllowed' }; return $false }
+        if (([int64]$r.FileSystemRights -band $masque) -ne 0 -and $r.IdentityReference.Value -notin $fiables) {
+          if (-not (RegleServiceAncetre $premier $ownerService ($r.IdentityReference.Equals($service)))) {
+            $script:refusalProperty=if ($premier) { 'itemWriteNotAllowed' } else { 'ancestorWriteNotAllowed' }; return $false
+          }
+          $writerRencontre=$true
+        }
       }
       $premier=$false; $courant=[IO.Path]::GetDirectoryName($courant)
     }
+    $script:basePythonAclWindowsAncestorVerified=$ownerRencontre; $script:basePythonAclWindowsAncestorWriterVerified=$writerRencontre
     return $true
   } catch { $script:refusalProperty='inspectionFailed'; return $false }
 }
@@ -298,6 +324,8 @@ function Faits {
     source=[ordered]@{ root=$racine; rootOwned=$true; metadataOwned=$true; cfgOwned=$true;
       entryOwned=(ApplicationSure $entree); venvPythonOwned=(ApplicationSure $python);
       cfg=$cfg; resolvedHome=$base; baseVerified=$true; aclVerified=$true; reparseVerified=$true;
+      basePythonAclWindowsAncestorVerified=[bool]$script:basePythonAclWindowsAncestorVerified;
+      basePythonAclWindowsAncestorWriterVerified=[bool]$script:basePythonAclWindowsAncestorWriterVerified;
       projectName=$noms[0].Groups[1].Value; sourceVersion=$versions[0].Groups[1].Value;
       markerState='absent'; betaAbsent=[bool]$sansBeta; gitAbsent=[bool]$sansGit;
       metadataDigest=(Empreinte ($projet+'|absent|'+$cfg)) }
@@ -307,6 +335,7 @@ function Faits {
 Point 'processHandle'
 $lease=New-Object -TypeName DiapasonOldServerLease -ArgumentList ([uint32]$numero)
 $avant=Faits | ConvertTo-Json -Depth 6 -Compress
+$windowsAncestorAvant=$script:basePythonAclWindowsAncestorVerified; $windowsWriterAvant=$script:basePythonAclWindowsAncestorWriterVerified
 '{"stage":"attestation","facts":'+$avant+'}' | Write-Output
 [Console]::Out.Flush()
 Point 'attestation'
@@ -316,6 +345,10 @@ if ($accord.permit -isnot [bool] -or $accord.permit -ne $true -or $accord.identi
 $apres=Faits | ConvertTo-Json -Depth 6 -Compress
 Point 'finalCheck'
 if ($apres -cne $avant) { throw 'oldBackendFinalCheckChanged' }
+if ($windowsAncestorAvant -isnot [bool] -or $windowsWriterAvant -isnot [bool] -or
+  $script:basePythonAclWindowsAncestorVerified -cne $windowsAncestorAvant -or
+  $script:basePythonAclWindowsAncestorWriterVerified -cne $windowsWriterAvant -or
+  ($windowsWriterAvant -and -not $windowsAncestorAvant)) { throw 'oldBackendFinalCheckChanged' }
 Point 'markerAbsence'
 if (-not (Absent (Join-Path $racine '.diapason-backend'))) { throw 'oldBackendVersionRefused' }
 Point 'finalCheck'
@@ -331,12 +364,13 @@ do {
 } while ($fin.ElapsedMilliseconds -lt 5000)
 if (-not $portFree) { throw 'oldBackendPortChanged' }
 if (-not $launcherExited) { throw 'oldBackendLauncherStillRunning' }
-@{ stage='result'; status='stopped'; targetStopped=$true; portFree=$true; launcherExited=$true } | ConvertTo-Json -Compress
+@{ stage='result'; status='stopped'; targetStopped=$true; portFree=$true; launcherExited=$true;
+  basePythonAclWindowsAncestorVerified=$windowsAncestorAvant; basePythonAclWindowsAncestorWriterVerified=$windowsWriterAvant } | ConvertTo-Json -Compress
 } catch {
   $code='oldBackendNativeUnavailable'
   if ($_.Exception.Message -cmatch '^oldBackend(?:PidChanged|OwnerRefused|IdentityChanged|SourceRefused|VersionRefused|EntryRefused|PortChanged|UiActive|Timeout|ProtocolRefused|FinalCheckChanged|StopUnconfirmed|LauncherStillRunning)$') { $code=$_.Exception.Message }
   $etapePub=if ($script:refusalStage -cin @('initialization','processHandle','processIdentity','rootOwnership','markerAbsence','projectMetadata','venvMetadata','basePythonAcl','entryFiles','betaAbsence','gitAbsence','attestation','finalCheck','stopConfirmation')) { $script:refusalStage } else { $null }
-  $proprietePub=if ($etapePub -and $script:refusalProperty -cin @('outsideProfile','invalidPath','reparse','itemOwnerNotAllowed','ancestorOwnerNotAllowed','itemWriteNotAllowed','ancestorWriteNotAllowed','inspectionFailed')) { $script:refusalProperty } else { $null }
+  $proprietePub=if ($etapePub -and $script:refusalProperty -cin @('outsideProfile','invalidPath','reparse','itemOwnerNotAllowed','ancestorOwnerNotAllowed','itemWriteNotAllowed','ancestorWriteNotAllowed','inspectionFailed','windowsAncestorLookupFailed')) { $script:refusalProperty } else { $null }
   @{ stage='result'; status='refused'; refusalStage=$etapePub; refusalProperty=$proprietePub; code=$code; targetStopped=[bool]$stopped; portFree=[bool]$portFree; launcherExited=[bool]$launcherExited } | ConvertTo-Json -Compress
 } finally { if ($lease) { $lease.Dispose() } }
 `;
@@ -414,6 +448,9 @@ export function validerArretAncien(n, a) {
     && c.cfgOwned === true && c.entryOwned === true && c.venvPythonOwned === true
     && c.baseVerified === true && c.aclVerified === true && c.reparseVerified === true,
   'oldBackendSourceRefused');
+  verifier(typeof c.basePythonAclWindowsAncestorVerified === 'boolean'
+    && typeof c.basePythonAclWindowsAncestorWriterVerified === 'boolean'
+    && (!c.basePythonAclWindowsAncestorWriterVerified || c.basePythonAclWindowsAncestorVerified), 'oldBackendSourceRefused');
   verifier(c.projectName === 'Diapason' && c.sourceVersion === '1.0.0'
     && c.markerState === 'absent' && c.betaAbsent === true && c.gitAbsent === true,
   'oldBackendVersionRefused');
@@ -441,13 +478,18 @@ const CODES_ARRET_ANCIEN = new Set(['oldBackendPidChanged', 'oldBackendOwnerRefu
   'oldBackendNativeUnavailable', 'oldBackendTimeout', 'oldBackendProtocolRefused',
   'oldBackendFinalCheckChanged', 'oldBackendStopUnconfirmed', 'oldBackendLauncherStillRunning']);
 const ETAPES_ARRET_ANCIEN = new Set(['initialization', 'processHandle', 'processIdentity', 'rootOwnership', 'markerAbsence', 'projectMetadata', 'venvMetadata', 'basePythonAcl', 'entryFiles', 'betaAbsence', 'gitAbsence', 'attestation', 'finalCheck', 'stopConfirmation']);
-const PROPRIETES_ARRET_ANCIEN = new Set(['outsideProfile', 'invalidPath', 'reparse', 'itemOwnerNotAllowed', 'ancestorOwnerNotAllowed', 'itemWriteNotAllowed', 'ancestorWriteNotAllowed', 'inspectionFailed']);
+const PROPRIETES_ARRET_ANCIEN = new Set(['outsideProfile', 'invalidPath', 'reparse', 'itemOwnerNotAllowed', 'ancestorOwnerNotAllowed', 'itemWriteNotAllowed', 'ancestorWriteNotAllowed', 'inspectionFailed', 'windowsAncestorLookupFailed']);
 export function rapportArretAncien(r = {}) {
   const etape = r.refusalStage ?? r.stage, propriete = r.refusalProperty ?? r.property;
   const stage = r.requested === true && r.status === 'refused' && ETAPES_ARRET_ANCIEN.has(etape) ? etape : null;
   return { requested: r.requested === true, status: ['notRequested', 'refused', 'stopped'].includes(r.status) ? r.status : 'refused',
     code: CODES_ARRET_ANCIEN.has(r.code) ? r.code : null,
     stage, property: stage && PROPRIETES_ARRET_ANCIEN.has(propriete) ? propriete : null,
+    basePythonAclWindowsAncestorVerified: r.requested === true && r.status === 'stopped' && r.targetStopped === true
+      && r.portFree === true && r.launcherExited === true && r.basePythonAclWindowsAncestorVerified === true,
+    basePythonAclWindowsAncestorWriterVerified: r.requested === true && r.status === 'stopped' && r.targetStopped === true
+      && r.portFree === true && r.launcherExited === true && r.basePythonAclWindowsAncestorVerified === true
+      && r.basePythonAclWindowsAncestorWriterVerified === true,
     targetStopped: r.targetStopped === true, portFree: r.portFree === true,
     launcherExited: r.launcherExited === true };
 }
@@ -461,7 +503,7 @@ export async function arreterAncienBackend(a, { platform = process.platform, sys
   const windows = systeme.SystemRoot;
   if (!cheminAncien(windows)) return rapportArretAncien({ requested: true, status: 'refused', code: 'oldBackendNativeUnavailable' });
   return new Promise(resolve => {
-    let fini = false, enfant, taille = 0, tampon = '', autorise = false;
+    let fini = false, enfant, taille = 0, tampon = '', autorise = false, preuveOwner = null, preuveWriter = null;
     const finir = r => {
       if (fini) return; fini = true; demuter(delai);
       enfant?.stdin?.destroy(); enfant?.stdout?.destroy(); enfant?.stderr?.destroy(); enfant?.unref();
@@ -492,11 +534,17 @@ export async function arreterAncienBackend(a, { platform = process.platform, sys
               try { validerArretAncien(n.facts, a); } catch (e) {
                 return finir({ code: CODES_ARRET_ANCIEN.has(e.message) ? e.message : 'oldBackendProtocolRefused', refusalStage: 'attestation' });
               }
+              preuveOwner = n.facts.source.basePythonAclWindowsAncestorVerified;
+              preuveWriter = n.facts.source.basePythonAclWindowsAncestorWriterVerified;
               autorise = true;
               // Le fils compare de nouveau TOUS les faits sous le même HANDLE.
               enfant.stdin.write(JSON.stringify({ permit: true, identity: n.facts.process.identity }) + '\n');
             } else if (n.stage === 'result' && n.status === 'stopped' && autorise
-              && n.targetStopped === true && n.portFree === true && n.launcherExited === true) finir(n);
+              && n.targetStopped === true && n.portFree === true && n.launcherExited === true
+              && typeof n.basePythonAclWindowsAncestorVerified === 'boolean'
+              && typeof n.basePythonAclWindowsAncestorWriterVerified === 'boolean'
+              && n.basePythonAclWindowsAncestorVerified === preuveOwner
+              && n.basePythonAclWindowsAncestorWriterVerified === preuveWriter) finir(n);
             else if (n.stage === 'result' && n.status === 'refused' && CODES_ARRET_ANCIEN.has(n.code)) finir(n);
             else finir({ code: 'oldBackendProtocolRefused' });
           } catch (e) { finir({ code: CODES_ARRET_ANCIEN.has(e.message) ? e.message : 'oldBackendProtocolRefused' }); }

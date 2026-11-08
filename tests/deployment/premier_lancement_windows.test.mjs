@@ -46,6 +46,7 @@ const faitsAncien = () => {
       commandLine: `"${root}\\.venv\\Scripts\\python.exe" "${root}\\.venv\\Scripts\\diapason.exe" serve --port 8000` },
     source: { root, rootOwned: true, metadataOwned: true, cfgOwned: true, entryOwned: true,
       venvPythonOwned: true, baseVerified: true, aclVerified: true, reparseVerified: true,
+      basePythonAclWindowsAncestorVerified: false, basePythonAclWindowsAncestorWriterVerified: false,
       cfg: `home = ${base}\r\ninclude-system-site-packages = false\r\n`, resolvedHome: base,
       projectName: 'Diapason', sourceVersion: '1.0.0', markerState: 'absent', betaAbsent: true, gitAbsent: true },
     listeners: [{ pid: 48196, port: 8000, address: '127.0.0.1' }],
@@ -164,6 +165,8 @@ function fauxArretNatif({ facts = faitsAncien(), result, refusAvantAttestation, 
         const autorisation = JSON.parse(ligne); assert.equal(autorisation.permit, true);
         assert.equal(autorisation.identity, facts.process.identity); permis++;
         queueMicrotask(() => p.stdout.write(JSON.stringify(result ?? { stage: 'result', status: 'stopped',
+          basePythonAclWindowsAncestorVerified: facts.source.basePythonAclWindowsAncestorVerified,
+          basePythonAclWindowsAncestorWriterVerified: facts.source.basePythonAclWindowsAncestorWriterVerified,
           targetStopped: true, portFree: true, launcherExited: true }) + '\n'));
       }
     });
@@ -202,7 +205,9 @@ test('§100 — sonde bornée, environnement sans modules usager ni secrets et a
   const faux = fauxArretNatif();
   const r = await arreterAncienBackend(accordAncien(), { platform: 'win32',
     systeme: { SystemRoot: 'C:\\Windows', PSModulePath: 'C:\\privé\\Modules', TOKEN: 'canari-secret', HOME: 'C:\\privé' }, lancer: faux.lancer });
-  assert.deepEqual(r, { requested: true, status: 'stopped', code: null, stage: null, property: null, targetStopped: true, portFree: true, launcherExited: true });
+  assert.deepEqual(r, { requested: true, status: 'stopped', code: null, stage: null, property: null,
+    basePythonAclWindowsAncestorVerified: false, basePythonAclWindowsAncestorWriterVerified: false,
+    targetStopped: true, portFree: true, launcherExited: true });
   const { capture, permis, script } = faux.etat(); assert.equal(permis, 1);
   assert.equal(capture.options.shell, false);
   assert.equal(capture.options.env.PSModulePath, 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\Modules');
@@ -240,7 +245,9 @@ test('§100 — rapport fermé sans paths, commandes, SID, erreurs ni clé', () 
   const r = rapportArretAncien({ requested: 'true', status: canari, code: canari,
     path: canari, commandLine: canari, sid: 'S-1-5-21-secret', key: 'canari-secret', error: new Error(canari),
     targetStopped: 'true', portFree: 1, launcherExited: true });
-  assert.deepEqual(Object.keys(r), ['requested', 'status', 'code', 'stage', 'property', 'targetStopped', 'portFree', 'launcherExited']);
+  assert.deepEqual(Object.keys(r), ['requested', 'status', 'code', 'stage', 'property',
+    'basePythonAclWindowsAncestorVerified', 'basePythonAclWindowsAncestorWriterVerified',
+    'targetStopped', 'portFree', 'launcherExited']);
   assert.equal(r.status, 'refused'); assert.equal(r.code, null); assert.equal(r.targetStopped, false);
   assert(!/Privé|secret|canari|S-1-/.test(JSON.stringify(r)));
 });
@@ -771,7 +778,7 @@ test('gel36 — défaut sans arrêt et champs diagnostiques incapables d’autor
   assert.equal(succes.stage, null); assert.equal(succes.property, null);
 });
 
-test('gel36 — contrat PS statique : étapes de refus et ACL identiques, aucun propriétaire publié', () => {
+test('gel36 — contrat PS statique : étapes et masques/SID historiques identiques, aucun propriétaire publié', () => {
   const code = sourceBancMarqueur();
   const faits = code.slice(code.indexOf('function Faits {'), code.indexOf('$lease=New-Object -TypeName'));
   assert(faits.indexOf("Point 'rootOwnership'") < faits.indexOf('Possede $racine'));
@@ -781,11 +788,113 @@ test('gel36 — contrat PS statique : étapes de refus et ACL identiques, aucun 
   assert(acl.includes("Point 'basePythonAcl'"));
   assert(acl.includes("$fiables=@($sid,'S-1-5-32-544','S-1-5-18')"));
   assert(acl.includes('$masque=if ($premier) { 852310 } else { 852304 }'));
-  assert(acl.includes("if ($premier) { 'itemOwnerNotAllowed' } else { 'ancestorOwnerNotAllowed' }"));
+  assert(acl.includes("if ($premier) { $script:refusalProperty='itemOwnerNotAllowed'; return $false }"));
+  assert(acl.includes("if (-not $owner.Equals($service)) { $script:refusalProperty='ancestorOwnerNotAllowed'; return $false }"));
   const natif = code.slice(code.indexOf("  $etapePub=if ("), code.indexOf('`;\n\n// 08/11/2026'));
   assert(natif.includes('refusalStage=$etapePub; refusalProperty=$proprietePub;'));
   assert(!/owner=|path=|sid=|metadata=|Exception\s*=|rawError=|CommandLine=/.test(natif));
   for (const etape of etapesGel36) assert(natif.includes("'" + etape + "'"));
   for (const property of proprietesGel36) assert(natif.includes("'" + property + "'"));
   assert(natif.includes('} finally { if ($lease) { $lease.Dispose() } }'));
+});
+
+// Gel37 : matrice de la règle PS extraite comme logique booléenne pure,
+// protocole simulé et contrôles statiques ; aucune résolution Windows exécutée.
+const ownerWindows = 'basePythonAclWindowsAncestorVerified';
+const writerWindows = 'basePythonAclWindowsAncestorWriterVerified';
+const faitsRoleWindows = (owner = false, writer = false) => {
+  const n = faitsSansMarqueur(); n.source[ownerWindows] = owner; n.source[writerWindows] = writer; return n;
+};
+
+test('gel37 — la vraie expression PS writer exige ancêtre ET owner service ET writer même service', () => {
+  const code = sourceBancMarqueur();
+  const debut = code.indexOf('function RegleServiceAncetre('), fin = code.indexOf('function AclBaseSure(', debut);
+  assert(debut > 0 && fin > debut);
+  const expression = /return \(([^\n]+)\)/.exec(code.slice(debut, fin))?.[1]; assert(expression);
+  const residu = expression.replace(/\$premier|\$ownerService|\$writerService|-not|-and|\s|\(|\)/g, '');
+  assert.equal(residu, '', 'seul le sous-ensemble booléen extrait est évalué, aucun script natif');
+  const js = expression.replace(/\$(premier|ownerService|writerService)/g, '$1').replace(/-not/g, '!').replace(/-and/g, '&&');
+  const regle = new Function('premier', 'ownerService', 'writerService', `return (${js});`);
+  for (const premier of [false, true]) for (const owner of [false, true]) for (const writer of [false, true]) {
+    assert.equal(regle(premier, owner, writer), !premier && owner && writer,
+      `fichier=${premier}, ownerService=${owner}, writerService=${writer}`);
+  }
+});
+
+test('gel37 — résolution Windows exacte, namespace service et aucun élargissement du fichier Python', () => {
+  const code = sourceBancMarqueur();
+  const acl = code.slice(code.indexOf('function AclBaseSure('), code.indexOf('function Absent('));
+  const rejetFichier = acl.indexOf("if ($premier) { $script:refusalProperty='itemOwnerNotAllowed'; return $false }");
+  const resolution = acl.indexOf("[Security.Principal.NTAccount]::new('NT SERVICE','TrustedInstaller')");
+  assert(rejetFichier > 0 && resolution > rejetFichier, 'le fichier est refusé avant toute exception de rôle');
+  assert(acl.includes('$compte.Translate([Security.Principal.SecurityIdentifier])'));
+  assert(acl.includes("$service.Value -cnotmatch '^S-1-5-80-(?:[0-9]+-){4}[0-9]+$'"));
+  assert(acl.includes("catch { $script:refusalProperty='windowsAncestorLookupFailed'; return $false }"));
+  assert(acl.includes('if (-not $owner.Equals($service))'));
+  assert(acl.includes('RegleServiceAncetre $premier $ownerService ($r.IdentityReference.Equals($service))'));
+  assert(acl.includes("$fiables=@($sid,'S-1-5-32-544','S-1-5-18')"));
+  assert(acl.includes('$masque=if ($premier) { 852310 } else { 852304 }'));
+  assert(acl.includes('$r.IdentityReference.Value -notin $fiables'));
+  assert(!/Set-Acl|takeown|icacls|\.Contains\(|-like|S-1-5-80-\d/.test(acl), 'pas de mutation, SID deviné ou nom fuzzy');
+});
+
+test('gel37 — preuves de faits strictement booléennes et writer impossible sans owner', async () => {
+  for (const champ of [ownerWindows, writerWindows]) for (const valeur of [undefined, null, 'true', 'false', 0, 1, {}]) {
+    const n = faitsRoleWindows();
+    if (valeur === undefined) delete n.source[champ]; else n.source[champ] = valeur;
+    const r = await jouerMarqueur({ facts: n });
+    assert.equal(r.permis, 0); assert.equal(r.r.code, 'oldBackendSourceRefused');
+  }
+  const impossible = await jouerMarqueur({ facts: faitsRoleWindows(false, true) });
+  assert.equal(impossible.permis, 0); assert.equal(impossible.r.code, 'oldBackendSourceRefused');
+});
+
+test('gel37 — résultat fermé exige preuves cohérentes avec les premiers faits', async () => {
+  for (const [owner, writer] of [[false, false], [true, false], [true, true]]) {
+    const r = await jouerMarqueur({ facts: faitsRoleWindows(owner, writer) });
+    assert.equal(r.r.status, 'stopped'); assert.equal(r.r[ownerWindows], owner); assert.equal(r.r[writerWindows], writer);
+    assert.deepEqual(rapportArretAncien(r.r), r.r, 'preuve publique réappliquée sans contenu natif');
+  }
+  const base = { stage: 'result', status: 'stopped', targetStopped: true, portFree: true, launcherExited: true,
+    [ownerWindows]: true, [writerWindows]: true };
+  for (const champ of [ownerWindows, writerWindows]) for (const valeur of [undefined, null, 'true', false]) {
+    const result = { ...base };
+    if (valeur === undefined) delete result[champ]; else result[champ] = valeur;
+    const r = await jouerMarqueur({ facts: faitsRoleWindows(true, true), result });
+    assert.equal(r.permis, 1); assert.equal(r.r.status, 'refused'); assert.equal(r.r.code, 'oldBackendProtocolRefused');
+    assert.equal(r.r[ownerWindows], false); assert.equal(r.r[writerWindows], false);
+  }
+});
+
+test('gel37 — défaut, lookup échoué et refus ne présument jamais le rôle rencontré', async () => {
+  const defaut = await arreterAncienBackend(null, { lancer: () => { throw new Error('aucun enfant attendu'); } });
+  assert.equal(defaut[ownerWindows], false); assert.equal(defaut[writerWindows], false);
+  const refus = await jouerMarqueur({ refusAvantAttestation: { stage: 'result', status: 'refused',
+    code: 'oldBackendSourceRefused', refusalStage: 'basePythonAcl', refusalProperty: 'windowsAncestorLookupFailed',
+    [ownerWindows]: true, [writerWindows]: true, owner: 'S-1-5-80-canari', path: 'C:\\Users\\Privé', rawError: 'secret' } });
+  assert.equal(refus.permis, 0); assert.equal(refus.r.property, 'windowsAncestorLookupFailed');
+  assert.equal(refus.r[ownerWindows], false); assert.equal(refus.r[writerWindows], false);
+  assert(!/Privé|S-1-|secret/.test(JSON.stringify(refus.r)));
+  for (const etat of [{ requested: false, status: 'stopped' }, { requested: true, status: 'refused' }]) {
+    const r = rapportArretAncien({ ...etat, targetStopped: true, portFree: true, launcherExited: true, [ownerWindows]: true, [writerWindows]: true });
+    assert.equal(r[ownerWindows], false); assert.equal(r[writerWindows], false);
+  }
+});
+
+test('gel37 — contrat natif statique : deux lectures fraîches cohérentes avant terminaison', () => {
+  const code = sourceBancMarqueur();
+  const acl = code.slice(code.indexOf('function AclBaseSure('), code.indexOf('function Absent('));
+  assert(acl.includes('$service=$null; $ownerRencontre=$false; $writerRencontre=$false'), 'cache limité à une seule lecture');
+  assert(acl.indexOf('$script:basePythonAclWindowsAncestorVerified=$false') < acl.indexOf('try {'));
+  assert(acl.indexOf('$script:basePythonAclWindowsAncestorVerified=$ownerRencontre') > acl.indexOf('$premier=$false;'));
+  const faits = code.slice(code.indexOf('function Faits {'), code.indexOf("Point 'processHandle'"));
+  assert(faits.includes(ownerWindows + '=[bool]$script:' + ownerWindows));
+  assert(faits.includes(writerWindows + '=[bool]$script:' + writerWindows));
+  const premiere = code.indexOf('$avant=Faits'), seconde = code.indexOf('$apres=Faits');
+  const capture = code.indexOf('$windowsAncestorAvant=$script:'), egalite = code.indexOf('$script:' + ownerWindows + ' -cne $windowsAncestorAvant');
+  const arret = code.indexOf('$stopped=$lease.StopChecked(');
+  assert(premiere > 0 && capture > premiere && seconde > capture && egalite > seconde && arret > egalite);
+  assert(code.includes("if ($apres -cne $avant) { throw 'oldBackendFinalCheckChanged' }"));
+  assert(code.includes(ownerWindows + '=$windowsAncestorAvant; ' + writerWindows + '=$windowsWriterAvant'));
+  assert(code.includes('} finally { if ($lease) { $lease.Dispose() } }'));
 });
