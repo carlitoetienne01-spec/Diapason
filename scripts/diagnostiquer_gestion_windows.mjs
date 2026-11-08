@@ -500,7 +500,6 @@ if ($ids.Count -eq 1) {
       $resultat.projectFiles+=EtatProjet (Join-Path $racine 'pyproject.toml')
       $projet=Petit (Join-Path $racine 'pyproject.toml') 65536
       if (-not $projet) { $resultat.candidateStages+='projectUnreadable'; continue }
-      if ($projet -match '(?im)^name\s*=\s*["''](?:OpenJarvis|Jarvis)["'']\s*$') { $resultat.candidateStages+='legacyProject'; continue }
       if ($projet -notmatch '(?im)^name\s*=\s*["'']Diapason["'']\s*$') { $resultat.candidateStages+='projectUnrecognized'; continue }
       $versionSource=$null
       if ($projet -match '(?im)^version\s*=\s*["'']([0-9A-Za-z.\-]+)["'']\s*$') { $versionSource=$Matches[1] }
