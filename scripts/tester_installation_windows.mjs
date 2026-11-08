@@ -12,6 +12,7 @@ export const CONTROLES = Object.freeze([
   'installedExecutablePresent', 'versionMatches', 'firstLaunchReady',
   'newManagedBackendPrepared', 'twoTurnUiConversation',
   'backendVersionMatches',
+  'managementCrudAfterQuota', 'navigationScrollbarHidden',
   'initialModelMatchesValidatedPlan',
   'notePersistedAfterRestart', 'narrationWithWordTimings',
   'updateButtonVisible', 'updateCatalogueMatches',
@@ -867,12 +868,32 @@ if ($LASTEXITCODE -ne 0) { throw 'residualProcessStopFailed' }
     rapport.checks.twoTurnUiConversation = true;
     await capture(cdp, path.join(sortie, '02-discussion-reelle.png'));
     noter('saveSyntheticNote');
+    noter('managementAfterQuota');
+    const quotas = await Promise.allSettled(Array.from({ length: 16 }, async () => {
+      const res = await fetch(base + '/v1/config', { headers: { Authorization: `Bearer ${cle}` },
+        signal: AbortSignal.timeout(10000) });
+      await res.body?.cancel();
+      return res.status;
+    }));
+    verifier(quotas.every(r => r.status === 'fulfilled'
+      && ((r.value >= 200 && r.value < 300) || r.value === 429)), 'quotaProbeUnexpectedStatus');
+    const refusQuota = quotas.filter(r => r.status === 'fulfilled' && r.value === 429).length;
+    verifier(refusQuota > 0, 'quotaNotExercised');
+    // Les premières réponses peuvent dater de plusieurs secondes : confirmer
+    // le refus juste avant le POST, après la fin de toute la rafale.
+    const encoreLimite = await fetch(base + '/v1/config', { headers: { Authorization: `Bearer ${cle}` },
+      signal: AbortSignal.timeout(10000) });
+    await encoreLimite.body?.cancel();
+    verifier(encoreLimite.status === 429, 'quotaRefilledBeforeCrud');
+    rapport.managementQuota = { requests: 17, throttled: refusQuota + 1, confirmedImmediatelyBeforeCrud: true };
     const projet = (await api('/v1/vie/projects', 'POST', { name: 'Essai installation Windows' })).project;
     const contenu = 'Note créée dans le profil d’essai. Trente-sept pages sont prêtes.';
     const note = (await api('/v1/vie/notes', 'POST', {
       title: 'Note de contrôle', content: contenu, projectId: projet.id,
     })).note;
     verifier(note.content === contenu, 'noteSaveFailed');
+    await api('/v1/vie/finances/overview');
+    rapport.checks.managementCrudAfterQuota = true;
     noter('narrationAndWordTimings');
     const parole = await api('/v1/speech/narrate', 'POST', {
       text: 'Bonjour, nous avons lu 37 pages. Tout va bien.', format: 'json', language: 'fr', wordTimings: true,
@@ -894,6 +915,17 @@ if ($LASTEXITCODE -ne 0) { throw 'residualProcessStopFailed' }
         && s.display !== 'none' && b.contains(document.elementFromPoint(x, y));
     })()`);
     verifier(maj, 'updateButtonMissing'); rapport.checks.updateButtonVisible = true;
+    const navigation = await cdp.evaluer(`(() => {
+      const elements = [...document.querySelectorAll('.navigation-rail-rubriques, .navigation-contenu')]
+        .filter(e => e.getBoundingClientRect().width > 0 && e.getBoundingClientRect().height > 0);
+      return elements.length > 0 && elements.every(e => {
+        const s = getComputedStyle(e), barre = getComputedStyle(e, '::-webkit-scrollbar');
+        return ['auto', 'scroll'].includes(s.overflowY)
+          && (s.scrollbarWidth === 'none' || barre.display === 'none');
+      });
+    })()`);
+    verifier(navigation, 'navigationScrollbarNotHidden');
+    rapport.checks.navigationScrollbarHidden = true;
     noter('restartInstalledApplication');
     await arreter(); await lancer();
     cle = await cdp.invoquer('get_local_api_key');
