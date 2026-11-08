@@ -14,6 +14,8 @@ export const CONTROLES = Object.freeze([
   'newManagedBackendPrepared', 'twoTurnUiConversation',
   'backendVersionMatches',
   'managementCrudAfterQuota', 'navigationScrollbarHidden',
+  'managementUiProjectCreated', 'managementUiNoteSaved', 'managementUiFinancesLoaded',
+  'managementUiNotePersistedAfterRestart',
   'initialModelMatchesValidatedPlan',
   'notePersistedAfterRestart', 'narrationWithWordTimings',
   'updateButtonVisible', 'updateCatalogueMatches',
@@ -684,6 +686,8 @@ export function environnementApplication(systeme, profil, port) {
   return env;
 }
 
+// 08/11/2026 : les routes33 créent en201 ; exiger200 refusait un succès réel.
+const STATUTS_GESTION = Object.freeze({ project: 201, note: 201, finances: 200 });
 export function preuveQuotaValide(q) {
   return !!q && Number.isSafeInteger(q.bursts) && q.bursts >= 1 && q.bursts <= 2
     && q.requests === q.bursts * 17 && q.confirmationRequest === q.requests
@@ -692,7 +696,7 @@ export function preuveQuotaValide(q) {
     && q.completed + q.aborted === q.requests && q.failed === 0
     && q.confirmationStatus === 429 && q.confirmedImmediatelyBeforeCrud === true
     && q.businessRequests === 3 && q.requests + q.businessRequests <= 51 && q.cleanupCompleted === true
-    && ['project', 'note', 'finances'].every(k => q.businessStatuses?.[k] === 200);
+    && Object.entries(STATUTS_GESTION).every(([k, statut]) => q.businessStatuses?.[k] === statut);
 }
 
 export async function exercerGestionSousQuota({ base, cle, fetcher = fetch,
@@ -736,7 +740,7 @@ export async function exercerGestionSousQuota({ base, cle, fetcher = fetch,
         headers: { Authorization: `Bearer ${cle}`, ...(corps ? { 'Content-Type': 'application/json' } : {}) },
         ...(corps ? { body: JSON.stringify(corps) } : {}), signal: controleur.signal });
       if (r.etat !== 'pending') { await res.body?.cancel(); return; }
-      if (!Number.isInteger(res.status) || !(sonde ? ((res.status >= 200 && res.status < 300) || res.status === 429) : res.status === 200)) {
+      if (!Number.isInteger(res.status) || !(sonde ? ((res.status >= 200 && res.status < 300) || res.status === 429) : res.status === STATUTS_GESTION[metier])) {
         echouer(sonde ? 'quotaProbeUnexpectedStatus' : 'managementCrudUnexpectedStatus'); return;
       }
       if (sonde) {
@@ -808,6 +812,8 @@ export function rapportValide(rapport) {
   return rapport?.installerExecuted === true
     && CONTROLES.every(c => rapport.checks?.[c] === true)
     && preuveQuotaValide(rapport.managementQuota)
+    && preuveGestionUiValide(rapport.managementUi)
+    && rapport.managementUi.financeFixture === rapport.scenario
     && ['fresh', 'legacy'].includes(rapport.scenario)
     && (rapport.scenario !== 'legacy' || (
       CONTROLES_LEGACY.every(c => rapport.checks?.[c] === true)
@@ -1397,6 +1403,308 @@ if ($p -and $p.ExecutablePath -eq (Join-Path $env:DIAPASON_E2E_INSTALL 'diapason
   return powershell(REGISTRE_ISOLE, { ...env, DIAPASON_E2E_REG_MODE: 'restore' });
 }
 
+const PHASES_GESTION_UI = new Set(['project', 'note', 'save', 'finances', 'reopen']);
+const CODES_GESTION_UI = new Set(['uiFixtureInvalid', 'uiProfileNotIsolated', 'uiNetworkUnavailable',
+  'uiApiOriginRefused', 'uiApiRedirectRefused', 'uiNetworkBudgetExceeded', 'uiNetworkProtocolRefused',
+  'uiNetworkRequestFailed', 'uiNetworkCleanupFailed', 'uiPhaseInvalid', 'uiScenarioTimeout',
+  'uiNetworkCacheRefused',
+  'uiControlNotReady', 'uiExpectedStateMissing', 'uiExpectedResponseMissing', 'uiSavedNoteMissing',
+  'uiReopenedNoteChanged', 'uiEvidenceInvalid']);
+const STATUTS_GESTION_UI = new Set([200, 201, 204, 301, 302, 303, 307, 308, 400, 401, 403, 404, 405, 409, 413, 422, 429, 500, 502, 503, 504]);
+const ROUTES_GESTION_UI = new Set([
+  'GET /v1/vie/projects', 'POST /v1/vie/projects',
+  'GET /v1/vie/notes/resumes', 'GET /v1/vie/notes', 'POST /v1/vie/notes',
+  'GET /v1/vie/notes/:id', 'PATCH /v1/vie/notes/:id',
+  ...['overview', 'categories', 'subscriptions', 'transactions'].map(x => 'GET /v1/vie/finances/' + x),
+]);
+
+export function nomsGestionUi(nonce = randomUUID()) {
+  verifier(typeof nonce === 'string' && /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(nonce), 'uiFixtureInvalid');
+  return { project: 'Projet UI QA ' + nonce, note: 'Note UI QA ' + nonce,
+    contenu: 'Texte synthétique UI QA ' + nonce };
+}
+
+export function preuveGestionUiValide(p) {
+  if (!p || Object.keys(p).sort().join(',') !== 'financeFixture,financesLoaded,fixtures,noteReopenedAfterRestart,noteSaved,observationClosed,projectCreated,responses,schemaVersion'
+    || p.schemaVersion !== 1 || !['fresh', 'legacy'].includes(p.financeFixture)
+    || !p.fixtures || Object.keys(p.fixtures).sort().join(',') !== 'note,project'
+    || typeof p.fixtures.project !== 'string' || typeof p.fixtures.note !== 'string') return false;
+  const nonce = p.fixtures.project.replace(/^Projet UI QA /, '');
+  if (!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(nonce)
+    || p.fixtures.project !== 'Projet UI QA ' + nonce || p.fixtures.note !== 'Note UI QA ' + nonce
+    || !['projectCreated', 'noteSaved', 'financesLoaded', 'noteReopenedAfterRestart', 'observationClosed'].every(k => p[k] === true)
+    || !Array.isArray(p.responses) || p.responses.length > 96) return false;
+  if (!p.responses.every(r => r && Object.keys(r).sort().join(',') === 'method,path,phase,status'
+    && PHASES_GESTION_UI.has(r.phase) && ROUTES_GESTION_UI.has(r.method + ' ' + r.path)
+    && STATUTS_GESTION_UI.has(r.status))) return false;
+  const a = (phase, method, path, status) => p.responses.some(r => r.phase === phase && r.method === method && r.path === path && r.status === status);
+  return a('project', 'POST', '/v1/vie/projects', 201)
+    && a('project', 'GET', '/v1/vie/projects', 200)
+    && a('note', 'GET', '/v1/vie/notes/resumes', 200)
+    && a('note', 'POST', '/v1/vie/notes', 201)
+    && a('save', 'PATCH', '/v1/vie/notes/:id', 200)
+    && ['overview', 'categories', 'subscriptions', 'transactions'].every(x => a('finances', 'GET', '/v1/vie/finances/' + x, 200))
+    && a('reopen', 'GET', '/v1/vie/notes/resumes', 200)
+    && a('reopen', 'GET', '/v1/vie/notes/:id', 200);
+}
+
+/** Observer le WebView possédé, sans lire de corps ni garder d'en-tête. */
+export async function observerGestionUi(cdp) {
+  const enVol = new Map(), finies = new Map(), reponses = [];
+  let phase = null, erreur = null, noteSauvee = null, noteLue = null;
+  let cacheTouche = false, serviceTouche = false;
+  function classer(r) {
+    if (!r || !['GET', 'POST', 'PATCH'].includes(r.method)) return null;
+    let url; try { url = new URL(r.url); } catch { return null; }
+    const id = /^\/v1\/vie\/notes\/([A-Za-z0-9_-]{1,300})$/.exec(url.pathname)?.[1];
+    const chemin = id && !['resumes', 'categories', 'ordre'].includes(id) ? '/v1/vie/notes/:id' : url.pathname;
+    if (!ROUTES_GESTION_UI.has(r.method + ' ' + chemin)) return null;
+    verifier(url.origin === 'http://127.0.0.1:8000' && !url.username && !url.password, 'uiApiOriginRefused');
+    return { method: r.method, path: chemin, id };
+  }
+  const recevoir = e => {
+    try {
+      const m = JSON.parse(String(e.data)), p = m.params;
+      if (!phase || !p || typeof p.requestId !== 'string') return;
+      if (m.method === 'Network.requestWillBeSent') {
+        verifier(!(p.redirectResponse && enVol.has(p.requestId)), 'uiApiRedirectRefused');
+        const r = classer(p.request);
+        if (!r || !['Fetch', 'XHR'].includes(p.type)) return;
+        verifier(!p.redirectResponse && !enVol.has(p.requestId) && !finies.has(p.requestId), 'uiApiRedirectRefused');
+        verifier(enVol.size < 96, 'uiNetworkBudgetExceeded');
+        enVol.set(p.requestId, { ...r, phase, repondu: false, cache: false });
+      } else if (m.method === 'Network.requestServedFromCache') {
+        const r = enVol.get(p.requestId) || finies.get(p.requestId);
+        if (!r) return;
+        r.cache = true; erreur ||= 'uiNetworkCacheRefused';
+        if (r.recu) {
+          const i = reponses.indexOf(r.recu); if (i >= 0) reponses.splice(i, 1);
+          r.recu = null;
+        }
+        if (r.phase === 'save' && r.method === 'PATCH') noteSauvee = null;
+        if (r.phase === 'reopen' && r.method === 'GET') noteLue = null;
+      } else if (m.method === 'Network.responseReceived') {
+        const r = enVol.get(p.requestId);
+        if (!r || r.repondu) return;
+        const reponse = classer({ method: r.method, url: p.response?.url });
+        verifier(reponse && reponse.path === r.path && reponse.id === r.id, 'uiNetworkProtocolRefused');
+        const caches = ['fromDiskCache', 'fromServiceWorker', 'fromPrefetchCache'];
+        verifier(caches.every(k => p.response[k] === undefined || typeof p.response[k] === 'boolean'), 'uiNetworkProtocolRefused');
+        if (caches.some(k => p.response[k] === true)) r.cache = true;
+        verifier(!r.cache, 'uiNetworkCacheRefused');
+        verifier(STATUTS_GESTION_UI.has(p.response?.status) && reponses.length < 96, 'uiNetworkProtocolRefused');
+        r.repondu = true; r.statut = p.response.status;
+      } else if (m.method === 'Network.loadingFinished') {
+        const r = enVol.get(p.requestId);
+        if (!r) return;
+        // 08/11/2026 : les en-têtes44 créditaient même un corps inachevé.
+        verifier(!r.cache, 'uiNetworkCacheRefused');
+        verifier(r.repondu && reponses.length < 96 && finies.size < 96, 'uiNetworkProtocolRefused');
+        r.recu = { phase: r.phase, method: r.method, path: r.path, status: r.statut };
+        reponses.push(r.recu); finies.set(p.requestId, r); enVol.delete(p.requestId);
+        if (r.statut === 200 && r.path === '/v1/vie/notes/:id') {
+          if (r.phase === 'save' && r.method === 'PATCH') noteSauvee = r.id;
+          if (r.phase === 'reopen' && r.method === 'GET') noteLue = r.id;
+        }
+      } else if (m.method === 'Network.loadingFailed' && enVol.has(p.requestId)) {
+        erreur ||= 'uiNetworkRequestFailed'; enVol.delete(p.requestId);
+      }
+    } catch (e) {
+      erreur ||= ['uiApiOriginRefused', 'uiApiRedirectRefused', 'uiNetworkBudgetExceeded', 'uiNetworkCacheRefused'].includes(e?.message)
+        ? e.message : 'uiNetworkProtocolRefused';
+    }
+  };
+  const fermer = async () => {
+    cdp.ws.removeEventListener('message', recevoir); enVol.clear(); finies.clear();
+    let echec = false;
+    // Canal neuf de la seule cible QA : rétablir les défauts de nos deux
+    // réglages temporaires, même après un ACK perdu ou une erreur partielle.
+    const resets = [
+      ...(serviceTouche ? [['Network.setBypassServiceWorker', { bypass: false }]] : []),
+      ...(cacheTouche ? [['Network.setCacheDisabled', { cacheDisabled: false }]] : []),
+      ['Network.disable', {}],
+    ];
+    for (const [method, params] of resets) {
+      try { await cdp.appel(method, params, 5000); } catch { echec = true; }
+    }
+    if (echec) throw new Error('uiNetworkCleanupFailed');
+  };
+  cdp.ws.addEventListener('message', recevoir);
+  try {
+    await cdp.appel('Network.enable', {}, 5000);
+    cacheTouche = true; await cdp.appel('Network.setCacheDisabled', { cacheDisabled: true }, 5000);
+    serviceTouche = true; await cdp.appel('Network.setBypassServiceWorker', { bypass: true }, 5000);
+  } catch {
+    await fermer(); throw new Error('uiNetworkUnavailable');
+  }
+  return {
+    phase: p => { verifier(PHASES_GESTION_UI.has(p), 'uiPhaseInvalid'); phase = p; },
+    verifier: () => { if (erreur) throw new Error(erreur); },
+    a: (p, method, path, status) => !erreur && reponses.some(r => r.phase === p && r.method === method && r.path === path && r.status === status),
+    noteSauvee: () => noteSauvee, noteLue: () => noteLue,
+    reponses: () => reponses.map(r => ({ ...r })),
+    fermer,
+  };
+}
+
+// Ces fonctions sont évaluées dans le seul WebView attribué au profil QA.
+// Pas de setter React, de fetch injecté ni d'appel direct au handler produit.
+function cibleGestionUi(s) {
+  const liste = [...document.querySelectorAll(s.selector || 'button')].filter(e => {
+    if (s.aria && !s.aria.includes(e.getAttribute('aria-label'))) return false;
+    if (s.texte && e.textContent.trim() !== s.texte) return false;
+    if (s.label && e.closest('label')?.childNodes[0]?.textContent.trim() !== s.label) return false;
+    return !e.disabled && getComputedStyle(e).visibility !== 'hidden' && e.getClientRects().length;
+  });
+  if (liste.length !== 1) return null;
+  const e = liste[0]; e.scrollIntoView({ block: 'center', inline: 'nearest' });
+  const r = e.getBoundingClientRect(), x = r.x + r.width / 2, y = r.y + r.height / 2;
+  if (r.width < 1 || r.height < 1 || x < 0 || y < 0 || x >= innerWidth || y >= innerHeight || !e.contains(document.elementFromPoint(x, y))) return null;
+  const index = s.option ? [...e.options].findIndex(o => o.text === s.option) : null;
+  if (s.option && (index < 0 || index > 31)) return null;
+  return { x, y, index };
+}
+function etatGestionUi(s) {
+  const bouton = nom => [...document.querySelectorAll('button')].some(b => b.getAttribute('aria-label') === nom && b.getClientRects().length);
+  const titre = document.querySelector('input[placeholder="Titre de la note"]');
+  const editeur = document.querySelector('.vie-note-editor[contenteditable="true"]');
+  if (s.genre === 'project') return bouton('Ouvrir ' + s.noms.project);
+  if (s.genre === 'editor') return titre?.value === s.noms.note && !!editeur;
+  if (s.genre === 'projectSelected') return [...document.querySelectorAll('label select')]
+    .some(e => e.closest('label')?.childNodes[0]?.textContent.trim() === 'Projet'
+      && e.selectedOptions[0]?.text === s.noms.project);
+  if (s.genre === 'saved' || s.genre === 'reopen') return titre?.value === s.noms.note
+    && editeur?.textContent.includes(s.noms.contenu)
+    && !!document.querySelector('button[aria-label="Enregistré"]:not(:disabled)');
+  if (s.genre === 'finances') {
+    const texte = document.body.innerText;
+    return texte.includes('Revenus') && texte.includes('Dépenses')
+      && (s.legacy ? texte.includes('Commerce synthétique antérieur') && /35[,.]37/.test(texte)
+        : texte.includes('Aucune transaction sur cette période.'));
+  }
+  return false;
+}
+function verifierCdpGestionUi(cdp) {
+  verifier(cdp?.isolation?.owned === true && cdp.isolation.privateProfileVerified === true
+    && ['exact', 'privateDescendant'].includes(cdp.isolation.profileRelation), 'uiProfileNotIsolated');
+}
+function piloteGestionUi(cdp, observation, attendreAction) {
+  const fin = Date.now() + 120000;
+  const lire = (fn, s, tag) => cdp.evaluer(`/*ui44:${tag}*/(${fn.toString()})(${JSON.stringify(s)})`, 5000);
+  const attendreUi = (fn, code) => {
+    const restant = fin - Date.now(); verifier(restant > 0, 'uiScenarioTimeout');
+    return attendreAction(async () => { observation.verifier(); return fn(); }, Math.min(15000, restant), code, 100);
+  };
+  const touche = async (key, code, windowsVirtualKeyCode, modifiers = 0) => {
+    for (const type of ['keyDown', 'keyUp']) await cdp.appel('Input.dispatchKeyEvent', { type, key, code, windowsVirtualKeyCode, modifiers }, 5000);
+  };
+  const cliquer = async s => {
+    const cible = await attendreUi(() => lire(cibleGestionUi, s, 'cible'), 'uiControlNotReady');
+    for (const type of ['mousePressed', 'mouseReleased']) await cdp.appel('Input.dispatchMouseEvent', { type, x: cible.x, y: cible.y, button: 'left', clickCount: 1 }, 5000);
+    return cible;
+  };
+  return {
+    cliquer,
+    naviguer: labels => cliquer({ selector: 'nav[aria-label] button', aria: labels }),
+    frapper: async (selector, text) => {
+      await cliquer({ selector });
+      await touche('a', 'KeyA', 65, 2);
+      await cdp.appel('Input.insertText', { text }, 5000);
+    },
+    choisirProjet: async nom => {
+      const cible = await cliquer({ selector: 'label select', label: 'Projet', option: nom });
+      await touche('Home', 'Home', 36);
+      for (let i = 0; i < cible.index; i++) await touche('ArrowDown', 'ArrowDown', 40);
+      await touche('Enter', 'Enter', 13);
+    },
+    constater: (genre, noms, legacy = false) => attendreUi(() => lire(etatGestionUi, { genre, noms, legacy }, 'etat'), 'uiExpectedStateMissing'),
+    reseau: (phase, method, path, status) => attendreUi(() => observation.a(phase, method, path, status), 'uiExpectedResponseMissing'),
+  };
+}
+
+export async function exercerGestionUi({ cdp, legacy = false, nonce, attendreAction = attendre } = {}) {
+  verifierCdpGestionUi(cdp);
+  const noms = nomsGestionUi(nonce);
+  const preuve = { schemaVersion: 1, financeFixture: legacy ? 'legacy' : 'fresh',
+    fixtures: { project: noms.project, note: noms.note }, projectCreated: false, noteSaved: false,
+    financesLoaded: false, noteReopenedAfterRestart: false, observationClosed: false, responses: [] };
+  let observation, noteId, echec;
+  try {
+    observation = await observerGestionUi(cdp);
+    const ui = piloteGestionUi(cdp, observation, attendreAction);
+    observation.phase('project');
+    await ui.naviguer(['Projets', 'Projects']);
+    await ui.cliquer({ texte: 'Nouveau projet' });
+    await ui.frapper('input[placeholder="Nom du projet"]', noms.project);
+    await ui.cliquer({ texte: 'Créer le projet' });
+    await ui.reseau('project', 'POST', '/v1/vie/projects', 201);
+    await ui.reseau('project', 'GET', '/v1/vie/projects', 200);
+    await ui.constater('project', noms);
+    preuve.projectCreated = true;
+    observation.phase('note');
+    await ui.naviguer(['Notes']);
+    await ui.reseau('note', 'GET', '/v1/vie/notes/resumes', 200);
+    await ui.cliquer({ aria: ['Nouvelle note'] });
+    await ui.frapper('input[placeholder="Titre de la note"]', noms.note);
+    await ui.choisirProjet(noms.project);
+    await ui.constater('projectSelected', noms);
+    await ui.cliquer({ texte: 'Créer la note' });
+    await ui.reseau('note', 'POST', '/v1/vie/notes', 201);
+    await ui.constater('editor', noms);
+    await ui.frapper('.vie-note-editor[contenteditable="true"]', noms.contenu);
+    observation.phase('save');
+    await ui.cliquer({ aria: ['Enregistrer', 'Enregistré'] });
+    await ui.reseau('save', 'PATCH', '/v1/vie/notes/:id', 200);
+    await ui.constater('saved', noms);
+    noteId = observation.noteSauvee(); verifier(typeof noteId === 'string', 'uiSavedNoteMissing');
+    preuve.noteSaved = true;
+    observation.phase('finances');
+    await ui.naviguer(['Finances']);
+    for (const x of ['overview', 'categories', 'subscriptions', 'transactions']) await ui.reseau('finances', 'GET', '/v1/vie/finances/' + x, 200);
+    await ui.constater('finances', noms, legacy);
+    observation.verifier(); preuve.financesLoaded = true;
+  } catch (e) { echec = new Error(CODES_GESTION_UI.has(e?.message) ? e.message : 'uiScenarioFailed'); }
+  finally {
+    if (observation) {
+      preuve.responses = observation.reponses();
+      try { await observation.fermer(); preuve.observationClosed = true; }
+      catch { echec ||= new Error('uiNetworkCleanupFailed'); }
+    }
+  }
+  if (echec) { echec.managementUi = preuve; throw echec; }
+  // Ce reçu privé n'entre jamais dans le JSON publié.
+  return { preuve, prive: { noms, noteId } };
+}
+
+export async function verifierReouvertureGestionUi({ cdp, gestion, attendreAction = attendre } = {}) {
+  verifierCdpGestionUi(cdp);
+  const { preuve, prive } = gestion;
+  verifier(prive?.noms && typeof prive.noteId === 'string', 'uiSavedNoteMissing');
+  preuve.noteReopenedAfterRestart = false; preuve.observationClosed = false;
+  let observation, echec;
+  try {
+    observation = await observerGestionUi(cdp); observation.phase('reopen');
+    const ui = piloteGestionUi(cdp, observation, attendreAction);
+    await ui.naviguer(['Notes']);
+    await ui.reseau('reopen', 'GET', '/v1/vie/notes/resumes', 200);
+    await ui.cliquer({ aria: ['Ouvrir ' + prive.noms.note] });
+    await ui.reseau('reopen', 'GET', '/v1/vie/notes/:id', 200);
+    await ui.constater('reopen', prive.noms);
+    verifier(observation.noteLue() === prive.noteId, 'uiReopenedNoteChanged');
+    observation.verifier(); preuve.noteReopenedAfterRestart = true;
+  } catch (e) { echec = new Error(CODES_GESTION_UI.has(e?.message) ? e.message : 'uiReopenFailed'); }
+  finally {
+    if (observation) {
+      preuve.responses.push(...observation.reponses());
+      try { await observation.fermer(); preuve.observationClosed = true; }
+      catch { echec ||= new Error('uiNetworkCleanupFailed'); }
+    }
+  }
+  if (echec) { echec.managementUi = preuve; throw echec; }
+  verifier(preuveGestionUiValide(preuve), 'uiEvidenceInvalid');
+  return preuve;
+}
+
 class Cdp {
   constructor(ws) {
     this.ws = ws; this.compteur = 0; this.attentes = new Map();
@@ -1434,9 +1742,9 @@ class Cdp {
       this.ws.send(JSON.stringify({ id, method, params }));
     });
   }
-  async evaluer(expression) {
+  async evaluer(expression, delai = 30000) {
     const r = await this.appel('Runtime.evaluate', { expression,
-      awaitPromise: true, returnByValue: true });
+      awaitPromise: true, returnByValue: true }, delai);
     verifier(!r.exceptionDetails, 'applicationEvaluationFailed');
     return r.result?.value;
   }
@@ -1626,7 +1934,7 @@ export async function premierLancement(options) {
     if (/^[A-Za-z0-9:_-]{1,80}$/.test(phase)) console.log('::notice title=Diapason QA::' + phase);
     fs.writeFileSync(path.join(sortie, 'resultat.json'), JSON.stringify(rapport, null, 2));
   };
-  let enfant; let cdp; let installe = false;
+  let enfant; let cdp; let installe = false; let gestionUiPrivee;
   let envApp; let exe; let port; let regEnv; let ollamaExistant;
   const scenario = options.scenario ?? 'fresh';
   verifier(['fresh', 'legacy'].includes(scenario), 'invalidInstallationScenario');
@@ -1880,6 +2188,15 @@ $apps = @(Get-Process -Name 'diapason-desktop','Diapason' -ErrorAction SilentlyC
     const { projet, note, contenu, quota } = gestion;
     rapport.managementQuota = quota;
     rapport.checks.managementCrudAfterQuota = true;
+    noter('managementUi');
+    verifierProfilQa(envApp, travail);
+    try {
+      gestionUiPrivee = await exercerGestionUi({ cdp, legacy: scenario === 'legacy' });
+      rapport.managementUi = gestionUiPrivee.preuve;
+      rapport.checks.managementUiProjectCreated = gestionUiPrivee.preuve.projectCreated === true;
+      rapport.checks.managementUiNoteSaved = gestionUiPrivee.preuve.noteSaved === true;
+      rapport.checks.managementUiFinancesLoaded = gestionUiPrivee.preuve.financesLoaded === true;
+    } catch (e) { if (e.managementUi) rapport.managementUi = e.managementUi; throw e; }
     noter('narrationAndWordTimings');
     const parole = await api('/v1/speech/narrate', 'POST', {
       text: 'Bonjour, nous avons lu 37 pages. Tout va bien.', format: 'json', language: 'fr', wordTimings: true,
@@ -1928,6 +2245,11 @@ $apps = @(Get-Process -Name 'diapason-desktop','Diapason' -ErrorAction SilentlyC
     const relue = (await api(`/v1/vie/notes/${encodeURIComponent(note.id)}`)).note;
     verifier(relue.content === contenu && relue.projectId === projet.id, 'noteLostAfterRestart');
     rapport.checks.notePersistedAfterRestart = true;
+    verifierProfilQa(envApp, travail);
+    try {
+      rapport.managementUi = await verifierReouvertureGestionUi({ cdp, gestion: gestionUiPrivee });
+      rapport.checks.managementUiNotePersistedAfterRestart = true;
+    } catch (e) { if (e.managementUi) rapport.managementUi = e.managementUi; throw e; }
     if (scenario === 'legacy') {
       verifier(ancienneSourcePreservee(), 'legacySourceOverwrittenAfterRestart');
       rapport.checks.legacySourcePreserved = true;

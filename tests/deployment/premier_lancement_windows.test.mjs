@@ -17,10 +17,366 @@ import {
   creerAncienServeurSynthétique, verifierBlocageLegacy, verifierRefusServeurLegacy,
   autorisationArretAncien, validerArretAncien, arreterAncienBackend, rapportArretAncien,
   exercerGestionSousQuota, preuveQuotaValide,
+  nomsGestionUi, preuveGestionUiValide, observerGestionUi, exercerGestionUi, verifierReouvertureGestionUi,
 } from '../../scripts/tester_installation_windows.mjs';
 
 const version = '1.0.5-beta.20261107.23';
 const sha = '8932e416a560c302e1a85c44b24d81598443daaf2151c6c8243c0f29c9c07687';
+
+const NONCE_UI = '11111111-2222-4333-8444-555555555555';
+function transformerMessagesUi(cdp, transformer) {
+  const ajouter = cdp.ws.addEventListener, retirer = cdp.ws.removeEventListener, liens = new Map();
+  cdp.ws.addEventListener = (type, f) => {
+    const g = e => { for (const m of transformer(JSON.parse(e.data))) f({ data: JSON.stringify(m) }); };
+    liens.set(f, g); ajouter(type, g);
+  };
+  cdp.ws.removeEventListener = (type, f) => retirer(type, liens.get(f));
+}
+
+test('gel45 — les trois origines cache refusent la relecture après restart', async () => {
+  for (const flag of ['fromDiskCache', 'fromServiceWorker', 'fromPrefetchCache']) {
+    const b = bancUi(); const gestion = await exercerGestionUi({ cdp: b.cdp, nonce: NONCE_UI, attendreAction: b.attendreAction });
+    const r = bancUi({}, b.etat);
+    transformerMessagesUi(r.cdp, m => {
+      if (m.method === 'Network.responseReceived') m.params.response[flag] = true;
+      return [m];
+    });
+    await assert.rejects(verifierReouvertureGestionUi({ cdp: r.cdp, gestion, attendreAction: r.attendreAction }), e => {
+      assert.equal(e.message, 'uiNetworkCacheRefused'); assert.equal(e.managementUi.noteReopenedAfterRestart, false);
+      assert(!preuveGestionUiValide(e.managementUi)); return true;
+    });
+    assert.equal(r.ecouteurs.size, 0);
+  }
+});
+
+test('gel45 — requestServedFromCache avant ou après fin retire le témoin retenu', async () => {
+  for (const tardif of [false, true]) {
+    const b = bancUi(); const o = await observerGestionUi(b.cdp); o.phase('reopen');
+    const url = 'http://127.0.0.1:8000/v1/vie/notes/note_privee_44';
+    b.emettre('Network.requestWillBeSent', { requestId: 'r', type: 'Fetch', request: { method: 'GET', url } });
+    if (!tardif) b.emettre('Network.requestServedFromCache', { requestId: 'r' });
+    b.emettre('Network.responseReceived', { requestId: 'r', response: { url, status: 200 } });
+    b.emettre('Network.loadingFinished', { requestId: 'r' });
+    if (tardif) b.emettre('Network.requestServedFromCache', { requestId: 'r' });
+    assert.equal(o.a('reopen', 'GET', '/v1/vie/notes/:id', 200), false);
+    assert.equal(o.noteLue(), null); assert.deepEqual(o.reponses(), []);
+    assert.throws(() => o.verifier(), /uiNetworkCacheRefused/);
+    await o.fermer(); assert.equal(b.ecouteurs.size, 0);
+  }
+});
+
+test('gel45 — en-têtes seuls puis loadingFailed ne créditent aucun statut ni ID', async () => {
+  const b = bancUi(); const o = await observerGestionUi(b.cdp); o.phase('reopen');
+  const url = 'http://127.0.0.1:8000/v1/vie/notes/note_privee_44';
+  b.emettre('Network.requestWillBeSent', { requestId: 'r', type: 'Fetch', request: { method: 'GET', url } });
+  b.emettre('Network.responseReceived', { requestId: 'r', response: { url, status: 200 } });
+  assert.equal(o.a('reopen', 'GET', '/v1/vie/notes/:id', 200), false);
+  assert.equal(o.noteLue(), null); assert.deepEqual(o.reponses(), []);
+  b.emettre('Network.loadingFailed', { requestId: 'r', errorText: 'CANARI-PRIVE' });
+  assert.throws(() => o.verifier(), /uiNetworkRequestFailed/);
+  assert.deepEqual(o.reponses(), []); await o.fermer();
+});
+
+test('gel45 — cache et serviceworker désactivés avant Input puis restaurés sur le canal QA', async () => {
+  const b = bancUi(); await exercerGestionUi({ cdp: b.cdp, nonce: NONCE_UI, attendreAction: b.attendreAction });
+  const config = b.commandes.filter(c => !c.method.startsWith('Input.'));
+  assert.deepEqual(config, [
+    { method: 'Network.enable', params: {} },
+    { method: 'Network.setCacheDisabled', params: { cacheDisabled: true } },
+    { method: 'Network.setBypassServiceWorker', params: { bypass: true } },
+    { method: 'Network.setBypassServiceWorker', params: { bypass: false } },
+    { method: 'Network.setCacheDisabled', params: { cacheDisabled: false } },
+    { method: 'Network.disable', params: {} },
+  ]);
+  assert(b.commandes.findIndex(c => c.method.startsWith('Input.')) > 2);
+  assert.equal(b.ecouteurs.size, 0);
+});
+
+test('gel45 — initialisation anti-cache partielle échouée restaure sans aucun Input', async () => {
+  for (const refus of ['Network.setCacheDisabled', 'Network.setBypassServiceWorker']) {
+    const b = bancUi(), appel = b.cdp.appel;
+    b.cdp.appel = async (method, params, delai) => {
+      await appel(method, params, delai);
+      if (method === refus && Object.values(params).includes(true)) throw new Error('CANARI-PRIVE');
+    };
+    await assert.rejects(exercerGestionUi({ cdp: b.cdp, nonce: NONCE_UI, attendreAction: b.attendreAction }), /uiNetworkUnavailable/);
+    assert(!b.commandes.some(c => c.method.startsWith('Input.'))); assert.equal(b.ecouteurs.size, 0);
+    assert(b.commandes.some(c => c.method === 'Network.setCacheDisabled' && c.params.cacheDisabled === false));
+    if (refus.endsWith('ServiceWorker')) assert(b.commandes.some(c => c.method === refus && c.params.bypass === false));
+    assert.equal(b.commandes.at(-1).method, 'Network.disable');
+  }
+});
+
+test('gel45 — échec du premier reset tente les deux autres nettoyages sans publier sa cause privée', async () => {
+  const b = bancUi(), appel = b.cdp.appel;
+  b.cdp.appel = async (method, params, delai) => {
+    await appel(method, params, delai);
+    if (method === 'Network.setBypassServiceWorker' && params.bypass === false) throw new Error('CANARI-RESET');
+  };
+  await assert.rejects(exercerGestionUi({ cdp: b.cdp, nonce: NONCE_UI, attendreAction: b.attendreAction }), e => {
+    assert.equal(e.message, 'uiNetworkCleanupFailed'); assert(!JSON.stringify({ message: e.message, ...e }).includes('CANARI')); return true;
+  });
+  assert(b.commandes.some(c => c.method === 'Network.setCacheDisabled' && c.params.cacheDisabled === false));
+  assert.equal(b.commandes.at(-1).method, 'Network.disable'); assert.equal(b.ecouteurs.size, 0);
+});
+function preuveUiComplete(financeFixture = 'fresh') {
+  const noms = nomsGestionUi(NONCE_UI);
+  const response = (phase, method, path, status) => ({ phase, method, path, status });
+  return { schemaVersion: 1, financeFixture, fixtures: { project: noms.project, note: noms.note },
+    projectCreated: true, noteSaved: true, financesLoaded: true, noteReopenedAfterRestart: true,
+    observationClosed: true, responses: [
+      response('project', 'POST', '/v1/vie/projects', 201), response('project', 'GET', '/v1/vie/projects', 200),
+      response('note', 'GET', '/v1/vie/notes/resumes', 200), response('note', 'POST', '/v1/vie/notes', 201),
+      response('save', 'PATCH', '/v1/vie/notes/:id', 200),
+      ...['overview', 'categories', 'subscriptions', 'transactions'].map(x => response('finances', 'GET', '/v1/vie/finances/' + x, 200)),
+      response('reopen', 'GET', '/v1/vie/notes/resumes', 200), response('reopen', 'GET', '/v1/vie/notes/:id', 200),
+    ] };
+}
+
+// CDP et DOM synthétiques : aucun navigateur, socket, processus ou compte.
+function bancUi({ statuts = {}, omettre, etatAbsent, mauvaiseNote = false,
+  erreurEvaluation = false, erreurFermeture = false } = {}, etatPartage) {
+  const ecouteurs = new Set(), commandes = [], expressions = [];
+  const etat = etatPartage ?? { projet: '', titre: '', contenu: '', cree: false, sauve: false, choisi: false, page: '' };
+  let numero = 0, cible;
+  const emettre = (method, params) => {
+    for (const f of [...ecouteurs]) f({ data: JSON.stringify({ method, params }) });
+  };
+  const envoyer = (method, chemin, statut) => {
+    if (omettre === method + ' ' + chemin) return;
+    const requestId = String(++numero), url = 'http://127.0.0.1:8000' + chemin;
+    emettre('Network.requestWillBeSent', { requestId, type: 'Fetch', request: {
+      method, url, headers: { Authorization: 'Bearer CANARI-PRIVE-UI44' }, postData: 'CANARI-CORPS-UI44',
+    } });
+    emettre('Network.responseReceived', { requestId, response: { url, status: statuts[method + ' ' + chemin] ?? statut,
+      headers: { 'X-Prive': 'CANARI-PRIVE-UI44' } } });
+    emettre('Network.loadingFinished', { requestId });
+  };
+  const cdp = {
+    ws: { addEventListener: (_, f) => ecouteurs.add(f), removeEventListener: (_, f) => ecouteurs.delete(f) },
+    isolation: { owned: true, privateProfileVerified: true, profileRelation: 'privateDescendant' },
+    evaluer: async (expression, delai) => {
+      assert.equal(delai, 5000); expressions.push(expression);
+      if (erreurEvaluation) throw new Error('uiCANARIPRIVE');
+      const param = JSON.parse(expression.slice(expression.lastIndexOf(')(') + 2, -1));
+      if (expression.startsWith('/*ui44:cible*/')) { cible = param; return { x: 20, y: 30, index: param.option ? 1 : null }; }
+      if (etatAbsent === param.genre) return false;
+      if (param.genre === 'project') return etat.projet === param.noms.project;
+      if (param.genre === 'projectSelected') return etat.choisi;
+      if (param.genre === 'editor') return etat.cree && etat.titre === param.noms.note;
+      if (param.genre === 'saved' || param.genre === 'reopen') return etat.sauve && etat.titre === param.noms.note && etat.contenu === param.noms.contenu;
+      if (param.genre === 'finances') return etat.page === 'finances';
+      return false;
+    },
+    appel: async (method, params, delai) => {
+      assert.equal(delai, 5000); commandes.push({ method, params });
+      if (method === 'Network.disable' && erreurFermeture) throw new Error('CANARI-FERMETURE-UI44');
+      if (method === 'Input.insertText') {
+        if (cible.selector.includes('Nom du projet')) etat.projet = params.text;
+        else if (cible.selector.includes('Titre de la note')) etat.titre = params.text;
+        else etat.contenu = params.text;
+      }
+      if (method === 'Input.dispatchKeyEvent' && params.key === 'Enter' && params.type === 'keyUp' && cible.option) etat.choisi = true;
+      if (method !== 'Input.dispatchMouseEvent' || params.type !== 'mouseReleased') return;
+      if (cible.aria?.includes('Projets')) { etat.page = 'projects'; envoyer('GET', '/v1/vie/projects', 200); }
+      if (cible.texte === 'Créer le projet') { envoyer('POST', '/v1/vie/projects', 201); envoyer('GET', '/v1/vie/projects', 200); }
+      if (cible.aria?.includes('Notes')) { etat.page = 'notes'; envoyer('GET', '/v1/vie/notes/resumes', 200); }
+      if (cible.texte === 'Créer la note') { assert(etat.choisi); etat.cree = true; envoyer('POST', '/v1/vie/notes', 201); }
+      if (cible.aria?.includes('Enregistrer')) { etat.sauve = true; envoyer('PATCH', '/v1/vie/notes/note_privee_44', 200); }
+      if (cible.aria?.includes('Finances')) {
+        etat.page = 'finances';
+        for (const x of ['overview', 'categories', 'subscriptions', 'transactions']) envoyer('GET', '/v1/vie/finances/' + x, 200);
+      }
+      if (cible.aria?.[0]?.startsWith('Ouvrir Note UI QA ')) envoyer('GET', '/v1/vie/notes/' + (mauvaiseNote ? 'autre_note_privee' : 'note_privee_44'), 200);
+    },
+  };
+  const attendreAction = async (action, delai, code, periode) => {
+    assert(delai > 0 && delai <= 15000); assert.equal(periode, 100);
+    const r = await action(); if (!r) throw new Error(code); return r;
+  };
+  return { cdp, etat, commandes, expressions, ecouteurs, emettre, envoyer, attendreAction };
+}
+
+test('gel44 — vrais types Input, quatre finances et nouvelle lecture après relance sont obligatoires', async () => {
+  for (const legacy of [false, true]) {
+    const b = bancUi(); const gestion = await exercerGestionUi({ cdp: b.cdp, legacy, nonce: NONCE_UI, attendreAction: b.attendreAction });
+    assert(!preuveGestionUiValide(gestion.preuve), 'avant relance aucun succès final');
+    assert.equal(b.ecouteurs.size, 0); assert.equal(b.commandes.filter(c => c.method === 'Input.insertText').length, 3);
+    assert(b.commandes.some(c => c.method === 'Input.dispatchMouseEvent' && c.params.type === 'mouseReleased'));
+    assert(b.commandes.some(c => c.method === 'Input.dispatchKeyEvent' && c.params.key === 'ArrowDown'));
+    assert(b.commandes.some(c => c.method === 'Input.dispatchKeyEvent' && c.params.modifiers === 2));
+    const relance = bancUi({}, b.etat);
+    const p = await verifierReouvertureGestionUi({ cdp: relance.cdp, gestion, attendreAction: relance.attendreAction });
+    assert(preuveGestionUiValide(p)); assert.equal(relance.ecouteurs.size, 0);
+    assert(!/note_privee|CANARI|contenu|Authorization|headers|postData/.test(JSON.stringify(p)));
+    assert.deepEqual(p.fixtures, { project: nomsGestionUi(NONCE_UI).project, note: nomsGestionUi(NONCE_UI).note });
+    assert.equal(p.responses.filter(r => r.phase === 'finances').length, 4);
+  }
+});
+
+test('gel44 — aucune preuve de cache ne remplace un statut exact de formulaire ou finances', async () => {
+  for (const [route, statut] of [
+    ['POST /v1/vie/projects', 200], ['POST /v1/vie/notes', 200], ['PATCH /v1/vie/notes/note_privee_44', 409],
+    ...['overview', 'categories', 'subscriptions', 'transactions'].map(x => ['GET /v1/vie/finances/' + x, 500]),
+  ]) {
+    const b = bancUi({ statuts: { [route]: statut } });
+    await assert.rejects(exercerGestionUi({ cdp: b.cdp, nonce: NONCE_UI, attendreAction: b.attendreAction }), e => {
+      assert.equal(e.message, 'uiExpectedResponseMissing'); assert(!preuveGestionUiValide(e.managementUi)); return true;
+    });
+    assert.equal(b.ecouteurs.size, 0); assert(b.commandes.some(c => c.method === 'Network.disable'));
+  }
+});
+
+test('gel44 — zéro requête réseau observée ou affichage ancien ne devient pas un succès', async () => {
+  for (const option of [{ omettre: 'GET /v1/vie/finances/subscriptions' }, { etatAbsent: 'saved' }, { etatAbsent: 'finances' }]) {
+    const b = bancUi(option);
+    await assert.rejects(exercerGestionUi({ cdp: b.cdp, nonce: NONCE_UI, attendreAction: b.attendreAction }), e => {
+      assert(!preuveGestionUiValide(e.managementUi)); return true;
+    });
+    assert.equal(b.ecouteurs.size, 0);
+  }
+});
+
+test('gel44 — même route normalisée mais autre note ou texte perdu après relance refusent', async () => {
+  for (const option of [{ mauvaiseNote: true }, { etatAbsent: 'reopen' }, { omettre: 'GET /v1/vie/notes/note_privee_44' }]) {
+    const b = bancUi(); const gestion = await exercerGestionUi({ cdp: b.cdp, nonce: NONCE_UI, attendreAction: b.attendreAction });
+    const relance = bancUi(option, b.etat);
+    await assert.rejects(verifierReouvertureGestionUi({ cdp: relance.cdp, gestion, attendreAction: relance.attendreAction }), e => {
+      assert.equal(e.managementUi.noteReopenedAfterRestart, false); assert(!preuveGestionUiValide(e.managementUi)); return true;
+    });
+    assert.equal(relance.ecouteurs.size, 0);
+  }
+});
+
+test('gel44 — réponse sans requête et requête d’une ancienne phase ne prouvent pas la nouvelle', async () => {
+  const b = bancUi(); const o = await observerGestionUi(b.cdp); o.phase('note');
+  b.emettre('Network.responseReceived', { requestId: 'sans-requete', response: { status: 200, url: 'http://127.0.0.1:8000/v1/vie/notes/resumes' } });
+  assert.deepEqual(o.reponses(), []);
+  b.emettre('Network.requestWillBeSent', { requestId: 'ancien', type: 'Fetch', request: { method: 'GET', url: 'http://127.0.0.1:8000/v1/vie/notes/resumes?secret=CANARI' } });
+  o.phase('reopen');
+  b.emettre('Network.responseReceived', { requestId: 'ancien', response: { status: 200, url: 'http://127.0.0.1:8000/v1/vie/notes/resumes?secret=CANARI' } });
+  assert(!o.a('note', 'GET', '/v1/vie/notes/resumes', 200), 'les en-têtes seuls ne comptent pas');
+  b.emettre('Network.loadingFinished', { requestId: 'ancien' });
+  assert(!o.a('reopen', 'GET', '/v1/vie/notes/resumes', 200)); assert(o.a('note', 'GET', '/v1/vie/notes/resumes', 200));
+  assert(!JSON.stringify(o.reponses()).includes('CANARI'));
+  b.envoyer('GET', '/v1/vie/notes/categories', 200);
+  assert.equal(o.noteLue(), null, 'les catégories ne sont pas un GET de note');
+  await o.fermer(); assert.equal(b.ecouteurs.size, 0);
+});
+
+test('gel44 — origine, redirection, réponse incohérente ou statut inconnu restent fermés', async () => {
+  for (const cas of ['origin', 'redirect', 'responseOrigin', 'status', 'failed']) {
+    const b = bancUi(); const o = await observerGestionUi(b.cdp); o.phase('project');
+    const url = (cas === 'origin' ? 'http://example.com' : 'http://127.0.0.1:8000') + '/v1/vie/projects';
+    b.emettre('Network.requestWillBeSent', { requestId: 'r', type: 'Fetch', request: { method: 'POST', url } });
+    if (cas === 'redirect') b.emettre('Network.requestWillBeSent', { requestId: 'r', type: 'Fetch', redirectResponse: {}, request: { method: 'GET', url: 'http://example.com/autre' } });
+    else if (cas === 'failed') b.emettre('Network.loadingFailed', { requestId: 'r', errorText: 'CANARI-PRIVE-UI44' });
+    else if (cas !== 'origin') b.emettre('Network.responseReceived', { requestId: 'r', response: { status: cas === 'status' ? 418 : 201, url: cas === 'responseOrigin' ? 'http://example.com/v1/vie/projects' : url } });
+    assert.throws(() => o.verifier(), e => /^ui/.test(e.message) && !e.message.includes('CANARI'));
+    await o.fermer(); assert.equal(b.ecouteurs.size, 0);
+  }
+});
+
+test('gel44 — collection bornée à96 et requêtes hors allowliste jamais publiées', async () => {
+  const b = bancUi(); const o = await observerGestionUi(b.cdp); o.phase('project');
+  b.envoyer('DELETE', '/v1/vie/projects', 200); b.envoyer('GET', '/secret-CANARI', 200);
+  assert.deepEqual(o.reponses(), []);
+  for (let i = 0; i < 97; i++) b.envoyer('GET', '/v1/vie/projects', 200);
+  assert.equal(o.reponses().length, 96); assert.throws(() => o.verifier(), /uiNetworkProtocolRefused/);
+  await o.fermer(); assert.equal(b.ecouteurs.size, 0);
+});
+
+test('gel44 — profil non attribué ou nonce libre ne déclenchent aucun Input', async () => {
+  const b = bancUi(); b.cdp.isolation.privateProfileVerified = false;
+  await assert.rejects(exercerGestionUi({ cdp: b.cdp }), /uiProfileNotIsolated/);
+  assert.equal(b.commandes.length, 0);
+  for (const nonce of ['CANARI', NONCE_UI + '\n', 1, true]) assert.throws(() => nomsGestionUi(nonce), /uiFixtureInvalid/);
+  assert.notEqual(nomsGestionUi().note, nomsGestionUi().note);
+});
+
+test('gel44 — erreurs privées et fermeture en échec ne passent pas au rapport', async () => {
+  for (const option of [{ erreurEvaluation: true }, { erreurFermeture: true }]) {
+    const b = bancUi(option);
+    await assert.rejects(exercerGestionUi({ cdp: b.cdp, nonce: NONCE_UI, attendreAction: b.attendreAction }), e => {
+      assert(!JSON.stringify({ message: e.message, ...e }).includes('CANARI')); assert(!preuveGestionUiValide(e.managementUi)); return true;
+    });
+    assert.equal(b.ecouteurs.size, 0);
+  }
+});
+
+test('gel44 — preuve complète obligatoire et chaque témoin de réseau et de relance compte', () => {
+  const p = preuveUiComplete(); assert(preuveGestionUiValide(p));
+  const r = { installerExecuted: true, scenario: 'fresh', failureCode: null, managementQuota: preuveQuotaComplete(),
+    managementUi: p, checks: Object.fromEntries(CONTROLES.map(c => [c, true])) };
+  assert(rapportValide(r)); assert(!rapportValide({ ...r, managementUi: undefined }));
+  assert(!rapportValide({ ...r, managementUi: { ...p, financeFixture: 'legacy' } }));
+  for (const k of ['projectCreated', 'noteSaved', 'financesLoaded', 'noteReopenedAfterRestart', 'observationClosed']) {
+    assert(!preuveGestionUiValide({ ...p, [k]: false })); assert(!preuveGestionUiValide({ ...p, [k]: 1 }));
+  }
+  for (let i = 0; i < p.responses.length; i++) assert(!preuveGestionUiValide({ ...p, responses: p.responses.filter((_, j) => j !== i) }), String(i));
+  for (const ajout of [{ path: '/secret-CANARI' }, { phase: 'autre' }, { status: '200' }, { Authorization: 'CANARI' }]) {
+    assert(!preuveGestionUiValide({ ...p, responses: [{ ...p.responses[0], ...ajout }, ...p.responses.slice(1)] }));
+  }
+  assert(!preuveGestionUiValide({ ...p, prive: 'CANARI' }));
+});
+
+test('gel44 — cibles DOM visibles uniques et sélection native, sans setter React', async () => {
+  const b = bancUi(); await exercerGestionUi({ cdp: b.cdp, nonce: NONCE_UI, attendreAction: b.attendreAction });
+  const expression = b.expressions.find(e => e.startsWith('/*ui44:cible*/'));
+  const { runInNewContext } = await import('node:vm');
+  const noeud = { disabled: false, textContent: 'Projets', getAttribute: () => 'Projets',
+    getClientRects: () => [1], scrollIntoView() {}, getBoundingClientRect: () => ({ x: 1, y: 1, width: 20, height: 20 }),
+    contains(e) { return e === this; } };
+  const contexte = { document: { querySelectorAll: () => [noeud], elementFromPoint: () => noeud },
+    getComputedStyle: () => ({ visibility: 'visible' }), innerWidth: 800, innerHeight: 600 };
+  assert.equal(runInNewContext(expression, contexte).x, 11);
+  contexte.document.querySelectorAll = () => [noeud, noeud]; assert.equal(runInNewContext(expression, contexte), null);
+  contexte.document.querySelectorAll = () => [noeud]; contexte.document.elementFromPoint = () => ({});
+  assert.equal(runInNewContext(expression, contexte), null, 'un overlay bloque le clic');
+  assert(!b.expressions.some(e => /\.value\s*=(?!=)|dispatchEvent\(|fetch\(|__TAURI_INTERNALS__/.test(e)));
+});
+
+test('gel44 — scénario utilise les formulaires après quota et réouvre après santé exacte de relance', () => {
+  const source = fs.readFileSync(new URL('../../scripts/tester_installation_windows.mjs', import.meta.url), 'utf8');
+  const corps = source.slice(source.indexOf('export async function premierLancement(options)'));
+  const quota = corps.indexOf('gestion = await exercerGestionSousQuota('), ui = corps.indexOf('gestionUiPrivee = await exercerGestionUi(');
+  const restart = corps.indexOf("noter('restartInstalledApplication')"), reopen = corps.indexOf('await verifierReouvertureGestionUi(');
+  assert(quota > 0 && ui > quota && restart > ui && reopen > restart);
+  assert(corps.slice(restart, reopen).includes('verifierBackendCourant(await api(\'/health\'), cible.version)'));
+  assert(corps.slice(ui - 100, ui).includes('verifierProfilQa(envApp, travail)'));
+});
+
+// 08/11/2026 : les doublures42 imposaient 200 et cachaient le contrat201.
+// Décorateurs lus dans diapason-src-1.0.5-beta.20261108.33.tar.gz, SHA256
+// 8c65c9aa1d12e5ddb5b3487f2d6affb7cc6093c0648b61eb87e485603f5954c0.
+// routes.py SHA b175e2f3c1fa5f9aea27089f6af98b77fc81693b01e605eb63db57888d1ee2f3 ;
+// finances_routes.py SHA b775d7a35872eb2667d9193844a4ee15a7847ef45ca596253a8e2f2fb1c4aef3.
+const ROUTES_BUILT33 = Object.freeze({
+  project: '@router.post("/projects", status_code=201)',
+  note: '@router.post("/notes", status_code=201)',
+  finances: '@router.get("/finances/overview")',
+});
+const statutProduit33 = metier => Number(/status_code=(\d+)/.exec(ROUTES_BUILT33[metier])?.[1] ?? 200);
+
+test('gel43 — le vrai contrat des routes embarquées201201200 permet le CRUD', async () => {
+  const b = bancQuota({ metier: (a, corps) => {
+    const metier = a.chemin.endsWith('/projects') ? 'project' : a.chemin.endsWith('/notes') ? 'note' : 'finances';
+    const valeur = metier === 'project' ? { project: { id: 'projet-qa' } }
+      : metier === 'note' ? { note: { id: 'note-qa', ...corps } } : {};
+    return reponseQuota(statutProduit33(metier), valeur);
+  } });
+  const r = await exercerGestionSousQuota(b.options);
+  assert.deepEqual(r.quota.businessStatuses, Object.fromEntries(Object.keys(ROUTES_BUILT33).map(k => [k, statutProduit33(k)])));
+  assert(preuveQuotaValide(r.quota));
+});
+
+test('gel43 — la preuve suit les décorateurs produit et refuse les anciens200 de création', () => {
+  const businessStatuses = Object.fromEntries(Object.keys(ROUTES_BUILT33).map(k => [k, statutProduit33(k)]));
+  const q = { ...preuveQuotaComplete(), businessStatuses };
+  assert(preuveQuotaValide(q));
+  for (const k of ['project', 'note']) assert(!preuveQuotaValide({ ...q, businessStatuses: { ...businessStatuses, [k]: 200 } }), k);
+  assert(!preuveQuotaValide({ ...q, businessStatuses: { ...businessStatuses, finances: 201 } }));
+});
 
 test('gel41 — les trois options de l’ancien lanceur identifient le même serveur', async () => {
   const facts = faitsAncien();
@@ -395,7 +751,7 @@ test('l’environnement enfant ne reçoit ni clés, ni checkout, ni chemins de m
 
 test('aucun contrôle manquant ne devient une installation réussie', () => {
   const r = { installerExecuted: true, scenario: 'fresh', failureCode: null,
-    managementQuota: preuveQuotaComplete(),
+    managementQuota: preuveQuotaComplete(), managementUi: preuveUiComplete(),
     checks: Object.fromEntries(CONTROLES.map(c => [c, true])) };
   assert(rapportValide(r));
   for (const cle of CONTROLES) {
@@ -408,7 +764,7 @@ test('aucun contrôle manquant ne devient une installation réussie', () => {
   assert(!rapportValide({ ...r, cleanupFailed: true }));
   assert(!rapportValide({ ...r, scenario: 'legacy' }));
   assert(!rapportValide({ ...r, scenario: undefined }));
-  const legacy = { ...r, scenario: 'legacy',
+  const legacy = { ...r, scenario: 'legacy', managementUi: preuveUiComplete('legacy'),
     checks: { ...r.checks, ...Object.fromEntries(CONTROLES_LEGACY.map(c => [c, true])) },
     legacyRefusal: { observed: true, ownedServerAlive: true, bootstrapUnchanged: true,
       ownedServerStopped: true, appHealthRequests: 1 },
@@ -437,7 +793,7 @@ function preuveQuotaComplete() {
   return { bursts: 1, requests: 17, confirmationRequest: 17, responses: 2, throttled: 2,
     completed: 2, aborted: 15, failed: 0, confirmationStatus: 429,
     confirmedImmediatelyBeforeCrud: true, businessRequests: 3, cleanupCompleted: true,
-    businessStatuses: { project: 200, note: 200, finances: 200 } };
+    businessStatuses: Object.fromEntries(Object.keys(ROUTES_BUILT33).map(k => [k, statutProduit33(k)])) };
 }
 
 function promesseQuota() {
@@ -478,7 +834,7 @@ function bancQuota({ config = i => [1, 17].includes(i) ? reponseQuota(429) : nul
         if (r === undefined) {
           const valeur = chemin === '/v1/vie/projects' ? { project: { id: 'projet-qa' } }
             : chemin === '/v1/vie/notes' ? { note: { id: 'note-qa', ...corps } } : {};
-          r = reponseQuota(200, valeur);
+          r = reponseQuota(statutProduit33(chemin === '/v1/vie/projects' ? 'project' : chemin === '/v1/vie/notes' ? 'note' : 'finances'), valeur);
           if (chemin === '/v1/vie/finances/overview') r.json = async () => { etat.crudTermine = true; return valeur; };
         }
       }
@@ -581,9 +937,9 @@ test('gel42 — statut de sonde inattendu ou redirection ne deviennent pas un qu
   }
 });
 
-test('gel42 — projet note et finances exigent chacun exactement200', async () => {
+test('gel42 — projet note et finances exigent chacun leur statut exact du produit33', async () => {
   for (const chemin of ['/v1/vie/projects', '/v1/vie/notes', '/v1/vie/finances/overview']) {
-    for (const status of [201, 429, 500]) {
+    for (const status of [chemin.endsWith('/overview') ? 201 : 200, 202, 429, 500]) {
       const b = bancQuota({ metier: a => a.chemin === chemin ? reponseQuota(status) : undefined });
       await assert.rejects(exercerGestionSousQuota(b.options), e => {
         assert.equal(e.message, 'managementCrudUnexpectedStatus'); assert(!preuveQuotaValide(e.quota)); return true;
@@ -593,9 +949,9 @@ test('gel42 — projet note et finances exigent chacun exactement200', async () 
   }
 });
 
-test('gel42 — un200 métier mal formé ou une note non sauvegardée restent des échecs', async () => {
+test('gel42 — un201 de création mal formé ou une note non sauvegardée restent des échecs', async () => {
   for (const chemin of ['/v1/vie/projects', '/v1/vie/notes']) {
-    const b = bancQuota({ metier: a => a.chemin === chemin ? reponseQuota(200, {}) : undefined });
+    const b = bancQuota({ metier: a => a.chemin === chemin ? reponseQuota(201, {}) : undefined });
     await assert.rejects(exercerGestionSousQuota(b.options), e => {
       assert.equal(e.message, chemin.endsWith('projects') ? 'managementProjectInvalid' : 'noteSaveFailed'); return true;
     });
@@ -612,7 +968,7 @@ test('gel42 — une erreur de sonde arrivée pendant le POST refuse et annule ce
 
 test('gel42 — le corps métier est lui aussi borné à dix secondes virtuelles', async () => {
   const b = bancQuota({ config: i => reponseQuota([1, 17].includes(i) ? 429 : 200),
-    metier: () => ({ status: 200, json: () => new Promise(() => {}) }) });
+    metier: () => ({ status: 201, json: () => new Promise(() => {}) }) });
   const p = exercerGestionSousQuota(b.options); const verdict = assert.rejects(p, /managementCrudTimeout/);
   await toursQuota(); b.avancer(10000); await verdict; assert.equal(b.delais.size, 0);
 });
@@ -634,10 +990,10 @@ test('gel42 — enfin ne touche pas un signal externe et traite les refus tardif
   await new Promise(resolve => setImmediate(resolve)); assert.equal(b.delais.size, 0);
 });
 
-test('gel42 — check vert sans preuve fraîche ou200 métier ne valide aucun rapport', () => {
+test('gel42 — check vert sans preuve fraîche ou statuts métier exacts ne valide aucun rapport', () => {
   const q = preuveQuotaComplete(); assert(preuveQuotaValide(q));
   const r = { installerExecuted: true, scenario: 'fresh', failureCode: null,
-    checks: Object.fromEntries(CONTROLES.map(c => [c, true])), managementQuota: q };
+    checks: Object.fromEntries(CONTROLES.map(c => [c, true])), managementQuota: q, managementUi: preuveUiComplete() };
   assert(rapportValide(r)); assert(!rapportValide({ ...r, managementQuota: undefined }));
   for (const k of Object.keys(q)) {
     const incomplet = { ...q }; delete incomplet[k]; assert(!rapportValide({ ...r, managementQuota: incomplet }), k);
