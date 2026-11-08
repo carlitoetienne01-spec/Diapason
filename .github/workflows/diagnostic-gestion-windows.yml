@@ -1,0 +1,78 @@
+name: Diagnostic Windows existant en lecture seule
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: diagnostic-gestion-windows
+  cancel-in-progress: false
+
+jobs:
+  diagnostic:
+    runs-on: [self-hosted, windows-local]
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "& '{0}'"
+    env:
+      DIAGNOSTIC_COMMIT: ${{ github.sha }}
+      DIAGNOSTIC_SCRIPT_SHA256: b1c06a6e7f0b31f8ccc3009b59439e6f9b1e127a92ca6ae38aa9f0755f2a3ad9
+      DIAGNOSTIC_TEST_SHA256: 54ec661afd8e6d8872180f0d1069c24a1132ae95186c9f09b729a69175f22a6b
+
+    steps:
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - name: Recevoir seulement les deux fichiers du commit immuable
+        run: |
+          $ErrorActionPreference = 'Stop'
+          try {
+            if ($env:DIAGNOSTIC_COMMIT -notmatch '^[a-f0-9]{40}$') { throw 'commit' }
+            $banc = Join-Path $env:RUNNER_TEMP ('diapason-diagnostic-gestion-{0}-{1}' -f $env:GITHUB_RUN_ID,$env:GITHUB_RUN_ATTEMPT)
+            if (Test-Path -LiteralPath $banc) { throw 'exists' }
+            New-Item -ItemType Directory -Path $banc | Out-Null
+            $fichiers = @(
+              @{ path='scripts/diagnostiquer_gestion_windows.mjs'; sha=$env:DIAGNOSTIC_SCRIPT_SHA256 },
+              @{ path='tests/deployment/diagnostic_gestion_windows.test.mjs'; sha=$env:DIAGNOSTIC_TEST_SHA256 }
+            )
+            foreach ($fichier in $fichiers) {
+              $cible = Join-Path $banc $fichier.path
+              New-Item -ItemType Directory -Force -Path (Split-Path -Parent $cible) | Out-Null
+              $uri = 'https://raw.githubusercontent.com/carlitoetienne01-spec/Diapason/{0}/{1}' -f $env:DIAGNOSTIC_COMMIT,$fichier.path
+              Invoke-WebRequest -UseBasicParsing -Uri $uri -OutFile $cible -TimeoutSec 30
+              if ((Get-FileHash -LiteralPath $cible -Algorithm SHA256).Hash.ToLowerInvariant() -ne $fichier.sha) { throw 'hash' }
+            }
+          } catch { Write-Output 'diagnosticHarnessUnavailable'; exit 1 }
+
+      - name: Tester sans accès natif ni réseau réel
+        run: |
+          $ErrorActionPreference = 'Stop'
+          try {
+            $banc = Join-Path $env:RUNNER_TEMP ('diapason-diagnostic-gestion-{0}-{1}' -f $env:GITHUB_RUN_ID,$env:GITHUB_RUN_ATTEMPT)
+            $sortie = @(& node --test (Join-Path $banc 'tests/deployment/diagnostic_gestion_windows.test.mjs') 2>&1)
+            if ($LASTEXITCODE -ne 0) { throw 'contracts' }
+            Write-Output 'diagnosticContractsPassed'
+          } catch { Write-Output 'diagnosticContractsFailed'; exit 1 }
+
+      - name: Observer les métadonnées et cinq GET locaux au maximum
+        run: |
+          $ErrorActionPreference = 'Stop'
+          try {
+            $banc = Join-Path $env:RUNNER_TEMP ('diapason-diagnostic-gestion-{0}-{1}' -f $env:GITHUB_RUN_ID,$env:GITHUB_RUN_ATTEMPT)
+            $sortie = @(& node (Join-Path $banc 'scripts/diagnostiquer_gestion_windows.mjs') --output (Join-Path $banc 'rapport.json') 2>&1)
+            if ($LASTEXITCODE -ne 0) { throw 'diagnosticFailed' }
+            Write-Output 'diagnosticReportWritten'
+          } catch { Write-Output 'diagnosticFailed'; exit 1 }
+
+      - name: Conserver le seul rapport fermé
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostic-gestion-windows-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/diapason-diagnostic-gestion-${{ github.run_id }}-${{ github.run_attempt }}/rapport.json
+          if-no-files-found: warn
+          retention-days: 7
