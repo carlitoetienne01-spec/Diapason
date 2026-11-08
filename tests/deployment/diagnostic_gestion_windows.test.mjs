@@ -250,6 +250,21 @@ test('§100 — les quatre GET finaux rendent uniquement les statuts, même en 4
   assert(!JSON.stringify(r).includes(CLE)); assert(!JSON.stringify(r).includes(PRIVE));
 });
 
+test('§5 — serveur du même usager non attribué : quatre statuts sans jamais lire de clé', async () => {
+  const n = natif(); n.listener.knownEntryPoint = false;
+  const readKey = mock.fn(() => CLE);
+  const probe = mock.fn(async o => {
+    if (o.url.endsWith('/health')) return sante;
+    assert.equal(o.key, ''); assert.equal(o.attestSocket, undefined);
+    return { status: o.url.endsWith('/config') ? 401 : 429, outcome: 'http', authenticated: false, body: CLE + PRIVE };
+  });
+  const r = await diagnostiquer({ platform: 'win32', collectNative: async () => n, readKey, probe });
+  assert.equal(r.status, 'partial'); assert.equal(r.credential, 'refused');
+  assert.equal(readKey.mock.callCount(), 0); assert.equal(probe.mock.callCount(), 5);
+  assert.equal(r.probes.notes.status, 429); assert.equal(r.probes.config.status, 401);
+  assert(!JSON.stringify(r).includes(CLE)); assert(!JSON.stringify(r).includes(PRIVE));
+});
+
 test('§5 — changement de PID/SID sur la connexion : aucun Bearer envoyé', async () => {
   const t = transport(); const attestSocket = mock.fn(async () => false);
   const r = await t.probe({ url: ORIGINE + SONDES.projects, key: CLE, attestSocket });

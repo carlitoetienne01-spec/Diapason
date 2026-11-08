@@ -19,7 +19,7 @@ const CODES = new Set(['unsupportedPlatform', 'nativeUnavailable', 'ownerNotAttr
   'healthUnrecognized', 'keyUnavailable', 'ownerChanged', 'reportWriteFailed', 'invalidArguments']);
 const ETAPES_NATIVES = new Set(['initialization', 'registry', 'applications', 'listener', 'backend', 'attestation']);
 const ISSUES_NATIVES = new Set(['completed', 'commandFailed', 'launchFailed', 'timeout', 'invalidOutput']);
-const ETAPES_ATTRIBUTION = new Set(['rootUnavailable', 'projectUnrecognized', 'venvUnavailable', 'baseUnverified', 'candidatePrepared']);
+const ETAPES_ATTRIBUTION = new Set(['rootUnavailable', 'projectUnreadable', 'legacyProject', 'projectUnrecognized', 'venvUnavailable', 'baseUnverified', 'candidatePrepared']);
 const nettoyerNatif = n => ({
   outcome: ISSUES_NATIVES.has(n?.outcome) ? n.outcome : 'invalidOutput',
   stage: ETAPES_NATIVES.has(n?.stage) ? n.stage : null,
@@ -232,7 +232,17 @@ export async function diagnostiquer({ platform = process.platform, collectNative
   if (n?.listener?.absent === true) r.listener.ownership = 'absent';
   try { r.health = await probe({ url: ORIGINE + '/health' }); } catch { r.health = { outcome: 'networkError' }; }
   if (!proprietaireAttribuable(n)) {
-    r.credential = 'refused'; r.codes.push('ownerNotAttributed'); return nettoyerRapport(r);
+    r.credential = 'refused'; r.codes.push('ownerNotAttributed');
+    // Les statuts publics des quatre GET autorisés restent observables sans
+    // lire ni transmettre une clé. Leur contenu n'est jamais conservé.
+    if (n?.listener?.sameSid === true && r.health.outcome === 'http'
+      && ['compatible', 'windowsBetaGestion', 'engineUnhealthy'].includes(r.health.signature)) {
+      for (const [nom, route] of Object.entries(SONDES)) {
+        try { r.probes[nom] = await probe({ url: ORIGINE + route, key: '' }); }
+        catch { r.probes[nom] = { outcome: 'networkError' }; }
+      }
+    }
+    return nettoyerRapport(r);
   }
   r.listener.ownership = 'diapason';
   if (r.health.outcome !== 'http' || !['compatible', 'windowsBetaGestion', 'engineUnhealthy'].includes(r.health.signature)) {
@@ -441,7 +451,9 @@ if ($ids.Count -eq 1) {
     foreach ($racine in @($racines | Select-Object -Unique | Select-Object -First 2)) {
       if (-not (Possede $racine)) { $resultat.candidateStages+='rootUnavailable'; continue }
       $projet=Petit (Join-Path $racine 'pyproject.toml') 65536
-      if (-not $projet -or $projet -notmatch '(?im)^name\s*=\s*["'']Diapason["'']\s*$') { $resultat.candidateStages+='projectUnrecognized'; continue }
+      if (-not $projet) { $resultat.candidateStages+='projectUnreadable'; continue }
+      if ($projet -match '(?im)^name\s*=\s*["''](?:OpenJarvis|Jarvis)["'']\s*$') { $resultat.candidateStages+='legacyProject'; continue }
+      if ($projet -notmatch '(?im)^name\s*=\s*["'']Diapason["'']\s*$') { $resultat.candidateStages+='projectUnrecognized'; continue }
       $entree=Join-Path $racine '.venv\Scripts\diapason.exe'
       $python=Join-Path $racine '.venv\Scripts\python.exe'
       $cfg=Petit (Join-Path $racine '.venv\pyvenv.cfg') 8192
