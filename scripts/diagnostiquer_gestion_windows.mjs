@@ -19,6 +19,7 @@ const CODES = new Set(['unsupportedPlatform', 'nativeUnavailable', 'ownerNotAttr
   'healthUnrecognized', 'keyUnavailable', 'ownerChanged', 'reportWriteFailed', 'invalidArguments']);
 const ETAPES_NATIVES = new Set(['initialization', 'registry', 'applications', 'listener', 'backend', 'attestation']);
 const ISSUES_NATIVES = new Set(['completed', 'commandFailed', 'launchFailed', 'timeout', 'invalidOutput']);
+const ETAPES_ATTRIBUTION = new Set(['rootUnavailable', 'projectUnrecognized', 'venvUnavailable', 'baseUnverified', 'candidatePrepared']);
 const nettoyerNatif = n => ({
   outcome: ISSUES_NATIVES.has(n?.outcome) ? n.outcome : 'invalidOutput',
   stage: ETAPES_NATIVES.has(n?.stage) ? n.stage : null,
@@ -134,6 +135,12 @@ export function nettoyerRapport(r = {}) {
     status: ['completed', 'partial', 'refused'].includes(r.status) ? r.status : 'refused',
     codes: Array.isArray(r.codes) ? [...new Set(r.codes.filter(c => CODES.has(c)))].slice(0, 8) : [],
     native: nettoyerNatif(r.native),
+    attribution: {
+      processKind: ['python', 'diapasonLauncher', 'other'].includes(r.attribution?.processKind) ? r.attribution.processKind : null,
+      candidateStages: Array.isArray(r.attribution?.candidateStages)
+        ? r.attribution.candidateStages.slice(0, 2).map(s => ETAPES_ATTRIBUTION.has(s) ? s : 'rootUnavailable') : [],
+      matched: r.attribution?.matched === true,
+    },
     installations: liste.map(i => ({ productVersion: version(i?.productVersion),
       fileVersion: version(i?.fileVersion), running: i?.running === true })),
     listener: { port: 8000, pid: pidValide(r.listener?.pid) ? r.listener.pid : null,
@@ -220,6 +227,8 @@ export async function diagnostiquer({ platform = process.platform, collectNative
   try { n = await collectNative(); r.native = { outcome: 'completed' }; }
   catch (e) { r.codes.push('nativeUnavailable'); r.native = nettoyerNatif(e?.nativeDiagnostic); }
   r.installations = n?.installations; r.listener = { ...n?.listener, ownership: 'unknown' }; r.backend = n?.backend;
+  r.attribution = { processKind: n?.listener?.processKind, candidateStages: n?.candidateStages,
+    matched: n?.listener?.knownEntryPoint === true };
   if (n?.listener?.absent === true) r.listener.ownership = 'absent';
   try { r.health = await probe({ url: ORIGINE + '/health' }); } catch { r.health = { outcome: 'networkError' }; }
   if (!proprietaireAttribuable(n)) {
@@ -413,7 +422,7 @@ foreach ($exe in @($executables | Select-Object -Unique | Select-Object -First 8
 $etape='listener'
 $ecoutes=@(NetTCPIP\Get-NetTCPConnection -State Listen -LocalPort 8000 -ErrorAction SilentlyContinue | Where-Object { $_.LocalAddress -in @('127.0.0.1','0.0.0.0') })
 $ids=@($ecoutes | Select-Object -ExpandProperty OwningProcess -Unique)
-$resultat=@{ installations=@($installations | Select-Object -First 4); listener=@{ absent=($ids.Count -eq 0) }; candidates=@(); private=@{} }
+$resultat=@{ installations=@($installations | Select-Object -First 4); listener=@{ absent=($ids.Count -eq 0) }; candidates=@(); candidateStages=@(); private=@{} }
 if ($ids.Count -eq 1) {
   $etape='backend'
   $p=Processus ([int]$ids[0]); $propre=$p -and (MemeSid $p)
@@ -430,15 +439,16 @@ if ($ids.Count -eq 1) {
     $cle=Join-Path $profil '.diapason\auth\local_api_key'
     $resultat.private=@{ identity=$p.CreationDate.ToUniversalTime().Ticks.ToString(); keyPath=$cle; keyOwned=(Possede $cle) }
     foreach ($racine in @($racines | Select-Object -Unique | Select-Object -First 2)) {
-      if (-not (Possede $racine)) { continue }
+      if (-not (Possede $racine)) { $resultat.candidateStages+='rootUnavailable'; continue }
       $projet=Petit (Join-Path $racine 'pyproject.toml') 65536
-      if (-not $projet -or $projet -notmatch '(?im)^name\s*=\s*["'']Diapason["'']\s*$') { continue }
+      if (-not $projet -or $projet -notmatch '(?im)^name\s*=\s*["'']Diapason["'']\s*$') { $resultat.candidateStages+='projectUnrecognized'; continue }
       $entree=Join-Path $racine '.venv\Scripts\diapason.exe'
       $python=Join-Path $racine '.venv\Scripts\python.exe'
       $cfg=Petit (Join-Path $racine '.venv\pyvenv.cfg') 8192
-      if (-not $cfg) { continue }
+      if (-not $cfg) { $resultat.candidateStages+='venvUnavailable'; continue }
       $baseDeclaree=BaseVenv $cfg
-      if (-not $baseDeclaree) { continue }
+      if (-not $baseDeclaree) { $resultat.candidateStages+='baseUnverified'; continue }
+      $resultat.candidateStages+='candidatePrepared'
       $code=Petit (Join-Path $racine 'src\diapason\server\auth_middleware.py') 131072
       $exemption='unreadable'
       if ($code) {
