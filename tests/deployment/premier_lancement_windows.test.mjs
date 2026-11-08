@@ -99,6 +99,16 @@ test('métadonnées46 — absence de preuve de source et refus de chemin ne devi
 const version = '1.0.5-beta.20261107.23';
 const sha = '8932e416a560c302e1a85c44b24d81598443daaf2151c6c8243c0f29c9c07687';
 
+test('présence47 — rapport absent, changé ou hash illisible restent trois refus distincts sans lire le profil', () => {
+  for (const [refusalStage, sourceReportPresent] of [['sourceReportAbsent', false], ['sourceReportChanged', true], ['sourceReportHash', true]]) {
+    const r = resumerMetadataPreparation({ sourceReportMatched: false, pathsGuarded: false,
+      refusalStage, sourceReportPresent, secret: 'CANARI47-PRIVE' });
+    assert.equal(r.refusalStage, refusalStage); assert.equal(r.sourceReportPresent, sourceReportPresent);
+    assert.equal(r.readCompleted, false); assert.equal(r.applicationValidated, false);
+    assert.equal(rapportValide(r), false); assert(!JSON.stringify(r).includes('CANARI47-PRIVE'));
+  }
+});
+
 const NONCE_UI = '11111111-2222-4333-8444-555555555555';
 function transformerMessagesUi(cdp, transformer) {
   const ajouter = cdp.ws.addEventListener, retirer = cdp.ws.removeEventListener, liens = new Map();

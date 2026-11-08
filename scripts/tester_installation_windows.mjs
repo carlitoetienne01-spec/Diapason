@@ -2310,8 +2310,9 @@ export function resumerMetadataPreparation(brut) {
   if (brut?.sourceReportMatched !== true || brut?.pathsGuarded !== true) {
     return { schemaVersion: 1, kind: 'windows-preparation-metadata', readCompleted: false,
       applicationValidated: false, sourceQaRunId: '42522756629',
-      refusalStage: ['root', 'owner', 'sourceReport', 'metadataPath', 'drive'].includes(brut?.refusalStage)
-        ? brut.refusalStage : 'unknown' };
+      refusalStage: ['root', 'owner', 'sourceReport', 'sourceReportAbsent', 'sourceReportHash', 'sourceReportChanged', 'metadataPath', 'drive'].includes(brut?.refusalStage)
+        ? brut.refusalStage : 'unknown',
+      ...(typeof brut?.sourceReportPresent === 'boolean' ? { sourceReportPresent: brut.sourceReportPresent } : {}) };
   }
   const fichiers = {};
   for (const nom of [...MARQUEURS_METADATA, 'alignmentModel', 'appLog']) {
@@ -2384,6 +2385,7 @@ function FiltrerMetadata([string]$nom, [hashtable]$r) {
 export const METADATA_QA45 = String.raw`
 $ErrorActionPreference = 'Stop'
 $etape = 'root'
+$rapportExiste = $null
 ${FILTRER_METADATA_QA45}
 try {
   $racine = [IO.Path]::GetFullPath($env:DIAPASON_QA_METADATA_ROOT)
@@ -2408,7 +2410,10 @@ try {
   if ($owner -ne [Security.Principal.WindowsIdentity]::GetCurrent().User.Value) { throw 'owner' }
   $etape = 'sourceReport'
   $rapport = SansLien (Join-Path $racine 'rapport\resultat.json')
-  if ((Get-FileHash -LiteralPath $rapport -Algorithm SHA256).Hash.ToLowerInvariant() -ne '5c575ea7896c92eacb9cfd7bee1e1332d2049003ddf07d7a28752d696f21f041') { throw 'report' }
+  $rapportExiste = Test-Path -LiteralPath $rapport -PathType Leaf
+  if (-not $rapportExiste) { $etape='sourceReportAbsent'; throw 'report' }
+  $etape = 'sourceReportHash'
+  if ((Get-FileHash -LiteralPath $rapport -Algorithm SHA256).Hash.ToLowerInvariant() -ne '5c575ea7896c92eacb9cfd7bee1e1332d2049003ddf07d7a28752d696f21f041') { $etape='sourceReportChanged'; throw 'report' }
   $h = Join-Path $racine 'profil\.diapason'
   $s = Join-Path $racine 'profil\AppData\Local\Diapason\runtime-complet\src'
   $cibles = [ordered]@{
@@ -2456,7 +2461,7 @@ try {
   $etape = 'drive'
   $disque = New-Object System.IO.DriveInfo -ArgumentList ([IO.Path]::GetPathRoot($racine))
   @{sourceReportMatched=$true;pathsGuarded=$true;files=$fichiers;freeDiskBytes=[long]$disque.AvailableFreeSpace} | ConvertTo-Json -Depth 7 -Compress
-} catch { @{sourceReportMatched=$false;pathsGuarded=$false;refusalStage=$etape} | ConvertTo-Json -Compress }
+} catch { @{sourceReportMatched=$false;pathsGuarded=$false;refusalStage=$etape;sourceReportPresent=$rapportExiste} | ConvertTo-Json -Compress }
 `;
 
 async function lireMetadataQa45(options) {
